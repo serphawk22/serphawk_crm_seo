@@ -13,9 +13,13 @@ from sqlmodel import SQLModel, Field, Relationship, create_engine, Session, JSON
 from sqlalchemy import Column, String, Index, DateTime, select, func, Text, UniqueConstraint, LargeBinary, text
 from sqlalchemy.dialects.postgresql import JSONB
 import os
-from dotenv import load_dotenv
+from modules.runtime_env import load_local_env
 
-load_dotenv(override=True)
+# Load the local .env file for development. The platform's environment variables always win:
+# a stray .env next to the code must never be able to shadow a deployment's configuration
+# (that is how a developer's ngrok tunnel URL ended up as the production voice-agent webhook
+# base). In a deployment the file is ignored completely.
+load_local_env()
 
 # Database URL from environment
 # Database URL from environment

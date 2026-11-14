@@ -19,6 +19,8 @@ from xml.sax.saxutils import escape, quoteattr
 import requests
 from requests.auth import HTTPBasicAuth
 
+from modules import public_url
+
 COMPANY_NAME = os.getenv("VOICE_AGENT_COMPANY", "SERP Hawk")
 COMPANY_PITCH = os.getenv(
     "VOICE_AGENT_COMPANY_DESC",
@@ -427,15 +429,79 @@ def estimate_speech_seconds(text: str, speed: float = 1.0) -> float:
 # Twilio Voice REST helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+def configured_bases() -> List[str]:
+    """The public base URLs this deployment is configured with, most specific first.
+
+    ``VOICE_AGENT_BASE_URL`` is the explicit override (a local ngrok tunnel while developing);
+    ``PUBLIC_BASE_URL`` is the app's own public URL (the email tracking pixels use it too).
+    """
+    bases: List[str] = []
+    for name in ("VOICE_AGENT_BASE_URL", "PUBLIC_BASE_URL"):
+        value = (os.getenv(name) or "").strip().rstrip("/")
+        if value and value not in bases:
+            bases.append(value)
+    return bases
+
+
+def base_candidates() -> List[str]:
+    """Every public base URL worth trying for Twilio webhooks, most specific first.
+
+    The configured values come first (an explicit override wins), then the address this
+    deployment actually answers on - the one source that cannot go stale.
+    """
+    candidates = configured_bases()
+    request = public_url.request_base()
+    if request and request not in candidates:
+        candidates.append(request)
+    return candidates
+
+
+def _is_this_deployment(base: str) -> bool:
+    """Could the server at ``base`` be running THIS application?
+
+    A configured URL can point at a completely different installation: a developer's ``.env``
+    usually carries the production URL, so falling back to it from a local machine would send
+    Twilio to a server that does not hold this call's state - the call would break in a very
+    confusing way. A base therefore only counts as this deployment when it is the address the
+    request came in on, or when it is the explicit ``VOICE_AGENT_BASE_URL`` override: that one
+    is the operator's deliberate choice and, like every candidate, it is verified to serve this
+    app before it is used.
+    """
+    request = public_url.request_base()
+    if request and public_url.same_host(base, request):
+        return True
+    override = (os.getenv("VOICE_AGENT_BASE_URL") or "").strip().rstrip("/")
+    if override and base == override:
+        return True
+    return False
+
+
+def public_base() -> str:
+    """The base URL Twilio must fetch its TwiML from.
+
+    This never touches the network: it returns the last base that was VERIFIED to serve this
+    app's voice-agent routes, or - before the first verification - the first configured
+    candidate. See :func:`voice_base_problem`, which does the verifying.
+    """
+    resolved = _RESOLVED_BASE.get("base")
+    if resolved:
+        return resolved
+    candidates = configured_bases()
+    if candidates:
+        return candidates[0]
+    return public_url.request_base()
+
+
 def twilio_config() -> dict:
     return {
         "sid": os.getenv("TWILIO_ACCOUNT_SID"),
         "token": os.getenv("TWILIO_AUTH_TOKEN"),
         "from": os.getenv("TWILIO_VOICE_NUMBER") or os.getenv("TWILIO_PHONE_NUMBER"),
         # Public base for every URL Twilio fetches (answer/gather/status/recording hooks and
-        # audio files). VOICE_AGENT_BASE_URL lets local development point Twilio at an ngrok
-        # tunnel while PUBLIC_BASE_URL stays on production for email tracking pixels.
-        "public_base": (os.getenv("VOICE_AGENT_BASE_URL") or os.getenv("PUBLIC_BASE_URL") or "").rstrip("/"),
+        # audio files). It is the base that was verified to serve this app's voice-agent routes,
+        # so a stale VOICE_AGENT_BASE_URL (a developer's tunnel that died, an old deployment
+        # URL) can never silently point Twilio at the wrong server.
+        "public_base": public_base(),
     }
 
 
@@ -492,6 +558,9 @@ def is_paid_account() -> bool:
 
 # Result of the last webhook-base probe, so starting a call only hits the network once.
 _VOICE_BASE_PROBE = {"base": None, "problem": "", "at": 0.0}
+# The base URL that was VERIFIED to serve this app's voice-agent routes. It is kept separately
+# from the probe cache so the webhook URLs stay stable between two checks.
+_RESOLVED_BASE = {"base": None, "at": 0.0}
 VOICE_BASE_PROBE_TTL = 60       # seconds a healthy result is trusted
 VOICE_BASE_PROBE_FAIL_TTL = 15  # failures are re-checked much sooner so warnings heal themselves
 _PROBE_TIMEOUT = 4.0            # per attempt: this is only a ping, Twilio itself waits far longer
@@ -516,6 +585,14 @@ def _probe_webhook_base(base: str):
                 f"development this usually means the ngrok tunnel is down or was restarted — start it again and, if "
                 f"its URL changed, update VOICE_AGENT_BASE_URL in the backend .env. This check re-runs "
                 f"automatically."), True
+    # A dead/restarted ngrok free tunnel answers with a placeholder page ("ERR_NGROK_6024" /
+    # "You are about to visit …") instead of the app, and often with a 404. It is recognised
+    # before the generic 404 so the message names the real cause.
+    snippet = (resp.text or "")[:400].lower()
+    if "err_ngrok" in snippet or ("you are about to visit" in snippet and "ngrok" in snippet):
+        return (f"{base} is answering with an ngrok placeholder page instead of this app — the tunnel "
+                f"is down or was restarted. Start it again and, if its URL changed, update "
+                f"VOICE_AGENT_BASE_URL in the backend .env, then restart the backend."), True
     if resp.status_code == 404:
         return (f"{base} does not serve this app's voice-agent routes (HTTP 404), so Twilio cannot fetch its TwiML "
                 f"there and calls would drop right after the prospect answers. Point VOICE_AGENT_BASE_URL (falls "
@@ -525,14 +602,6 @@ def _probe_webhook_base(base: str):
         return (f"{base}/voice-agent/options returned HTTP {resp.status_code}; Twilio would not receive valid TwiML "
                 f"from that server, so calls would drop. That server is erroring — fix it or point "
                 f"VOICE_AGENT_BASE_URL at a healthy instance and restart the backend."), True
-    # A dead/restarted ngrok free tunnel answers 200 with a plain-text placeholder
-    # ("ERR_NGROK_6024" / "You are about to visit …") — not the app. Twilio would
-    # get that page instead of TwiML, so treat it as a broken base.
-    snippet = (resp.text or "")[:400].lower()
-    if "err_ngrok" in snippet or ("you are about to visit" in snippet and "ngrok" in snippet):
-        return (f"{base} is answering with an ngrok placeholder page instead of this app — the tunnel "
-                f"is down or was restarted. Start it again and, if its URL changed, update "
-                f"VOICE_AGENT_BASE_URL in the backend .env, then restart the backend."), True
     if "text/html" in (resp.headers.get("content-type") or ""):
         return (f"{base} answered with an HTML page instead of this app's API (e.g. ngrok's free-tier browser "
                 f"warning). Twilio cannot read TwiML through it — make sure VOICE_AGENT_BASE_URL / PUBLIC_BASE_URL "
@@ -548,28 +617,64 @@ def voice_base_problem(base: Optional[str] = None, force: bool = False) -> Optio
     seconds after it is answered. Returns a human-readable problem description, or None when the
     base is healthy. Results are cached briefly (failures for only a few seconds) so a transient
     tunnel hiccup cannot leave a stale warning on screen.
+
+    Every configured base is tried in order (VOICE_AGENT_BASE_URL, then PUBLIC_BASE_URL, then
+    the address this deployment answers on) and the first one that really serves this app's
+    voice-agent routes is adopted. A stale value therefore cannot break the voice agent for
+    good: it is simply skipped. When NO base works the call still refuses to start - the check
+    is never bypassed.
     """
-    base = (base if base is not None else twilio_config()["public_base"]).rstrip("/")
+    candidates = ([base.rstrip("/")] if base else base_candidates())
     now = time.time()
     ttl = VOICE_BASE_PROBE_FAIL_TTL if _VOICE_BASE_PROBE["problem"] else VOICE_BASE_PROBE_TTL
-    if not force and _VOICE_BASE_PROBE["base"] == base and now - _VOICE_BASE_PROBE["at"] < ttl:
+    cache_key = "|".join(candidates)
+    if not force and _VOICE_BASE_PROBE["base"] == cache_key and now - _VOICE_BASE_PROBE["at"] < ttl:
         return _VOICE_BASE_PROBE["problem"] or None
 
     problem = ""
-    if not base:
+    if not candidates:
         problem = ("VOICE_AGENT_BASE_URL / PUBLIC_BASE_URL is empty — Twilio has no server to fetch its TwiML "
                    "from. Set it in the backend .env to this app's public HTTPS URL (an ngrok tunnel while "
                    "developing locally) and restart the backend.")
     else:
-        for attempt in range(2):
-            problem, retryable = _probe_webhook_base(base)
-            if not problem or not retryable or attempt:
-                break
-            time.sleep(0.3)
+        first_problem = ""
+        tried = 0
+        for candidate in candidates:
+            if base is None and not _is_this_deployment(candidate):
+                # A URL of a DIFFERENT installation (a developer's .env usually carries the
+                # production URL). Twilio must reach the server that holds this call's state.
+                print(f"[voice_agent] skipping webhook base {candidate}: it is not this deployment",
+                      flush=True)
+                continue
+            tried += 1
+            candidate_problem = ""
+            for attempt in range(2):
+                candidate_problem, retryable = _probe_webhook_base(candidate)
+                if not candidate_problem or not retryable or attempt:
+                    break
+                time.sleep(0.3)
+            if not candidate_problem:
+                # This base really serves the app: use it for every webhook and audio URL.
+                _RESOLVED_BASE.update({"base": candidate, "at": now})
+                _VOICE_BASE_PROBE.update({"base": cache_key, "problem": "", "at": now})
+                return None
+            if not first_problem:
+                first_problem = candidate_problem
+        problem = first_problem
+        if not tried:
+            # Every configured URL points at another installation, so none of them can hold this
+            # call's state. The check fails - it is never bypassed.
+            problem = (f"None of the configured public URLs ({', '.join(candidates)}) points at this deployment, "
+                       f"so Twilio could not reach this call's server. Set VOICE_AGENT_BASE_URL / PUBLIC_BASE_URL "
+                       f"to the public URL of THIS installation (your ngrok tunnel while developing locally) and "
+                       f"restart the backend.")
+        # Nothing works: forget the last known-good base so no webhook URL is built from a
+        # server that is known to be broken.
+        _RESOLVED_BASE.update({"base": None, "at": now})
 
-    _VOICE_BASE_PROBE.update({"base": base, "problem": problem, "at": now})
+    _VOICE_BASE_PROBE.update({"base": cache_key, "problem": problem, "at": now})
     if problem:
-        print(f"[voice_agent] webhook base check failed for {base}: {problem}", flush=True)
+        print(f"[voice_agent] webhook base check failed for {candidates}: {problem}", flush=True)
     return problem or None
 
 

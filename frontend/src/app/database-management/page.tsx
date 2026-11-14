@@ -3,8 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Database, Table, Download, ArrowUp, ArrowDown, ChevronRight, Lock } from 'lucide-react';
 import { useLanguage } from "@/context/LanguageContext";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://crmbackend.serphawk.in';
+import { API_BASE_URL } from "@/config";
 
 export default function DatabaseManagementPage() {
   const { t } = useLanguage();

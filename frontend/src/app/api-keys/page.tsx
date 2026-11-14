@@ -133,7 +133,7 @@ export default function APIKeysPage() {
           {[
             { icon: Globe, title: t("api_keys.rest_api"), desc: t("api_keys.rest_api_desc"), color: "text-blue-600 bg-blue-50 dark:bg-blue-900/20" },
             { icon: Shield, title: t("api_keys.scoped_access"), desc: t("api_keys.scoped_access_desc"), color: "text-violet-600 bg-violet-50 dark:bg-violet-900/20" },
-            { icon: Code, title: t("api_keys.base_url"), desc: t("api_keys.base_url_desc"), color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20" },
+            { icon: Code, title: t("api_keys.base_url"), desc: API_BASE_URL, color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20" },
           ].map(card => (
             <div key={card.title} className="p-4 bg-white dark:bg-[#111] rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
               <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-3 ${card.color}`}>
@@ -148,7 +148,7 @@ export default function APIKeysPage() {
         {/* Usage example */}
         <div className="bg-slate-900 rounded-2xl p-5 mb-8">
           <p className="text-xs text-slate-400 font-mono mb-3 uppercase tracking-wider">{t("api_keys.example_request")}</p>
-          <pre className="text-sm text-slate-200 font-mono overflow-x-auto">{`curl https://web-production-d6daf.up.railway.app/leads \\
+          <pre className="text-sm text-slate-200 font-mono overflow-x-auto">{`curl ${API_BASE_URL}/leads \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json"`}</pre>
         </div>

@@ -35,8 +35,10 @@ router = APIRouter(prefix="/voice-agent", tags=["AI Voice Agent"])
 
 # Boot diagnostic: Twilio fetches every webhook from this base, so a stale value
 # (e.g. an old ngrok URL) is the #1 cause of "could not reach the TwiML server".
-print(f"[voice_agent] Twilio will fetch TwiML from: "
-      f"{va.twilio_config()['public_base'] or '(UNSET — set VOICE_AGENT_BASE_URL or PUBLIC_BASE_URL)'}",
+# The configured candidates are listed; the one that is actually used is decided by the
+# pre-flight check, which verifies that the server really serves this app's routes.
+print(f"[voice_agent] Twilio webhook base candidates: "
+      f"{', '.join(va.base_candidates()) or '(UNSET — set VOICE_AGENT_BASE_URL or PUBLIC_BASE_URL)'}",
       flush=True)
 
 ALLOWED_ROLES = {"Admin", "SalesManager", "Employee", "Demo", "SuperAdmin"}
@@ -132,11 +134,23 @@ def _iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt else None
 
 
-def _public_audio(url_path: Optional[str]) -> Optional[str]:
-    if not url_path:
+def _public_audio(url_path: Optional[str], call: Optional[AICall] = None) -> Optional[str]:
+    base = _call_base(call)
+    if not url_path or not base:
         return None
-    base = va.twilio_config()["public_base"]
-    return f"{base}{url_path}" if base else None
+    return f"{base}{url_path}"
+
+
+def _call_base(call: Optional[AICall] = None) -> str:
+    """The public base URL this call must use for every webhook and audio URL.
+
+    The base is stored on the call when it is dialed (after the pre-flight check verified that
+    the server really serves this app's voice-agent routes), so the URLs Twilio fetches during
+    the call keep pointing at the same working server - even if the process restarts or the
+    configuration changes mid-call.
+    """
+    base = ((call.context or {}).get("public_base") if call is not None else None) or ""
+    return base or va.public_base()
 
 
 def _audio_file_exists(url_path: Optional[str]) -> bool:
@@ -158,7 +172,7 @@ def _audio_in_use(session: Session, audio_url: Optional[str], exclude_id: Option
 
 
 def _hook_url(call: AICall, name: str, **extra) -> str:
-    base = va.twilio_config()["public_base"]
+    base = _call_base(call)
     query = urlencode({"t": call.webhook_token, **extra})
     return f"{base}/voice-agent/twilio/{name}/{call.id}?{query}"
 
@@ -329,7 +343,7 @@ def _cached_filler_url(call: AICall) -> Optional[str]:
     v = _call_voice(call)
     rel = cached_audio(_filler_text(call), voice=v["voice"], accent=v["accent"], style=v["style"],
                        speed=v["speed"], language=v["language"], prefix="filler")
-    return _public_audio(rel)
+    return _public_audio(rel, call)
 
 
 def _cached_phrase_url(call: AICall, key: str) -> Optional[str]:
@@ -337,7 +351,7 @@ def _cached_phrase_url(call: AICall, key: str) -> Optional[str]:
     v = _call_voice(call)
     rel = cached_audio(_phrase(call, key), voice=v["voice"], accent=v["accent"], style=v["style"],
                        speed=v["speed"], language=v["language"], prefix="filler")
-    return _public_audio(rel)
+    return _public_audio(rel, call)
 
 
 def _filler_pool(call: AICall) -> List[str]:
@@ -422,7 +436,7 @@ def _call_audio(call: AICall, text: str, prefix: str = "reply") -> SpokenAudio:
             speed=v["speed"], language=v["language"], prefix=prefix, timeout=budget,
         )
         rel = future.result(timeout=budget + 0.5)[0]
-        url = _public_audio(rel)
+        url = _public_audio(rel, call)
     except Exception as e:
         print(f"[voice-agent] TTS failed for call {call.id} voice={v['voice']}: {e}")
     tts_ms = int((time.monotonic() - t0) * 1000)
@@ -440,7 +454,7 @@ def _call_audio(call: AICall, text: str, prefix: str = "reply") -> SpokenAudio:
                     style=v["style"], speed=v["speed"], language=v["language"], prefix="filler",
                     timeout=budget,
                 ).result(timeout=budget + 0.5)[0]
-                url = _public_audio(rel)
+                url = _public_audio(rel, call)
             except Exception as e:
                 print(f"[voice-agent] filler TTS failed for call {call.id}: {e}")
     print(f"[voice-agent] audio call={call.id} voice={v['voice']} tts_ms={tts_ms} filler={filler} "
@@ -807,6 +821,10 @@ def _dial(session: Session, user: User, pitch: VoicePitch, etype: Optional[str],
     ready = _require_twilio()
     _check_call_limit(session, user)
     context = {"stage": "pitch", "doubts": [], "objections": [], "silence_count": 0}
+    # The pre-flight check (_require_twilio) just verified that this base really serves the
+    # app's voice-agent routes. Store it on the call so every webhook and audio URL of THIS
+    # call keeps pointing at that same working server.
+    context["public_base"] = va.public_base()
     if pitch.language and pitch.language != "en":
         context["phrases"] = va.translate_phrases(PHRASES, language_label(pitch.language))
     # Attach the call to its lead now (explicit id, contact/client link or dialed number)
@@ -1235,15 +1253,16 @@ async def twilio_form(request: Request) -> dict:
 
 
 def _webhook_call(request: Request, session: Session, call_id: int, form: dict):
-    if os.getenv("TWILIO_VALIDATE_WEBHOOKS", "false").lower() == "true":
-        base = va.twilio_config()["public_base"]
-        url = f"{base}{request.url.path}" + (f"?{request.url.query}" if request.url.query else "")
-        if not va.validate_twilio_signature(url, form, request.headers.get("X-Twilio-Signature")):
-            raise HTTPException(status_code=403, detail="Invalid Twilio signature")
     call = session.exec(select(AICall).where(AICall.id == call_id)
                         .execution_options(skip_tenant=True)).first()
     if not call or request.query_params.get("t") != call.webhook_token:
         raise HTTPException(status_code=404, detail="Unknown call")
+    if os.getenv("TWILIO_VALIDATE_WEBHOOKS", "false").lower() == "true":
+        # Twilio signed the URL it was given, which was built from this call's base.
+        base = _call_base(call)
+        url = f"{base}{request.url.path}" + (f"?{request.url.query}" if request.url.query else "")
+        if not va.validate_twilio_signature(url, form, request.headers.get("X-Twilio-Signature")):
+            raise HTTPException(status_code=403, detail="Invalid Twilio signature")
     _set_tenant(call.tenant_id)
     return call, form
 
@@ -1282,9 +1301,17 @@ def _twilio_answer_sync(call_id: int, request: Request, form: dict, start: float
         except Exception as e:
             step(f"could not set DB timeouts: {e}")
 
+        step("DB read: AICall lookup")
+        call = session.exec(select(AICall).where(AICall.id == call_id)
+                            .execution_options(skip_tenant=True)).first()
+        step(f"DB read: AICall lookup done (found={call is not None})")
+        if not call or request.query_params.get("t") != call.webhook_token:
+            raise HTTPException(status_code=404, detail="Unknown call")
+
         if os.getenv("TWILIO_VALIDATE_WEBHOOKS", "false").lower() == "true":
             step("validating Twilio signature")
-            base = va.twilio_config()["public_base"]
+            # Twilio signed the URL it was given, which was built from this call's base.
+            base = _call_base(call)
             url = f"{base}{request.url.path}" + (f"?{request.url.query}" if request.url.query else "")
             if not va.validate_twilio_signature(url, form, request.headers.get("X-Twilio-Signature")):
                 step("signature INVALID -> 403")
@@ -1293,12 +1320,6 @@ def _twilio_answer_sync(call_id: int, request: Request, form: dict, start: float
         else:
             step("signature validation disabled; token check follows")
 
-        step("DB read: AICall lookup")
-        call = session.exec(select(AICall).where(AICall.id == call_id)
-                            .execution_options(skip_tenant=True)).first()
-        step(f"DB read: AICall lookup done (found={call is not None})")
-        if not call or request.query_params.get("t") != call.webhook_token:
-            raise HTTPException(status_code=404, detail="Unknown call")
         _set_tenant(call.tenant_id)
         form = form or {}
 
@@ -1324,7 +1345,7 @@ def _twilio_answer_sync(call_id: int, request: Request, form: dict, start: float
                 exists = _audio_file_exists(pitch.audio_url)
             if exists:
                 step("pitch audio file present -> using <Play>")
-                audio = _public_audio(pitch.audio_url)
+                audio = _public_audio(pitch.audio_url, call)
             else:
                 # Never switch to Twilio's <Say> voice mid-call: apologise in the same selected
                 # voice with the pre-generated filler clip, then keep listening.
@@ -1357,11 +1378,7 @@ def _safe_voice_gather(call_id: int, request: Request) -> str:
     ``<Say>`` voice: play the cached filler clip in the call's selected voice (or stay silent when
     the call cannot be read), then listen again."""
     token = request.query_params.get("t") or ""
-    try:
-        base = va.twilio_config()["public_base"]
-    except Exception:
-        base = ""
-    action = f"{base}/voice-agent/twilio/gather/{call_id}?t={token}"
+    base = ""
     audio = None
     try:
         with Session(engine) as session:
@@ -1369,9 +1386,16 @@ def _safe_voice_gather(call_id: int, request: Request) -> str:
                                 .execution_options(skip_tenant=True)).first()
             if call:
                 _set_tenant(call.tenant_id)
+                base = _call_base(call)
                 audio = _cached_filler_url(call)
     except Exception:
         audio = None
+    if not base:
+        try:
+            base = va.public_base()
+        except Exception:
+            base = ""
+    action = f"{base}/voice-agent/twilio/gather/{call_id}?t={token}"
     try:
         return va.twiml_gather(action, audio_url=audio)
     except Exception:
@@ -1553,7 +1577,7 @@ def _twilio_gather_impl(call_id: int, request: Request, form: dict, session: Ses
     fillers = _filler_pool(call)
     filler_audio = [
         _public_audio(cached_audio(f, voice=v["voice"], accent=v["accent"], style=v["style"],
-                                   speed=v["speed"], language=v["language"], prefix="filler"))
+                                   speed=v["speed"], language=v["language"], prefix="filler"), call)
         for f in fillers
     ]
     seq = _begin_reply(call.id, call.webhook_token, language=lang, fillers=fillers,
@@ -1593,8 +1617,8 @@ def _twilio_gather_impl(call_id: int, request: Request, form: dict, session: Ses
               wait_ms=int((time.monotonic() - start) * 1000), tag="holding")
     tt.done(served="filler")
     if paid:
-        return _xml(_paid_filler_twiml(call.id, call.webhook_token, seq))
-    return _xml(_hold_twiml(call.id, call.webhook_token, seq, 0))
+        return _xml(_paid_filler_twiml(call.id, call.webhook_token, seq, call))
+    return _xml(_hold_twiml(call.id, call.webhook_token, seq, 0, call))
 
 
 # ── Background reply preparation (keeps every Twilio webhook fast) ──────────────
@@ -1712,7 +1736,7 @@ def _wait_for_reply(call_id: int, seq: int, timeout: float) -> Optional[dict]:
         time.sleep(0.2)
 
 
-def _hold_twiml(call_id: int, token: str, seq: int, n: int) -> str:
+def _hold_twiml(call_id: int, token: str, seq: int, n: int, call: Optional[AICall] = None) -> str:
     """Hold the line while the reply is generated: play a pre-generated hold clip in the call's
     OWN voice (never Twilio's <Say> voice, which would change the voice mid-call) plus a short
     breath, then redirect back to poll. Each hold line is used at most once per call; once they are
@@ -1729,14 +1753,14 @@ def _hold_twiml(call_id: int, token: str, seq: int, n: int) -> str:
     # If the line has not been pre-warmed yet (or every line is spent), stay silent for a breath
     # rather than switching voice or repeating a phrase.
     filler = va.twiml_play(audio) if audio else f'<Pause length="{REPLY_HOLD_PAUSE or 1}"/>'
-    base = va.twilio_config()["public_base"]
+    base = _call_base(call)
     url = f"{base}/voice-agent/twilio/reply/{call_id}?{urlencode({'t': token, 's': seq, 'n': n})}"
     pause = f'<Pause length="{REPLY_HOLD_PAUSE}"/>' if REPLY_HOLD_PAUSE and audio else ""
     return (f'<?xml version="1.0" encoding="UTF-8"?><Response>{filler}{pause}'
             f'<Redirect method="POST">{escape(url)}</Redirect></Response>')
 
 
-def _paid_filler_twiml(call_id: int, token: str, seq: int) -> str:
+def _paid_filler_twiml(call_id: int, token: str, seq: int, call: Optional[AICall] = None) -> str:
     """Paid accounts, first step of the wait flow: play EXACTLY ONE hold line for this turn (in the
     call's own voice, and never one this call has already used), then redirect to the wait endpoint
     which holds the request polling for the reply. Once every hold line has been used the agent
@@ -1745,7 +1769,7 @@ def _paid_filler_twiml(call_id: int, token: str, seq: int) -> str:
         entry = _PENDING_REPLIES.get(call_id) or {}
     pool = entry.get("fillers") or ["One moment please."]
     audios = entry.get("filler_audio") or []
-    base = va.twilio_config()["public_base"]
+    base = _call_base(call)
     url = f"{base}/voice-agent/twilio/reply/{call_id}?{urlencode({'t': token, 's': seq, 'n': 0})}"
     picked = _pick_filler(call_id, pool)
     if picked is None:
@@ -1762,10 +1786,10 @@ def _paid_filler_twiml(call_id: int, token: str, seq: int) -> str:
             f'<Redirect method="POST">{escape(url)}</Redirect></Response>')
 
 
-def _paid_hold_twiml(call_id: int, token: str, seq: int, n: int) -> str:
+def _paid_hold_twiml(call_id: int, token: str, seq: int, n: int, call: Optional[AICall] = None) -> str:
     """Paid accounts, silent wait poll: no speech — just a 3s <Pause> then redirect back to the
     wait endpoint. Used at most ``REPLY_SILENT_POLLS_PAID`` times per turn (~30s total)."""
-    base = va.twilio_config()["public_base"]
+    base = _call_base(call)
     url = f"{base}/voice-agent/twilio/reply/{call_id}?{urlencode({'t': token, 's': seq, 'n': n})}"
     return (f'<?xml version="1.0" encoding="UTF-8"?><Response><Pause length="3"/>'
             f'<Redirect method="POST">{escape(url)}</Redirect></Response>')

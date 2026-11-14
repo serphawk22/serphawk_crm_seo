@@ -1171,7 +1171,7 @@
     "scoped_access": "Scoped Access",
     "scoped_access_desc": "Each key can be restricted to specific read/write operations",
     "base_url": "Base URL",
-    "base_url_desc": "https://web-production-d6daf.up.railway.app",
+    "base_url_desc": "https://crmbackend.serphawk.in",
     "example_request": "Example Request",
     "active_keys": "Active Keys ({count})",
     "no_keys": "No API keys yet",

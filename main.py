@@ -582,6 +582,12 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
         current_tenant_id.set(None)
         tenant_scope.platform_management_write.set(False)
         current_endpoint.set(request.url.path)
+        # Remember the public URL this request came in on (e.g. https://crmbackend.example.com).
+        # The voice agent uses it as the last-resort source for the address Twilio fetches its
+        # TwiML from, so a deployment always knows how it is reachable even when its configured
+        # VOICE_AGENT_BASE_URL / PUBLIC_BASE_URL are missing or stale.
+        from modules import public_url
+        public_url.set_request_base(public_url.from_request(request.headers, request.url.scheme))
         # Identity. A signed session token (Authorization: Bearer ...) is the real credential. The legacy
         # unsigned X-User-ID header / ?user_id= query parameter is only honoured when NO Authorization header
         # is sent and LEGACY_USER_HEADER is not "0": a bad or expired token never falls back to the header.

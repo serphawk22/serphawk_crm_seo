@@ -24,7 +24,9 @@ pip install -r requirements.txt
 ```
 
 ### 2. Configure Environment Variables
-Verify or create a `.env` file at the root of the project with the following configuration:
+Verify or create a `.env` file at the root of the project with the following configuration
+(`cp .env.example .env` gives you a commented template):
+
 ```env
 # Database Configuration (Neon PostgreSQL)
 DATABASE_URL=postgresql://user:password@host:5432/database?sslmode=require
@@ -93,6 +95,13 @@ The backend API will be available at [http://localhost:8000](http://localhost:80
 Use the [Cloudflare email tracking tunnel setup](docs/email-tracking-tunnel.md)
 to expose port 8000 without ngrok's free-tier browser warning. The launcher
 verifies the public pixel and updates `PUBLIC_BASE_URL` in `.env`.
+
+### The AI voice agent (Twilio)
+
+The voice agent needs to know its own public address: Twilio fetches the TwiML of every call
+from there, and the backend verifies that address before each call. See
+[docs/VOICE_AGENT_DEPLOYMENT.md](docs/VOICE_AGENT_DEPLOYMENT.md) for the variables
+(`PUBLIC_BASE_URL`, `VOICE_AGENT_BASE_URL`), the pre-call check and the deployment checklist.
 
 ---
 
