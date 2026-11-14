@@ -1,5 +1,6 @@
 "use client";
 import LocalizedText from "@/components/LocalizedText";
+import { COMPANY_BASE_DOMAIN } from "@/lib/companyConfig";
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Building2, CheckCircle2, KeyRound, Loader2, Plus, Sparkles } from "lucide-react";
@@ -68,6 +69,7 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
     setError("");
     try {
       const body: Record<string, any> = {
+        subdomain_slug: form.name.trim(),
         name: form.name.trim(), business_name: form.business_name.trim(), preset, admin_name: form.admin_name.trim(),
         admin_email: form.admin_email.trim(), account_role: form.account_role, country: form.country || null, industry: form.industry || null, is_trial: form.is_trial,
       };
@@ -149,10 +151,11 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
                 {field("business_name")}
               </div>
               <div>
-                <label className={labelCls}>Account name</label>
+                <label className={labelCls}>Account name / company subdomain</label>
                 <input className={`${inputCls} ${bad("name")}`} placeholder="acme-logistics" value={form.name}
                   onChange={(e) => { setAccountTouched(true); set({ name: e.target.value }); }} />
                 {showErrors && problems.name ? field("name") : <p className="mt-1 text-xs text-slate-500 dark:text-zinc-500">A short unique id; filled in for you.</p>}
+                <p className="mt-1 text-xs break-all">https://{form.name || "company"}.{COMPANY_BASE_DOMAIN}/leadformpage</p>
               </div>
               <div>
                 <label className={labelCls}><LocalizedText text={"Business type"} /></label>

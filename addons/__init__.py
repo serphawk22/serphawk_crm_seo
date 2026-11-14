@@ -18,6 +18,9 @@ from addons.institute.reports import router as _institute_reports_router
 from addons.institute.admissions import router as _admissions_router
 
 ROUTERS = [*_business_suite_routers, _admissions_router, _institute_router, _institute_reports_router]
+from addons.lead_capture import models as _lead_capture_models
+from addons.lead_capture.routes import routers as _lead_capture_routers
+ROUTERS.extend(_lead_capture_routers)
 
 
 def register(app) -> None:

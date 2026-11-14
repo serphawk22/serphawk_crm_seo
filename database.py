@@ -85,6 +85,16 @@ class Tenant(SQLModel, table=True):
     # Set on a demo workspace created for an organization (see modules/onboarding.py): the tenant it demonstrates.
     demo_of_tenant_id: Optional[int] = Field(default=None, index=True)
 
+class TenantDomain(SQLModel, table=True):
+    """Platform-managed hostname reservation; retired names are never recycled."""
+    __tablename__ = "tenant_domains"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenants.id", index=True, unique=True)
+    slug: str = Field(max_length=63, unique=True, index=True)
+    retired: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
 class EmailSettings(SQLModel, table=True):
     __tablename__ = "email_settings"
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -1725,6 +1735,15 @@ class TenantFeature(SQLModel, table=True):
     feature_key: str = Field(max_length=100, index=True)
     enabled: bool = Field(default=True)
     config: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class PlatformSecuritySettings(SQLModel, table=True):
+    """Platform-wide bot protection; accessible only through operator settings."""
+    __tablename__ = "platform_security_settings"
+    key: str = Field(default="turnstile", primary_key=True, max_length=50)
+    site_key: str = Field(default="", max_length=200)
+    encrypted_secret: str = Field(default="", sa_column=Column(Text))
     updated_at: datetime = Field(default_factory=_utcnow)
 
 

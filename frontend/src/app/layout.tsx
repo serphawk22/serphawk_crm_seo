@@ -31,6 +31,8 @@ import GoogleProviderWrapper from "@/components/GoogleProviderWrapper";
 import { GlobalLimitModal } from "@/components/GlobalLimitModal";
 import { NotificationProvider } from "@/context/NotificationContext";
 import GlobalFooter from "@/components/GlobalFooter";
+import CompanyBoundary from "@/components/CompanyBoundary";
+import WebsiteLeadSummary from "@/components/WebsiteLeadSummary";
 
 function AdminMainContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
@@ -116,12 +118,12 @@ function AppContent({ children }: { children: React.ReactNode }) {
     return <GlobalLoader />;
   }
 
-  if (pathname === "/login" || pathname === "/signup" || pathname === "/register" || pathname === "/demo_showcase" || pathname === "/reset-password" || pathname?.startsWith("/demo_showcase") || pathname?.startsWith("/p/")) {
+  if (pathname === "/login" || pathname === "/forgot-password" || pathname === "/signup" || pathname === "/register" || pathname === "/demo_showcase" || pathname === "/reset-password" || pathname?.startsWith("/demo_showcase") || pathname?.startsWith("/p/")) {
     return <main className="h-screen w-full">{children}</main>;
   }
 
   // A page whose module the company does not have is closed, whatever address it was opened from.
-  const gated = <ModuleGate>{children}</ModuleGate>;
+  const gated = <ModuleGate>{["/", "/command-center", "/dashboard-b2c", "/admissions"].includes(pathname || "") && <WebsiteLeadSummary />}{children}</ModuleGate>;
 
   // ── Institute add-on: students and instructors get their own portal shell ──
   if (role === "Student" || role === "Instructor") {
@@ -201,6 +203,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const route = usePathname();
+  if (route === "/leadformpage") return <html lang="en"><body className={inter.className}><CompanyBoundary>{children}</CompanyBoundary></body></html>;
   return (
     <html lang="en" suppressHydrationWarning>
       {/* Browser extensions and Google Translate edit <head> and the inline tags below before React hydrates;
@@ -233,6 +237,7 @@ export default function RootLayout({
         <link rel="manifest" href="/manifest.json" />
       </head>
       <body className={inter.className} suppressHydrationWarning>
+        <CompanyBoundary>
         <script
           suppressHydrationWarning
           dangerouslySetInnerHTML={{
@@ -276,6 +281,7 @@ export default function RootLayout({
           </ThemeProvider>
         </GoogleProviderWrapper>
 
+        </CompanyBoundary>
       </body>
     </html>
   );

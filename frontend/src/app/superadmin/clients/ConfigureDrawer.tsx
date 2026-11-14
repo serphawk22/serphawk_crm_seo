@@ -6,6 +6,7 @@ import { Check, Crown, ExternalLink, Image as ImageIcon, Loader2, MonitorPlay, P
 import Drawer from "@/components/Drawer";
 import { dashboardParent } from "@/lib/dashboardEntitlements";
 import SalesAccessSettings from "@/components/SalesAccessSettings";
+import CompanyDomainSettings from "@/components/CompanyDomainSettings";
 import {
   Badge, CatalogFeature, ClientAvatar, CredentialsCard, PRESET_ORDER, Preset, RegionOptions, TenantOverview, call, displayName,
   countModules, ghostBtn, inputCls, labelCls, primaryBtn,
@@ -265,6 +266,7 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
             </div>
           </div>
 
+          {id && <CompanyDomainSettings tenantId={id} />}
           {id && <SalesAccessSettings tenantId={id} />}
           <div className="relative">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

@@ -162,8 +162,34 @@ def _sales_modules(v):
 
 ROLE_POLICY_AREAS = {"inbox": {"full_access", "scoped"}}
 
+
+def _lead_form(value):
+    if value is None:
+        return None
+    from addons.lead_capture.config import validate_form
+    return validate_form(value)
+
+
+def _published_lead_form(value):
+    if value is None:
+        return None
+    import uuid
+    clean = _lead_form(value)
+    try:
+        clean["revision"] = str(uuid.UUID(value.get("revision", "")))
+    except (ValueError, TypeError, AttributeError):
+        raise ValueError("Published forms require a revision")
+    choices = value.get("course_choices", {})
+    if not isinstance(choices, dict) or any(not isinstance(k, str) or type(v) is not int for k, v in choices.items()):
+        raise ValueError("Invalid published course choices")
+    if choices:
+        clean["course_choices"] = choices
+    return clean
+
 # key -> (validator, default). A default of None means "no override: keep the built-in behaviour".
 SCHEMA: Dict[str, tuple] = {
+    "lead_form_draft": (_lead_form, None),
+    "lead_form_published": (_published_lead_form, None),
     "sales_module_access": (_sales_modules, None),
     "brand_name": (_str(120), None),
     "brand_logo_url": (_str(500), None),
@@ -276,7 +302,7 @@ def get_setting(tenant_id: Optional[int], key: str, fallback: Any = None) -> Any
     return fallback if value is None else value
 
 
-def update_settings(session: Session, tenant_id: int, patch: Dict[str, Any], preset: Optional[str] = None) -> Dict[str, Any]:
+def update_settings(session: Session, tenant_id: int, patch: Dict[str, Any], preset: Optional[str] = None, *, commit: bool = True) -> Dict[str, Any]:
     """Validate and merge ``patch`` into the tenant's stored settings (a None value clears a key)."""
     clean = validate(patch)
     key = clean.get("lead_intake_api_key")
@@ -301,7 +327,7 @@ def update_settings(session: Session, tenant_id: int, patch: Dict[str, Any], pre
         row.preset = preset
     row.updated_at = database._utcnow()
     session.add(row)
-    session.commit()
+    session.commit() if commit else session.flush()
     invalidate(tenant_id)
     merged = defaults()          # computed from what was just written, not through the global engine
     merged.update({k: v for k, v in stored.items() if k in SCHEMA and v is not None})

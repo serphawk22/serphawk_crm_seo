@@ -1,10 +1,10 @@
-const CACHE_NAME = "serphawk-crm-v3";
+const CACHE_NAME = "serphawk-crm-v4";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       // Basic core assets to cache
-      return cache.addAll(["/", "/manifest.json"]);
+      return cache.addAll(["/manifest.json"]);
     })
   );
   self.skipWaiting();
@@ -25,16 +25,13 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// A very basic network-first strategy for a dynamic CRM
+// Never serve cached authenticated pages or API data, including while offline.
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   
   event.respondWith(
     fetch(event.request).catch(() => {
-      return caches.match(event.request).then((cachedResponse) => {
-        if (cachedResponse) {
-          return cachedResponse;
-        }
+      return Promise.resolve().then(() => {
         return new Response("Network error", {
           status: 503,
           headers: { "Content-Type": "text/plain" },

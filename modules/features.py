@@ -103,6 +103,8 @@ _FEATURES: List[Feature] = [
        path_prefixes=("/meetings/history",)),     # /me/timezone is every user's own profile setting: never gated
     _f("command_center", "Dashboard B2B", "Business suite", "Business command center across sales, delivery and finance.",
        default_on=False, path_prefixes=("/command-center", "/reports/executive-dossier", "/management")),
+    _f("public_lead_pages", "Website leads", "Sales", "Branded public forms and enquiry attribution.",
+       default_on=False, path_prefixes=("/lead-capture",)),
     _f("lead_webhook", "Website lead webhook", "Business suite",
        "A website form posts leads straight into the CRM with the company's intake key; they are assigned automatically.",
        default_on=False, path_regexes=(r"^/(api/)?leads/webhook$",)),
@@ -240,7 +242,7 @@ def gates_for_path(path: str) -> List[str]:
     return gates
 
 
-def set_features(session: Session, tenant_id: int, changes: Dict[str, bool]) -> Dict[str, bool]:
+def set_features(session: Session, tenant_id: int, changes: Dict[str, bool], *, commit: bool = True) -> Dict[str, bool]:
     """Upsert entitlement rows for one tenant. Unknown keys raise ValueError; locked features are ignored."""
     unknown = [k for k in changes if k not in FEATURES]
     if unknown:
@@ -260,7 +262,7 @@ def set_features(session: Session, tenant_id: int, changes: Dict[str, bool]) -> 
             session.add(row)
         else:
             session.add(TenantFeature(tenant_id=tenant_id, feature_key=key, enabled=bool(enabled)))
-    session.commit()
+    session.commit() if commit else session.flush()
     invalidate(tenant_id)
     # computed from the session that was written, not through the global engine
     rows = session.exec(select(TenantFeature).where(TenantFeature.tenant_id == tenant_id)

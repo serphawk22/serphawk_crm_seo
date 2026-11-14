@@ -581,6 +581,11 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
         current_salesperson_id.set(None)
         current_tenant_id.set(None)
         tenant_scope.platform_management_write.set(False)
+        from modules import company_domains
+        try:
+            await company_domains.resolve_request(request)
+        except HTTPException as error:
+            return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
         current_endpoint.set(request.url.path)
         # Remember the public URL this request came in on (e.g. https://crmbackend.example.com).
         # The voice agent uses it as the last-resort source for the address Twilio fetches its
@@ -628,6 +633,7 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
                     user_role = _normalize_role(user_obj.role)
                     if not user_obj.is_active:
                         return None, -1, False, None  # removed or disabled account
+                    company_domains.check_user(user_obj)
                     if user_role == "SuperAdmin":
                         # Platform operators have no tenant CRM context. Use a
                         # tenant Admin login to work with that company's records.
@@ -640,7 +646,10 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
             # Blocking DB call: run it in the threadpool so it doesn't stall the event loop
             # (which delayed every other request, including Twilio webhooks).
             from starlette.concurrency import run_in_threadpool
-            resolved_uid, resolved_tenant, operator, identity = await run_in_threadpool(_resolve_identity, claimed_uid, claimed_pv)
+            try:
+                resolved_uid, resolved_tenant, operator, identity = await run_in_threadpool(_resolve_identity, claimed_uid, claimed_pv)
+            except HTTPException as error:
+                return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
             current_salesperson_id.set(resolved_uid)
             current_tenant_id.set(resolved_tenant)
             sales_access.actor.set(identity)
@@ -729,6 +738,9 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 app.add_middleware(APIIntelligenceMiddleware)
+
+from routers.company_domains import router as company_domains_router
+app.include_router(company_domains_router)
 
 app.include_router(api_intelligence_router)
 
@@ -1553,6 +1565,7 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
     and logs an activity entry.
     """
     from datetime import datetime
+    is_draft = (body.action_type or "").strip().lower() == "draft"
 
     # Determine action string
     if body.action_type == "Gmail":
@@ -1584,13 +1597,14 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
             email=to_email,
             phone=body.phone_number or None,
             source="Email Agent",
-            status="Contacted"
+            status="New" if is_draft else "Contacted"
         )
         session.add(lead)
         session.commit()
         session.refresh(lead)
     else:
-        lead.status = "Contacted"
+        if not is_draft:
+            lead.status = "Contacted"
         if body.phone_number:
             lead.phone = body.phone_number
         if body.website_url:
@@ -1638,6 +1652,7 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
         "company_name": body.company_name or "",
         "website_url": getattr(body, "website_url", "") or "",
         "recommended_services": body.recommended_services or "",
+        "action_type": "Draft" if is_draft else body.action_type,
     })
     sent_email = SentEmail(
         lead_id=lead.id,
@@ -1648,6 +1663,7 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
         recommended_services=body.recommended_services or "",
         draft_json=_draft_json_payload,
         manual=body.manual if body.manual is not None else True,
+        status="Draft" if is_draft else "Sent",
         sent_at=datetime.now(timezone.utc),
     )
     session.add(sent_email)
@@ -1657,7 +1673,7 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
     # Step 3.5: Send the actual email (unless skip_send is True).
     # Primary path is direct SMTP via user's Email Integration, with fallback to configured env mailbox.
     # The N8N webhook is still fired best-effort for follow-up automation.
-    if not body.skip_send:
+    if not is_draft and not body.skip_send:
         import os
         import httpx
         sender = os.getenv("EMAIL_SENDER") or os.getenv(
@@ -1776,7 +1792,9 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
 
     # Step 4: Log activity
     try:
-        if body.action_type == "Gmail":
+        if is_draft:
+            log_action = f"Saved email draft for {body.to_email}"
+        elif body.action_type == "Gmail":
             log_action = f"Sent outreach via Gmail to {body.to_email}"
         elif body.action_type == "WhatsApp":
             log_action = f"Sent outreach via WhatsApp to {body.phone_number}"
@@ -1799,7 +1817,7 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
         "success": True,
         "lead_id": lead.id,
         "sent_email_id": sent_email.id,
-        "message": f"Lead created and email recorded for {body.to_email}",
+        "message": f"Draft saved for {body.to_email}" if is_draft else f"Lead created and email recorded for {body.to_email}",
     }
 
 
@@ -3229,6 +3247,8 @@ def login(body: LoginRequest, session: Session = Depends(get_session)):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not _verify_password(body.password, user):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    from modules.company_domains import check_user
+    check_user(user)
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account has been switched off. Contact your administrator.")
     result = _user_dict(user)
@@ -3262,12 +3282,11 @@ def forgot_password(body: ForgotPasswordRequest, session: Session = Depends(get_
 
     # Generate + persist a token even for unknown emails so timing doesn't leak existence
     token = secrets.token_urlsafe(48)
-    frontend_base = "https://crm.serphawk.in"
-    if body.redirect_url:
-        from urllib.parse import urlsplit
-        p = urlsplit(body.redirect_url)
-        if p.scheme in ("http", "https") and p.netloc:
-            frontend_base = f"{p.scheme}://{p.netloc}"
+    from modules.company_domains import canonical_origin, request_company
+    company = request_company.get()
+    if user and company and user.tenant_id != company["tenant_id"]:
+        user = None
+    frontend_base = canonical_origin(user.tenant_id) if user else os.getenv("FRONTEND_URL", "https://serphawk.in").rstrip("/")
 
     if user:
         # Invalidate previous outstanding tokens for this user (single-use)
@@ -3282,24 +3301,12 @@ def forgot_password(body: ForgotPasswordRequest, session: Session = Depends(get_
         ))
         session.commit()
 
-    reset_url = f"{frontend_base}/reset-password?email={user.email if user else ''}&token={token}"
+    from urllib.parse import urlencode
+    reset_url = frontend_base + "/reset-password?" + urlencode({"email": user.email if user else "", "token": token})
     from modules.email_sender import send_password_reset_email
-    sent = send_password_reset_email(body.email, reset_url, tenant_id=user.tenant_id if user else None)
-
-    result = {"message": "If that email is registered, a password reset link has been sent.",
-              "delivered": sent if user else False}
     if user:
-        print(f"[Password reset] link for {user.email}: {reset_url}")
-        # Demo/test accounts have fake inboxes: always surface the link so QA and
-        # demo users can still complete the reset, even when SMTP reports success.
-        is_demo_email = (
-            user.email.lower().endswith("@serphawk.in")
-            or user.email in ("admin@serphawk.com", "varsh@gmail.com", "varshit@gmail.com", "demo@serphawk.com", "test.user@serphawk.in")
-            or "test" in user.email.lower() or "demo" in user.email.lower()
-        )
-        if not sent or is_demo_email:
-            result["debug_reset_link"] = reset_url
-    return result
+        send_password_reset_email(body.email, reset_url, tenant_id=user.tenant_id)
+    return {"message": "If that email is registered, a password reset link has been sent."}
 
 
 @app.post("/auth/reset-password")
@@ -3319,7 +3326,7 @@ def reset_password(body: ResetPasswordRequest, session: Session = Depends(get_se
             PasswordResetToken.token == body.token,
         )
     ).first()
-    if not rec or rec.used or rec.expires_at < _dt.utcnow():
+    if not rec or rec.used or (rec.expires_at.replace(tzinfo=timezone.utc) if rec.expires_at.tzinfo is None else rec.expires_at) < _dt.now(timezone.utc):
         raise HTTPException(
             status_code=400, detail="Invalid or expired reset token")
 
@@ -3360,6 +3367,11 @@ def auth_google(body: GoogleAuthRequest, session: Session = Depends(get_session)
 
     user = session.exec(select(User).where(User.email == email).execution_options(skip_tenant=True)).first()
     is_new_user = False
+    from modules.company_domains import request_company, check_user
+    if request_company.get() and not user:
+        raise HTTPException(403, detail="Ask this company's administrator for an account")
+    if user:
+        check_user(user)
 
     if not user:
         # a new Google user gets the same self-service demo workspace as /signup (managed in Demo Account Data)

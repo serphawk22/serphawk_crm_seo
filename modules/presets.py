@@ -106,7 +106,7 @@ def list_presets() -> list:
              "module_count": features.module_count({key: True for key in v["features"]})} for k, v in PRESETS.items()]
 
 
-def apply_preset(session: Session, tenant_id: int, name: str, settings_override: Optional[dict] = None) -> dict:
+def apply_preset(session: Session, tenant_id: int, name: str, settings_override: Optional[dict] = None, *, commit: bool = True) -> dict:
     """Write an explicit entitlement row for every feature and merge the preset's default settings."""
     preset = PRESETS.get(name) or _LEGACY_PRESETS.get(name)
     if not preset:
@@ -121,8 +121,8 @@ def apply_preset(session: Session, tenant_id: int, name: str, settings_override:
         if key.startswith("dashboard_"):
             return "dashboard" in preset["features"]
         return key in preset["features"]
-    applied = features.set_features(session, tenant_id, {k: included(k) for k in features.FEATURES})
+    applied = features.set_features(session, tenant_id, {k: included(k) for k in features.FEATURES}, commit=commit)
     merged = dict(preset["settings"])
     merged.update(settings_override or {})
-    stored = tenant_settings.update_settings(session, tenant_id, merged, preset=name)
+    stored = tenant_settings.update_settings(session, tenant_id, merged, preset=name, commit=commit)
     return {"preset": name, "features": applied, "settings": stored}
