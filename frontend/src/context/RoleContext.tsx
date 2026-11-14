@@ -35,6 +35,10 @@ if (typeof window !== 'undefined' && !(window as any)._fetchPatched) {
   const originalFetch = window.fetch;
   window.fetch = async (...args) => {
     let [resource, config] = args;
+    // Public enquiries must never receive CRM credentials or enter the offline CRM queue.
+    if (window.location.pathname === '/leadformpage' || (typeof resource === 'string' && resource.endsWith('/internal/company-brand'))) {
+      return originalFetch(...args);
+    }
     const saved = localStorage.getItem('crm_user');
     const token = localStorage.getItem('crm_token');
     
@@ -153,7 +157,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!loading) {
-      if (!isAuthenticated && pathname !== '/login' && pathname !== '/signup' && pathname !== '/register' && pathname !== '/' && !pathname?.startsWith('/demo_showcase') && pathname !== '/reset-password' && !pathname?.startsWith('/p/')) {
+      if (!isAuthenticated && pathname !== '/login' && pathname !== '/forgot-password' && pathname !== '/signup' && pathname !== '/register' && pathname !== '/' && !pathname?.startsWith('/demo_showcase') && pathname !== '/reset-password' && !pathname?.startsWith('/p/')) {
         router.replace('/login');
       } else if (isAuthenticated && (pathname === '/login' || pathname === '/signup' || pathname === '/register')) {
         if (user?.role === 'Supplier') {

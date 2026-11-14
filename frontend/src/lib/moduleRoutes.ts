@@ -2,6 +2,7 @@
  *  (components/ModuleGate.tsx), so typing the address of a hidden menu entry does not open it.
  *  Keys match modules/features.py. Pages that are not listed are always open (dashboard, leads, notifications, profile...). */
 const PAGE_MODULES: ReadonlyArray<readonly [string, string]> = [
+  ["/website-leads", "public_lead_pages"],
   // CRM / work
   ["/legacy-command-center", "dashboard"],
   ["/leads", "leads"], ["/contacts", "contacts"], ["/clients", "clients"], ["/admin/clients", "clients"],

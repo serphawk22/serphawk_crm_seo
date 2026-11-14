@@ -10,8 +10,10 @@ import { Loader2, ArrowRight, ShieldCheck, Mail, Lock } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import LanguageSelector from "@/components/LanguageSelector";
 import AuthThemeToggle from "@/components/AuthThemeToggle";
+import { useCompanyBrand } from "@/components/CompanyBoundary";
 
 export default function LoginPage() {
+  const brand = useCompanyBrand();
   const { t } = useLanguage();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -116,7 +118,7 @@ export default function LoginPage() {
               </svg>
             </div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">{t("Welcome back")}</h1>
-            <p className="text-slate-500 dark:text-zinc-400 text-sm">{t("Sign in to your SERP Hawk workspace.")}</p>
+            <p className="text-slate-500 dark:text-zinc-400 text-sm">{brand.company ? `${brand.locale === "es" ? "Inicia sesión en" : "Sign in to"} ${brand.brand_name}` : t("Sign in to your SERP Hawk workspace.")}</p>
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
@@ -219,7 +221,7 @@ export default function LoginPage() {
 
           <div className="mt-8 pt-6 border-t border-slate-100 dark:border-zinc-800/60 flex flex-col items-center gap-3">
             <p className="text-center text-sm text-slate-500 dark:text-zinc-500">
-              {t("New to SERP Hawk?")}{" "}
+              {brand.company ? brand.brand_name : t("New to SERP Hawk?")}{" "}
               <Link href="/signup" className="text-slate-900 dark:text-zinc-200 font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
                 {t("Create a demo workspace")}{" "}</Link>
             </p>

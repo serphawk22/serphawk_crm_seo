@@ -140,12 +140,18 @@ def create_workspace(
     session: Session, *, company_name: str, admin_name: str, admin_email: str, password_hash: str,
     phone: Optional[str] = None, preset: str = "standard", settings: Optional[dict] = None, is_trial: bool = True,
     limits: Optional[dict] = None, tenant_name: Optional[str] = None, business_email: Optional[str] = None,
-    admin_role: str = "Admin", demo_of: Optional[int] = None,
+    admin_role: str = "Admin", demo_of: Optional[int] = None, subdomain_slug: Optional[str] = None,
 ) -> dict:
     """Tenant + first user + preset features and settings. Raises ValueError when the preset or settings are invalid."""
     if preset not in presets.PRESETS and preset not in getattr(presets, "_LEGACY_PRESETS", {}):
         raise ValueError(f"Unknown preset '{preset}'")
     tenant_settings.validate(settings or {})
+    from modules.company_domains import validate_slug, domain_info
+    from database import TenantDomain
+    if subdomain_slug:
+        validate_slug(subdomain_slug)
+        if session.exec(select(TenantDomain).where(TenantDomain.slug == subdomain_slug).execution_options(skip_tenant=True)).first():
+            raise ValueError("Subdomain already reserved; choose another name")
     admin_email = admin_email.strip()
     if email_in_use(session, admin_email):
         raise ValueError("A user with this email already exists")
@@ -157,29 +163,28 @@ def create_workspace(
     tenant = Tenant(name=unique_tenant_name(session, tenant_name or company_name), business_name=company_name,
                     email=business_email or admin_email, phone=phone, is_trial=is_trial, demo_of_tenant_id=demo_of, **lim)
     session.add(tenant)
-    session.commit()
-    session.refresh(tenant)
+    session.flush()
     try:
         from modules.tenant_scope import using_tenant
         with using_tenant(tenant.id):
             user = User(email=admin_email, password=password_hash, name=admin_name, phone=phone, role=admin_role,
                         tenant_id=tenant.id)
             session.add(user)
-            session.commit()
-            session.refresh(user)
-            applied = presets.apply_preset(session, tenant.id, preset, settings)
+            domain = TenantDomain(tenant_id=tenant.id, slug=subdomain_slug) if subdomain_slug else None
+            if domain:
+                session.add(domain)
+            session.flush()
+            applied = presets.apply_preset(session, tenant.id, preset, settings, commit=False)
             admin_user_id = user.id
+            session.commit()
     except Exception:
         # never leave a half-made tenant behind (for example when two registrations race on the same email)
         session.rollback()
-        session.exec(database.TenantFeature.__table__.delete().where(database.TenantFeature.tenant_id == tenant.id))
-        session.exec(database.TenantSettings.__table__.delete().where(database.TenantSettings.tenant_id == tenant.id))
-        session.exec(User.__table__.delete().where(User.tenant_id == tenant.id))
-        session.exec(Tenant.__table__.delete().where(Tenant.id == tenant.id))
-        session.commit()
+        features.invalidate(tenant.id)
+        tenant_settings.invalidate(tenant.id)
         raise
     return {"tenant_id": tenant.id, "tenant_name": tenant.name, "admin_user_id": admin_user_id, "admin_email": admin_email,
-            **applied}
+            **applied, **domain_info(domain)}
 
 
 def register_workspace(session: Session, *, company_name: str, admin_name: str, admin_email: str, password_hash: str,

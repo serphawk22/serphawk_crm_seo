@@ -21,6 +21,7 @@ import { useRole } from '@/context/RoleContext';
 import { useLanguage } from '@/context/LanguageContext';
 
 import LeadHeader from './components/LeadHeader';
+import WebsiteLeadSummary from '@/components/WebsiteLeadSummary';
 import LeadSidebarPanel from './components/LeadSidebarPanel';
 import AiCopilotPanelLead from './components/AiCopilotPanelLead';
 import TimelineTab from './components/tabs/TimelineTab';
@@ -981,7 +982,8 @@ export default function LeadDetailsPage() {
       />
 
       {/* ── Full-Width layout ──────────────────────────────────────── */}
-      <div className="w-full px-4 py-4">
+      <div className="w-full px-4 py-4 space-y-4">
+        <WebsiteLeadSummary leadId={Number(id)} />
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-5">
 
           {/* ── CENTER MAIN ──────────────────────────────────────────── */}

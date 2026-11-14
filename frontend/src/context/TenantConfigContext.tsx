@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
+import { useCompanyBrand } from "@/components/CompanyBoundary";
 
 export interface TenantSettings {
   brand_name?: string | null;
@@ -47,6 +48,7 @@ const TenantConfigContext = createContext<TenantConfig>({
 });
 
 export function TenantConfigProvider({ children }: { children: ReactNode }) {
+  const publicBrand = useCompanyBrand();
   const { isAuthenticated, user } = useRole();
   const [features, setFeatures] = useState<Record<string, boolean>>({});
   const [settings, setSettings] = useState<TenantSettings>({});
@@ -105,11 +107,11 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
   const value: TenantConfig = {
     loaded,
     features,
-    settings,
+    settings: publicBrand.company ? { ...publicBrand, ...settings } : settings,
     preset,
     hasFeature: (key?: string) => !key || !loaded || features[key] !== false,
     isOn: (key: string) => loaded && features[key] === true,
-    brandName: settings.brand_name || DEFAULT_BRAND,
+    brandName: settings.brand_name || publicBrand.brand_name || DEFAULT_BRAND,
     refresh: () => setNonce((n) => n + 1),
   };
 

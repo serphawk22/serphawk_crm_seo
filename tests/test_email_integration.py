@@ -220,6 +220,41 @@ class SignatureTests(unittest.TestCase):
 class ChainTests(ApiTestCase):
     AI_BODY = SignatureTests.AI_EN
 
+    def test_save_draft_preserves_existing_status_and_never_sends(self):
+        from database import ActivityLog
+        with Session(ENGINE) as s:
+            lead = s.get(Lead, 1)
+            lead.status = "Follow-up"
+            s.add(lead)
+            s.commit()
+        with mock.patch("httpx.post") as webhook:
+            r, send = self.send_manual(action_type="Draft", skip_send=False)
+        self.assertEqual(r.status_code, 200, r.text)
+        send.assert_not_called()
+        webhook.assert_not_called()
+        with Session(ENGINE) as s:
+            self.assertEqual(s.get(Lead, 1).status, "Follow-up")
+            row = s.get(SentEmail, r.json()["sent_email_id"])
+            self.assertEqual(row.status, "Draft")
+            self.assertEqual(json.loads(row.draft_json)["action_type"], "Draft")
+            events = s.exec(select(ActivityLog).where(ActivityLog.lead_id == 1)).all()
+            self.assertTrue(any(event.action.startswith("Saved email draft") for event in events))
+            self.assertFalse(any("sent" in event.action.lower() for event in events))
+
+    def test_save_draft_for_new_prospect_starts_as_new_and_stays_out_of_sent(self):
+        from routers.inbox import _sent_visible
+        with mock.patch("httpx.post") as webhook:
+            r, send = self.send_manual(action_type="Draft", skip_send=True, to_email="new-draft@example.test")
+        self.assertEqual(r.status_code, 200, r.text)
+        send.assert_not_called()
+        webhook.assert_not_called()
+        with Session(ENGINE) as s:
+            lead = s.get(Lead, r.json()["lead_id"])
+            self.assertEqual(lead.status, "New")
+            row = s.get(SentEmail, r.json()["sent_email_id"])
+            self.assertEqual(row.status, "Draft")
+            self.assertEqual(s.exec(_sent_visible(select(SentEmail).where(SentEmail.id == row.id))).all(), [])
+
     def send_manual(self, user=SALES, **extra):
         payload = {"to_email": "asha@example.test", "company_name": "Asha Studio", "subject": "Your website quote",
                    "english_body": self.AI_BODY, "action_type": "System", **extra}

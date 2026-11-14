@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:lead-capture": "node scripts/check-lead-capture.mjs",
     "test:interface-language": "node scripts/check-interface-language.mjs",
     "test:profile-settings": "node scripts/check-profile-settings.mjs",
     "test:sidebar": "node scripts/check-sidebar.mjs",

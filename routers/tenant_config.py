@@ -19,6 +19,7 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from database import Tenant, User, engine
@@ -150,6 +151,8 @@ def set_sales_access(body: Dict[str, bool], tenant_id: Optional[int] = None, ses
 
 @router.put("/tenant/settings")
 def update_my_settings(body: SettingsUpdate, session: Session = Depends(get_session)):
+    if "lead_form_published" in body.settings:
+        raise HTTPException(422, "Use Website leads to publish or unpublish a form")
     user = _user(session)
     if _role(user) not in _ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="Only an Admin can change settings")
@@ -207,6 +210,8 @@ def update_tenant_features(tenant_id: int, body: FeaturesUpdate, session: Sessio
 
 @router.put("/superadmin/tenants/{tenant_id}/settings")
 def update_tenant_settings(tenant_id: int, body: SettingsUpdate, session: Session = Depends(get_session)):
+    if "lead_form_published" in body.settings:
+        raise HTTPException(422, "Use Website leads to publish or unpublish a form")
     _super(session)
     _tenant_or_404(session, tenant_id)
     try:
@@ -269,6 +274,9 @@ def delete_tenant(tenant_id: int, body: DeleteTenantRequest, session: Session = 
         raise HTTPException(status_code=409, detail="A workspace containing a platform SuperAdmin cannot be deleted")
     if body.confirm_name != tenant.name:
         raise HTTPException(status_code=422, detail="The confirmation does not match this workspace")
+    from database import TenantDomain
+    if session.exec(select(TenantDomain.id).where(TenantDomain.tenant_id == tenant_id).execution_options(skip_tenant=True)).first():
+        raise HTTPException(409, detail="This workspace has a reserved company domain. Retain the workspace to prevent domain reuse.")
     if session.exec(select(Tenant.id).where(Tenant.demo_of_tenant_id == tenant.id)
                     .execution_options(skip_tenant=True)).first():
         raise HTTPException(status_code=409, detail="Delete this client's linked demo workspaces first")
@@ -280,6 +288,7 @@ def delete_tenant(tenant_id: int, body: DeleteTenantRequest, session: Session = 
 
 
 class OnboardRequest(BaseModel):
+    subdomain_slug: Optional[str] = None
     account_role: str = "Admin"
     name: str                       # unique tenant name / slug
     business_name: Optional[str] = None
@@ -325,7 +334,10 @@ def _onboard(session: Session, body: OnboardRequest) -> dict:
             session, company_name=body.business_name or name, tenant_name=name, admin_name=body.admin_name,
             admin_email=admin_email, password_hash=_hash_password(password), phone=body.phone, preset=body.preset,
             settings=settings, is_trial=body.is_trial, limits=body.limits, business_email=body.email,
-            admin_role=body.account_role)
+            admin_role=body.account_role, subdomain_slug=body.subdomain_slug)
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="An account or subdomain was claimed concurrently; choose another name")
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     if not body.admin_password:

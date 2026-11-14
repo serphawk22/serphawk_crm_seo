@@ -73,6 +73,7 @@ const ITEM_FEATURE: Record<string, string> = {
 
 // Add-on modules (off unless the tenant has them): shown only once the tenant config says they are on.
 const ITEM_ADDON: Record<string, string> = {
+  "item-website-leads": "public_lead_pages",
   "item-support-sh": "support_sh",
   "item-command-center": "command_center", "item-revenue": "finance_suite", "item-business-costs": "finance_suite",
   "item-lead-sources": "lead_sources", "item-lead-source-analytics": "lead_source_analytics", "item-ownership": "ownership",
@@ -167,6 +168,7 @@ const defaultSidebarSections: SidebarSection[] = [
       { id: "item-command-center", name: "Dashboard", icon: "LayoutDashboard", href: "/command-center", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-revenue", name: "Revenue Dashboard", icon: "TrendingUp", href: "/revenue", roles: ["Admin"] },
       { id: "item-business-costs", name: "Business Costs", icon: "IndianRupee", href: "/business-costs", roles: ["Admin"] },
+      { id: "item-website-leads", name: "Website leads", icon: "Globe", href: "/website-leads", roles: ["Admin", "SalesManager", "Employee", "Sales"] },
       { id: "item-lead-sources", name: "Lead Sources", icon: "Zap", href: "/lead-sources", roles: ["Admin", "SalesManager", "Employee", "Sales"] },
       { id: "item-lead-source-analytics", name: "Lead Source Analytics", icon: "BarChart2", href: "/lead-source-analytics", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-ownership", name: "Ownership", icon: "Users", href: "/ownership", roles: ["Admin"] },

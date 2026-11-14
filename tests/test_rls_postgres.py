@@ -104,6 +104,20 @@ class RlsPostgres(unittest.TestCase):
         self.assertEqual(self.count(3), 1)
         self.assertEqual(self.count(2), 2)
 
+    def test_company_domain_and_enquiry_tables_are_protected(self):
+        for name in ("tenant_domains", "lead_enquiries", "lead_intake_counters"):
+            self.assertIn(name, self.protected)
+        _tenant.set(None)
+        with Session(self.owner) as s:
+            s.execute(text("INSERT INTO tenant_domains (tenant_id, slug, retired, created_at) VALUES (2, 'rls-company', false, now())"))
+            s.commit()
+        _tenant.set(3)
+        with Session(self.app) as s:
+            self.assertEqual(s.execute(text("SELECT count(*) FROM tenant_domains WHERE slug = 'rls-company'")).scalar(), 0)
+            with self.assertRaises(DBAPIError):
+                s.execute(text("INSERT INTO tenant_domains (tenant_id, slug, retired, created_at) VALUES (2, 'rls-forged', false, now())"))
+                s.commit()
+
 
 if __name__ == "__main__":
     unittest.main()
