@@ -7,6 +7,7 @@ import { User, Mail, Phone, Globe, MapPin, Linkedin, Building2, Users, IndianRup
 import Link from 'next/link';
 import { API_BASE_URL } from '@/config';
 import { useLanguage } from '@/context/LanguageContext';
+import { useTenantConfig } from '@/context/TenantConfigContext';
 
 interface LeadSidebarPanelProps {
   lead: any;
@@ -214,6 +215,8 @@ export default function LeadSidebarPanel({
     }
   };
 
+  const { settings } = useTenantConfig();
+  const curSym = (settings?.default_currency || 'INR').toUpperCase() === 'USD' ? '$' : '₹';
   const formFields: [keyof typeof profileForm, string, string][] = [
     ['contact_person', language === 'es' ? 'Persona de Contacto' : 'Contact Person', 'text'],
     ['phone', language === 'es' ? 'Teléfono' : 'Phone', 'text'],
@@ -225,7 +228,7 @@ export default function LeadSidebarPanel({
     ['revenue_range', language === 'es' ? 'Rango de Ingresos' : 'Revenue Range', 'text'],
     ['lead_source', language === 'es' ? 'Fuente del Lead' : 'Lead Source', 'text'],
     ['lead_score', language === 'es' ? 'Puntaje Lead (0-100)' : 'Lead Score (0-100)', 'number'],
-    ['deal_value', language === 'es' ? 'Valor (₹)' : 'Deal Value (₹)', 'number'],
+    ['deal_value', language === 'es' ? `Valor (${curSym})` : `Deal Value (${curSym})`, 'number'],
     ['last_contact_date', language === 'es' ? 'Último Contacto' : 'Last Contact Date', 'date'],
     ['next_followup_date', language === 'es' ? 'Próximo Seguimiento' : 'Next Follow-up Date', 'date'],
   ];

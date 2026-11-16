@@ -81,7 +81,7 @@ async def resolve_request(request):
     expected = signature(request.method, target, host, stamp, body, request.headers.get("x-company-ip", ""))
     if not hmac.compare_digest(expected, request.headers.get("x-company-signature", "")):
         raise HTTPException(403, "Invalid host signature")
-    if host == base_domain():
+    if host == base_domain() or host in {f"{sub}.{base_domain()}" for sub in ("www", "crm", "crm-seo", "app")}:
         return
     suffix = "." + base_domain()
     if not host.endswith(suffix):

@@ -156,6 +156,17 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
     onChanged();
   });
 
+  const setCurrencyInstant = (cur: "INR" | "USD") => run("currency", async () => {
+    const c: Config = await call(`/superadmin/tenants/${id}/settings`, {
+      method: "PUT",
+      body: JSON.stringify({ settings: { default_currency: cur } }),
+    });
+    setCfg(c);
+    setDraftSettings((s) => ({ ...s, default_currency: cur }));
+    success("Workspace currency updated", `${name} now uses ${cur === "INR" ? "Rupees (₹ / INR)" : "Dollar ($ / USD)"} across its workspace.`);
+    onChanged();
+  });
+
   const uploadLogo = (file: File) => run("logo", async () => {
     const form = new FormData();
     form.append("file", file);
@@ -253,6 +264,38 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
         <div className="flex items-center justify-center gap-2 py-24 text-slate-500"><Loader2 className="w-5 h-5 animate-spin" /> {t("Loading...")}</div>
       ) : tab === "modules" ? (
         <div className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
+            <div>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">Workspace Currency</p>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">Switch the entire workspace between Rupees (₹) and Dollar ($).</p>
+            </div>
+            <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900">
+              {(
+                [
+                  { code: "INR", label: "₹ Rupees (INR)" },
+                  { code: "USD", label: "$ Dollar (USD)" },
+                ] as const
+              ).map((opt) => {
+                const active = (cfg.settings?.default_currency || "INR").toUpperCase() === opt.code;
+                return (
+                  <button
+                    key={opt.code}
+                    type="button"
+                    disabled={busy === "currency"}
+                    onClick={() => setCurrencyInstant(opt.code)}
+                    className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
+                      active
+                        ? "bg-indigo-600 text-white shadow-sm"
+                        : "text-slate-600 hover:text-slate-900 dark:text-zinc-300 dark:hover:text-white"
+                    } disabled:opacity-50`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
             <p className="text-sm font-semibold text-slate-900 dark:text-white">{t("Start from a ready-made setup")}</p>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">{t("Replaces the choices below with the modules of a product setup. You can still adjust them afterwards.")}</p>
@@ -319,7 +362,34 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
             {TEXT_FIELDS.map((f) => (
               <div key={f.key} className={f.key === "brand_name" || f.key === "brand_tagline" ? "sm:col-span-2" : ""}>
                 <label className={labelCls}>{f.label}</label>
-                <input className={inputCls} placeholder={f.placeholder} value={draftSettings[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />
+                {f.key === "default_currency" ? (
+                  <div className="flex gap-2">
+                    {(
+                      [
+                        { code: "INR", label: "₹ Rupees (INR)" },
+                        { code: "USD", label: "$ Dollar (USD)" },
+                      ] as const
+                    ).map((opt) => {
+                      const active = (draftSettings.default_currency || "INR").toUpperCase() === opt.code;
+                      return (
+                        <button
+                          key={opt.code}
+                          type="button"
+                          onClick={() => set("default_currency", opt.code)}
+                          className={`flex-1 rounded-xl border px-3 py-2.5 text-xs font-bold transition ${
+                            active
+                              ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
+                              : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <input className={inputCls} placeholder={f.placeholder} value={draftSettings[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />
+                )}
               </div>
             ))}
             <div>

@@ -40,14 +40,17 @@ interface Proposal {
 }
 
 function currSymbol(c: string) {
-  if (c === "INR") return "₹";
-  if (c === "EUR") return "€";
-  if (c === "GBP") return "£";
+  const up = (c || "").toUpperCase();
+  if (up === "USD") return "$";
+  if (up === "INR") return "₹";
+  if (up === "EUR") return "€";
+  if (up === "GBP") return "£";
   return "₹";
 }
 
 function fmtMoney(v: number, c: string) {
-  return `${currSymbol(c)}${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const loc = (c || "").toUpperCase() === "INR" ? "en-IN" : "en-US";
+  return `${currSymbol(c)}${v.toLocaleString(loc, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export default function PublicProposalPage() {

@@ -11,25 +11,27 @@ export async function companyFetch(request: NextRequest, target: string, body?: 
   if (destination.origin !== origin.origin || /[\\]/.test(target) || destination.pathname + destination.search !== target) throw new Error("Invalid proxy target");
   const host = request.headers.get("host")?.split(":")[0].toLowerCase() || "";
   const base = COMPANY_BASE_DOMAIN;
-  const local = process.env.NODE_ENV !== "production" && (host === "localhost" || host.endsWith(".localhost"));
+  const isLocalHost = host === "localhost" || host === "127.0.0.1" || host.endsWith(".localhost") || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+  const local = process.env.NODE_ENV !== "production" && isLocalHost;
   if (!local && host !== base && !host.endsWith("." + base)) return new Response("Company unavailable", { status: 404 });
-  const signedHost = local ? host === "localhost" ? base : host.replace(/\.localhost$/, "." + base) : host;
+  const signedHost = local ? (host.endsWith(".localhost") ? host.replace(/\.localhost$/, "." + base) : base) : host;
   const secret = process.env.COMPANY_PROXY_SECRET;
-  if (!secret) return Response.json({ detail: "Company routing is not configured" }, { status: 503 });
   const stamp = String(Math.floor(Date.now() / 1000));
   // Vercel overwrites x-real-ip. No arbitrary browser forwarded-IP headers are propagated.
   const ip = process.env.VERCEL ? request.headers.get("x-real-ip") || "unknown" : "local";
   const payload = body || Buffer.alloc(0);
-  const canonical = [request.method, target, signedHost, stamp, createHash("sha256").update(payload).digest("hex"), ip].join("\n");
   const headers = new Headers();
   for (const key of ["authorization", "content-type", "accept", "range"]) {
     if (key === "authorization" && target.startsWith("/internal/")) continue;
     const value = request.headers.get(key); if (value) headers.set(key, value);
   }
-  headers.set("x-company-host", signedHost);
-  headers.set("x-company-time", stamp);
-  headers.set("x-company-ip", ip);
-  headers.set("x-company-signature", createHmac("sha256", secret).update(canonical).digest("hex"));
+  if (secret) {
+    const canonical = [request.method, target, signedHost, stamp, createHash("sha256").update(payload).digest("hex"), ip].join("\n");
+    headers.set("x-company-host", signedHost);
+    headers.set("x-company-time", stamp);
+    headers.set("x-company-ip", ip);
+    headers.set("x-company-signature", createHmac("sha256", secret).update(canonical).digest("hex"));
+  }
   const response = await fetch(destination, { method: request.method, headers,
     body: ["GET", "HEAD"].includes(request.method) ? undefined : new Uint8Array(payload), cache: "no-store", redirect: "manual" });
   const output = new Headers({ "Cache-Control": "no-store" });

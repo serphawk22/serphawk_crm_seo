@@ -83,7 +83,8 @@ export default function LeadHeader({
   const statusCfg = STATUS_CONFIG[lead?.status] || STATUS_CONFIG.Inactive;
   const assignedEmp = employees.find((e: any) => e.id === lead?.owner_id);
   const leadScore = lead?.lead_score ?? 0;
-  const dealValue = lead?.deal_value ? `₹${Number(lead.deal_value).toLocaleString()}` : '—';
+  const curSym = (settings?.default_currency || "INR").toUpperCase() === "USD" ? "$" : "₹";
+  const dealValue = lead?.deal_value ? `${curSym}${Number(lead.deal_value).toLocaleString()}` : '—';
 
 
   // Contact info pills for display in header
