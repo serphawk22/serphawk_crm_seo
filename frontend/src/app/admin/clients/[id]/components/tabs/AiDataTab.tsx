@@ -47,14 +47,26 @@ export default function AiDataTab({ clientId, websiteUrl, onClientRefresh, resou
       return data;
     }
 
-    const research = data.research || {};
+    const research = data.research;
+    if (!research) {
+      return { status: 'not_started', report: null };
+    }
     let agentData = research.email_agent_data;
     if (typeof agentData === 'string') {
       try { agentData = JSON.parse(agentData); } catch { agentData = null; }
     }
-    const report = agentData?.full_markdown_report || (Object.keys(research).length > 0 ? JSON.stringify(research, null, 2) : null);
+    if (agentData?.__report_status === 'pending') {
+      return { status: 'pending', report: null };
+    }
+    if (agentData?.__report_status === 'error') {
+      return { status: 'error', report: null, message: agentData?.__error_message || agentData?.error || 'AI data extraction failed.' };
+    }
+    const report = agentData?.full_markdown_report
+      || agentData?.__full_report
+      || research.company_overview
+      || (Object.keys(research).length > 0 ? JSON.stringify(research, null, 2) : null);
     setServices(agentData?.extracted_services || agentData?.product_portfolio || research.extracted_services || []);
-    return report ? { status: 'done', report } : { status: 'pending' };
+    return report ? { status: 'done', report } : { status: 'not_started', report: null };
   }, [resourcePath, resourceType]);
 
   const startPolling = useCallback(() => {

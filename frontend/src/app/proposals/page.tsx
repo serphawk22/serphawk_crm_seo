@@ -7,6 +7,8 @@ import { Plus, X, Loader2, FileSignature, CheckCircle, Send, Clock, XCircle, Ind
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
 import { useLanguage } from "@/context/LanguageContext";
+import { useCurrency } from "@/components/analytics/kit";
+import { useTenantConfig } from "@/context/TenantConfigContext";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface LineItem {
@@ -75,10 +77,11 @@ export function toUsd(inr: number): number {
 
 const CURRENCIES = [
   { code: "INR", label: "INR (₹)", symbol: "₹", icon: IndianRupee },
+  { code: "USD", label: "USD ($)", symbol: "$", icon: IndianRupee },
 ];
 
 function fmtUsd(val: number): string {
-  return `₹${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function fmtInr(val: number): string {
@@ -137,8 +140,11 @@ function ProposalsPageContent() {
   const [recipientSearch, setRecipientSearch]   = useState("");
 
   // Cart step
+  const { settings } = useTenantConfig();
+  const workspaceCur: "USD" | "INR" = (settings?.default_currency || "INR").toUpperCase() === "USD" ? "USD" : "INR";
+  const curSym = workspaceCur === "USD" ? "$" : "₹";
   const [cart, setCart]                 = useState<LineItem[]>([]);
-  const [currency, setCurrency]         = useState<"USD" | "INR">("INR");
+  const [currency, setCurrency]         = useCurrency();
   const [catalogSearch, setCatalogSearch] = useState("");
   const [catalogCategory, setCatalogCategory] = useState("All");
 
@@ -231,7 +237,7 @@ function ProposalsPageContent() {
     setSelectedDealId(null);
     setRecipientSearch("");
     setCart([]);
-    setCurrency("INR");
+    setCurrency(workspaceCur);
     setCatalogSearch("");
     setCatalogCategory("All");
     setQuoteTitle("");
@@ -532,7 +538,7 @@ function ProposalsPageContent() {
           <div className="min-w-0">
             <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Won Revenue</div>
             <div className="text-xs font-bold text-slate-800 dark:text-zinc-100 mt-0.5 truncate">
-              {loading ? "—" : `₹${(toInr(stats.value)/100000).toFixed(1)}L`}
+              {loading ? "—" : workspaceCur === "USD" ? fmtUsd(stats.value) : `₹${(toInr(stats.value)/100000).toFixed(1)}L`}
             </div>
           </div>
         </div>
@@ -574,7 +580,7 @@ function ProposalsPageContent() {
           </div>
           <div className="hidden sm:flex items-center gap-1 text-[11px] text-slate-500 dark:text-zinc-400 font-medium shrink-0 bg-slate-50 dark:bg-zinc-800/60 px-2 py-0.5 rounded border border-slate-200/60 dark:border-zinc-700">
             <ArrowRightLeft className="w-3 h-3 text-blue-500" />
-            <span>Base: <strong>INR (₹)</strong></span>
+            <span>Base: <strong>{workspaceCur === "USD" ? "USD ($)" : "INR (₹)"}</strong></span>
           </div>
         </div>
       </div>
@@ -604,7 +610,7 @@ function ProposalsPageContent() {
               <div>Sales Rep</div>
               <div><LocalizedText text={"Pipeline Stage"} /></div>
               <div><LocalizedText text={"Status"} /></div>
-              <div className="text-right">Value (₹)</div>
+              <div className="text-right">Value ({curSym})</div>
               <div className="text-center"><LocalizedText text={"Actions"} /></div>
             </div>
 
@@ -1167,7 +1173,7 @@ function ProposalsPageContent() {
                   <div className="flex items-center justify-between bg-blue-50/60 dark:bg-blue-950/20 p-3 rounded-xl border border-blue-100 dark:border-blue-900/40">
                     <div>
                       <p className="text-xs font-bold text-slate-900 dark:text-white">Proposal Base Currency</p>
-                      <p className="text-[11px] text-slate-500">All amounts shown in Rupees (₹)</p>
+                      <p className="text-[11px] text-slate-500">All amounts shown in {currency === "USD" ? "Dollars ($)" : "Rupees (₹)"}</p>
                     </div>
                     <div className="flex gap-1 bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
                       {CURRENCIES.map(c => (
@@ -1232,9 +1238,9 @@ function ProposalsPageContent() {
                       </div>
                       {/* Price in Rupees */}
                       <div>
-                        <label className="text-[10px] font-black text-blue-600 block mb-0.5">Price in Rupees (₹ INR)</label>
+                        <label className="text-[10px] font-black text-blue-600 block mb-0.5">Price in {currency === "USD" ? "Dollars ($ USD)" : "Rupees (₹ INR)"}</label>
                         <div className="relative">
-                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">₹</span>
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">{currency === "USD" ? "$" : "₹"}</span>
                           <input
                             type="number"
                             step="0.01"

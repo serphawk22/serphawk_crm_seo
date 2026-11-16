@@ -3,7 +3,8 @@
 import Link from "next/link";
 import LocalizedText from "@/components/LocalizedText";
 import { ReactNode, useCallback, useEffect, useState } from "react";
-import { ArrowUpRight, TrendingDown, TrendingUp, Minus, IndianRupee } from "lucide-react";
+import { ArrowUpRight, TrendingDown, TrendingUp, Minus, IndianRupee, DollarSign } from "lucide-react";
+import { useTenantConfig } from "@/context/TenantConfigContext";
 
 /* ───────────────────────── currency ───────────────────────── */
 
@@ -12,13 +13,21 @@ export const EXCHANGE = 83.5; // 1 USD ≈ 83.5 INR (same convention as the Reve
 const CUR_KEY = "crm_currency";
 
 export function useCurrency(): [Currency, (c: Currency) => void] {
+  const { loaded, settings } = useTenantConfig();
+  const tenantCur = settings?.default_currency?.toUpperCase();
+  const workspaceCur: Currency | null = tenantCur === "USD" || tenantCur === "INR" ? tenantCur : null;
   const [cur, setCur] = useState<Currency>("INR");
   useEffect(() => {
+    if (loaded && workspaceCur) {
+      setCur(workspaceCur);
+      try { localStorage.setItem(CUR_KEY, workspaceCur); } catch { /* ignore */ }
+      return;
+    }
     try {
       const v = localStorage.getItem(CUR_KEY);
       if (v === "INR" || v === "USD") setCur(v);
     } catch { /* ignore */ }
-  }, []);
+  }, [loaded, workspaceCur]);
   const set = useCallback((c: Currency) => {
     setCur(c);
     try { localStorage.setItem(CUR_KEY, c); } catch { /* ignore */ }
@@ -29,7 +38,7 @@ export function useCurrency(): [Currency, (c: Currency) => void] {
 export function money(amount: number | null | undefined, cur: Currency, compact = false): string {
   const a = Number(amount || 0);
   const v = cur === "USD" ? a / EXCHANGE : a;
-  const sym = cur === "USD" ? "₹" : "\u20B9";
+  const sym = cur === "USD" ? "$" : "\u20B9";
   const abs = Math.abs(v);
   if (compact) {
     if (cur === "INR") {
@@ -199,13 +208,13 @@ export function Skeleton({ className = "" }: { className?: string }) {
 export function CurrencyToggle({ value, onChange }: { value: Currency; onChange: (c: Currency) => void }) {
   return (
     <div className="inline-flex rounded-lg border border-[var(--border)] bg-[var(--surface)] p-0.5">
-      {(["INR"] as Currency[]).map((c) => (
+      {(["INR", "USD"] as Currency[]).map((c) => (
         <button
           key={c}
           onClick={() => onChange(c)}
           className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${value === c ? "bg-[var(--primary)] text-white shadow" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
         >
-          {c === "INR" ? <IndianRupee className="h-3 w-3" /> : <IndianRupee className="h-3 w-3" />}
+          {c === "USD" ? <DollarSign className="h-3 w-3" /> : <IndianRupee className="h-3 w-3" />}
           {c}
         </button>
       ))}

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
+import { useCurrency } from "@/components/analytics/kit";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +28,7 @@ export default function RevenueDashboard() {
   const { role, loading: roleLoading } = useRole();
   const router = useRouter();
 
-  const [currency, setCurrency] = useState<Currency>("INR");
+  const [currency, setCurrency] = useCurrency();
   const [monthsCount, setMonthsCount] = useState<number>(12);
   const [summaryData, setSummaryData] = useState<any>(null);
   const [costsData, setCostsData] = useState<any[]>([]);

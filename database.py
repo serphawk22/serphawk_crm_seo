@@ -1995,7 +1995,9 @@ def create_db_and_tables():
         
     # Backfill tenant_id on child tables from their parent row (idempotent)
     for child, fk, parent in (("inventory_suppliers", "item_id", "inventory_items"),
-                              ("rfq_responses", "rfq_id", "rfq_requests")):
+                              ("rfq_responses", "rfq_id", "rfq_requests"),
+                              ("client_research", "lead_id", "leads"),
+                              ("client_research", "client_id", "client_profiles")):
         try:
             with engine.connect() as conn:
                 if engine.dialect.name == "postgresql":

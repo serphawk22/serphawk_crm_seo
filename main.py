@@ -784,7 +784,11 @@ app.include_router(email_campaigns_router)
 
 @app.on_event("startup")
 def on_startup():
+    from database import engine
     patch_openai()
+    if engine.url.get_backend_name() == "postgresql" and os.path.exists(".migration_done") and os.getenv("RUN_STARTUP_MIGRATIONS") != "1":
+        print(f"[startup] database: {engine.url.get_backend_name()} host={engine.url.host or 'local file'} name={engine.url.database} (schema migrations already applied)")
+        return
     try:
         create_db_and_tables()
     except Exception as e:
@@ -1222,43 +1226,114 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
     entity_type: 'lead' or 'client'
     """
     import threading
-    import asyncio
+    import json as _init_json
+    from sqlmodel import Session as _InitSession, select as _init_select
+    from database import ClientResearch as _InitCR, Lead as _InitLead, ClientProfile as _InitCP, engine as _init_engine
+
+    resolved_tenant_id = current_tenant_id.get()
+    inferred_email = ""
+    try:
+        with _InitSession(_init_engine) as _s:
+            if entity_type == "lead":
+                _obj = _s.exec(_init_select(_InitLead).where(_InitLead.id == entity_id).execution_options(skip_tenant=True)).first()
+                if _obj:
+                    resolved_tenant_id = _obj.tenant_id or resolved_tenant_id
+                    company_name = company_name or _obj.company_name or ""
+                    website = website or _obj.website or ""
+                    inferred_email = _obj.email or ""
+                _cr = _s.exec(_init_select(_InitCR).where(_InitCR.lead_id == entity_id).execution_options(skip_tenant=True)).first()
+                if not _cr:
+                    _cr = _InitCR(lead_id=entity_id, tenant_id=resolved_tenant_id)
+                elif resolved_tenant_id and _cr.tenant_id != resolved_tenant_id:
+                    _s.execute(text("UPDATE client_research SET tenant_id = :tid WHERE id = :id"), {"tid": resolved_tenant_id, "id": _cr.id})
+                    _s.commit()
+                    _s.refresh(_cr)
+            else:
+                _obj = _s.exec(_init_select(_InitCP).where(_InitCP.id == entity_id).execution_options(skip_tenant=True)).first()
+                if _obj:
+                    resolved_tenant_id = _obj.tenant_id or resolved_tenant_id
+                    company_name = company_name or _obj.companyName or ""
+                    website = website or _obj.websiteUrl or ""
+                    inferred_email = _obj.email or ""
+                _cr = _s.exec(_init_select(_InitCR).where(_InitCR.client_id == entity_id).execution_options(skip_tenant=True)).first()
+                if not _cr:
+                    _cr = _InitCR(client_id=entity_id, tenant_id=resolved_tenant_id)
+                elif resolved_tenant_id and _cr.tenant_id != resolved_tenant_id:
+                    _s.execute(text("UPDATE client_research SET tenant_id = :tid WHERE id = :id"), {"tid": resolved_tenant_id, "id": _cr.id})
+                    _s.commit()
+                    _s.refresh(_cr)
+            try:
+                _existing = _init_json.loads(_cr.email_agent_data) if _cr.email_agent_data else {}
+                if not isinstance(_existing, dict):
+                    _existing = {}
+            except Exception:
+                _existing = {}
+            _existing["__report_status"] = "pending"
+            _existing.pop("__error_message", None)
+            _cr.email_agent_data = _init_json.dumps(_existing)
+            _cr.updated_at = datetime.now(timezone.utc)
+            _s.add(_cr)
+            _s.commit()
+    except Exception as _init_err:
+        print(f"[AutoResearch] Init pending state warning: {_init_err}")
 
     def _run():
         try:
             from modules.llm_engine import deep_investigate_company
             from modules.scraper import research_and_map_company
             import json
-            import re
             import asyncio as _asyncio
 
-            url = website or ""
-            if not url and company_name:
-                slug = company_name.lower().replace(" ", "").replace(",", "").replace(".", "")
-                url = f"https://www.{slug}.com"
-            if not url:
-                return
+            url = (website or "").strip()
+            comp = (company_name or "").strip()
+            if not url and inferred_email and "@" in inferred_email:
+                domain = inferred_email.split("@", 1)[1].strip().lower()
+                if domain and domain not in {"gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "aol.com", "proton.me", "protonmail.com"}:
+                    url = f"https://{domain}"
+                    if not comp:
+                        comp = domain.split(".")[0].capitalize()
+            if not url and comp:
+                slug = "".join(ch for ch in comp.lower() if ch.isalnum())
+                if slug:
+                    url = f"https://www.{slug}.com"
+            if not comp:
+                comp = url or f"{entity_type.capitalize()} #{entity_id}"
 
             # Step 1: Scrape the website for raw text context
             raw_text = ""
-            try:
-                loop = _asyncio.new_event_loop()
-                scrape_result = loop.run_until_complete(
-                    research_and_map_company(url))
-                loop.close()
-                raw_text = scrape_result.get("raw_text", "") or ""
-            except Exception as scrape_err:
-                print(
-                    f"[AutoResearch] Scrape failed (using GPT knowledge only): {scrape_err}")
+            if url:
+                try:
+                    loop = _asyncio.new_event_loop()
+                    scrape_result = loop.run_until_complete(
+                        research_and_map_company(url))
+                    loop.close()
+                    raw_text = scrape_result.get("raw_text", "") or ""
+                except Exception as scrape_err:
+                    print(
+                        f"[AutoResearch] Scrape failed (using GPT knowledge only): {scrape_err}")
 
             # Step 2: Run the deep investigation with GPT-4o
             print(
-                f"[AutoResearch] Running deep investigation for {company_name} ({url})")
+                f"[AutoResearch] Running deep investigation for {comp} ({url})")
             data = deep_investigate_company(
-                company_name=company_name,
-                website=url,
+                company_name=comp,
+                website=url or "N/A",
                 scraped_text=raw_text
             )
+            if not isinstance(data, dict):
+                data = {}
+
+            overview = data.get("company_overview") or data.get("executive_verdict") or f"{comp} ({url or 'website not provided'})."
+            if not data.get("full_markdown_report"):
+                data["full_markdown_report"] = (
+                    f"# {comp}\n\n"
+                    f"## Executive Overview\n{overview}\n\n"
+                    f"- **Website:** {url or 'Not provided'}\n"
+                    f"- **Industry:** {data.get('industry') or 'General Business'}\n"
+                    f"- **Business Model:** {data.get('business_model') or 'B2B / B2C'}\n"
+                )
+            data["__report_status"] = "done"
+            data["__full_report"] = data["full_markdown_report"]
 
             # Step 3: Extract key contact info to also update the lead/client record
             contacts = data.get("contacts", []) or []
@@ -1280,26 +1355,32 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
             from database import ClientResearch, Lead, ClientProfile, engine as _engine
             with _Session(_engine) as sess:
                 if entity_type == "lead":
+                    lead_obj = sess.exec(_select(Lead).where(Lead.id == entity_id).execution_options(skip_tenant=True)).first()
                     cr = sess.exec(_select(ClientResearch).where(
-                        ClientResearch.lead_id == entity_id)).first()
+                        ClientResearch.lead_id == entity_id).execution_options(skip_tenant=True)).first()
                     if not cr:
                         cr = ClientResearch(lead_id=entity_id)
-                    # Also update lead email/phone if discovered
-                    lead_obj = sess.get(Lead, entity_id)
                     if lead_obj:
+                        cr.tenant_id = lead_obj.tenant_id or resolved_tenant_id
                         if not lead_obj.email and email_addr:
                             lead_obj.email = email_addr
                         if not lead_obj.phone and phone_num:
                             lead_obj.phone = phone_num
                         sess.add(lead_obj)
+                    elif resolved_tenant_id:
+                        cr.tenant_id = resolved_tenant_id
                 else:
+                    cp_obj = sess.exec(_select(ClientProfile).where(ClientProfile.id == entity_id).execution_options(skip_tenant=True)).first()
                     cr = sess.exec(_select(ClientResearch).where(
-                        ClientResearch.client_id == entity_id)).first()
+                        ClientResearch.client_id == entity_id).execution_options(skip_tenant=True)).first()
                     if not cr:
                         cr = ClientResearch(client_id=entity_id)
+                    if cp_obj:
+                        cr.tenant_id = cp_obj.tenant_id or resolved_tenant_id
+                    elif resolved_tenant_id:
+                        cr.tenant_id = resolved_tenant_id
                 cr.email_agent_data = json.dumps(data)
-                cr.company_overview = data.get(
-                    "company_overview", "") or data.get("executive_verdict", "")
+                cr.company_overview = overview
                 cr.key_decision_makers = json.dumps(contacts)
                 # Store additional rich fields
                 icps = data.get("ideal_customer_profiles", [])
@@ -1308,6 +1389,7 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
                     "gtm_recommendations") else None
                 cr.competitors = json.dumps(data.get("competitive_landscape", {})) if data.get(
                     "competitive_landscape") else None
+                cr.updated_at = datetime.now(timezone.utc)
                 sess.add(cr)
                 sess.commit()
             print(f"[AutoResearch] Done for {entity_type} id={entity_id}")
@@ -1316,6 +1398,26 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
             print(
                 f"[AutoResearch] Error for {entity_type} id={entity_id}: {ex}")
             traceback.print_exc()
+            try:
+                import json as _err_json
+                from sqlmodel import Session as _ErrSession, select as _err_select
+                from database import ClientResearch as _ErrCR, engine as _err_engine
+                with _ErrSession(_err_engine) as _es:
+                    _ecr = _es.exec(_err_select(_ErrCR).where(
+                        (_ErrCR.lead_id == entity_id) if entity_type == "lead" else (_ErrCR.client_id == entity_id)
+                    ).execution_options(skip_tenant=True)).first()
+                    if _ecr:
+                        _ed = _err_json.loads(_ecr.email_agent_data) if _ecr.email_agent_data else {}
+                        if not isinstance(_ed, dict):
+                            _ed = {}
+                        _ed["__report_status"] = "error"
+                        _ed["__error_message"] = str(ex)
+                        _ecr.email_agent_data = _err_json.dumps(_ed)
+                        _ecr.updated_at = datetime.now(timezone.utc)
+                        _es.add(_ecr)
+                        _es.commit()
+            except Exception:
+                pass
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
@@ -5429,10 +5531,16 @@ def add_conversation_reply(client_id: int, conv_id: int, body: ConversationReply
 
 @app.get("/clients/{client_id}/research")
 def get_client_research(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        return {"research": None}
     research = session.exec(select(ClientResearch).where(
-        ClientResearch.client_id == client_id)).first()
+        ClientResearch.client_id == client_id).execution_options(skip_tenant=True)).first()
     if not research:
         return {"research": None}
+    if cp.tenant_id and research.tenant_id != cp.tenant_id:
+        session.execute(text("UPDATE client_research SET tenant_id = :tid WHERE id = :id"), {"tid": cp.tenant_id, "id": research.id})
+        session.commit()
     return {"research": {
         "id": research.id, "company_overview": research.company_overview,
         "competitors": research.competitors, "tech_stack": research.tech_stack,
@@ -5441,6 +5549,55 @@ def get_client_research(client_id: int, session: Session = Depends(get_session))
         "email_agent_data": research.email_agent_data,
         "updated_at": research.updated_at.isoformat(),
     }}
+
+
+@app.post("/clients/{client_id}/full-analysis")
+def trigger_full_analysis(client_id: int, session: Session = Depends(get_session)):
+    check_tenant_limit(session, "searches")
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+    _trigger_background_research(
+        entity_id=client_id,
+        entity_type="client",
+        company_name=cp.companyName or "",
+        website=cp.websiteUrl or "",
+    )
+    return {"ok": True, "message": "Full analysis started"}
+
+
+@app.get("/clients/{client_id}/full-analysis")
+def get_full_analysis(client_id: int, session: Session = Depends(get_session)):
+    import json as _j
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+    cr = session.exec(select(ClientResearch).where(
+        ClientResearch.client_id == client_id).execution_options(skip_tenant=True)).first()
+    if not cr or not cr.email_agent_data:
+        return {"status": "not_started", "report": None}
+    if cp.tenant_id and cr.tenant_id != cp.tenant_id:
+        session.execute(text("UPDATE client_research SET tenant_id = :tid WHERE id = :id"), {"tid": cp.tenant_id, "id": cr.id})
+        session.commit()
+    try:
+        d = _j.loads(cr.email_agent_data) if isinstance(cr.email_agent_data, str) else cr.email_agent_data
+        if not isinstance(d, dict):
+            return {"status": "not_started", "report": None}
+        status = d.get("__report_status")
+        report = d.get("__full_report") or d.get("full_markdown_report") or cr.company_overview
+        if status == "pending":
+            return {"status": "pending", "report": None}
+        if status == "error":
+            return {"status": "error", "report": None, "message": d.get("__error_message") or d.get("error") or "AI data extraction failed."}
+        if report:
+            return {
+                "status": "done",
+                "report": report,
+                "extracted_services": d.get("extracted_services") or d.get("product_portfolio") or [],
+            }
+        return {"status": "not_started", "report": None}
+    except Exception:
+        return {"status": "not_started", "report": None}
 
 
 @app.put("/clients/{client_id}/research")
@@ -18818,10 +18975,16 @@ def verify_email_otp(body: VerifyEmailOTPRequest, request: Request, session: Ses
 
 @app.get("/leads/{lead_id}/research")
 def get_lead_research(lead_id: int, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        return {"research": None}
     research = session.exec(select(ClientResearch).where(
-        ClientResearch.lead_id == lead_id)).first()
+        ClientResearch.lead_id == lead_id).execution_options(skip_tenant=True)).first()
     if not research:
         return {"research": None}
+    if lead.tenant_id and research.tenant_id != lead.tenant_id:
+        session.execute(text("UPDATE client_research SET tenant_id = :tid WHERE id = :id"), {"tid": lead.tenant_id, "id": research.id})
+        session.commit()
     return {"research": {
         "id": research.id, "company_overview": research.company_overview,
         "competitors": research.competitors, "tech_stack": research.tech_stack,

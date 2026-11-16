@@ -51,13 +51,16 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 function currSymbol(c: string) {
-  if (c === "INR") return "₹";
-  if (c === "EUR") return "€";
-  if (c === "GBP") return "£";
+  const up = (c || "").toUpperCase();
+  if (up === "USD") return "$";
+  if (up === "INR") return "₹";
+  if (up === "EUR") return "€";
+  if (up === "GBP") return "£";
   return "₹";
 }
 function fmtMoney(v: number, c: string) {
-  return `${currSymbol(c)}${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const loc = (c || "").toUpperCase() === "INR" ? "en-IN" : "en-US";
+  return `${currSymbol(c)}${v.toLocaleString(loc, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export interface InvoicesHandle {
@@ -296,7 +299,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
           </div>
           <div className="min-w-0">
             <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate"><LocalizedText text={"Total Value"} /></div>
-            <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5 truncate">{loading ? "—" : `₹${filtered.reduce((s, i) => s + (i.total || 0), 0).toFixed(0)}`}</div>
+            <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5 truncate">{loading ? "—" : fmtMoney(filtered.reduce((s, i) => s + (i.total || 0), 0), settings.default_currency || "INR")}</div>
           </div>
         </div>
       </div>
@@ -451,10 +454,11 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
                     <label className="text-xs font-semibold text-slate-500 mb-1 block"><LocalizedText text={"Currency"} /></label>
                     <select value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm">
-                                            <option value="EUR">EUR (€)</option>
-                      <option value="GBP">GBP (£)</option>
+                      <option value="USD">USD ($)</option>
                       <option value="INR">INR (₹)</option>
-                      <option value="MXN">MXN (₹)</option>
+                      <option value="EUR">EUR (€)</option>
+                      <option value="GBP">GBP (£)</option>
+                      <option value="MXN">MXN ($)</option>
                     </select>
                   </div>
                   <div>

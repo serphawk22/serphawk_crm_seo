@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from "react";
 import { IndianRupee, Plus, Trash2, RefreshCw, Search, SlidersHorizontal, CheckCircle2, X, AlertCircle, Receipt, Layers, Calendar, Repeat } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
+import { useCurrency } from "@/components/analytics/kit";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
@@ -41,7 +42,7 @@ export default function BusinessCostsPage() {
 
   const [costs, setCosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [currency, setCurrency] = useState<Currency>("INR");
+  const [currency, setCurrency] = useCurrency();
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
