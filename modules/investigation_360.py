@@ -276,12 +276,14 @@ CRITICAL RULES:
 """
 
     try:
+        import os
+        model_name = os.getenv("AI_RESEARCH_MODEL", "gpt-4o-mini")
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=model_name,
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
             temperature=0.35,
-            max_tokens=14000,
+            max_tokens=6000,
         )
         content = response.choices[0].message.content or "{}"
         data = json.loads(content)
@@ -290,7 +292,7 @@ CRITICAL RULES:
         logger.error(f"360 deep investigation failed: {e}")
         domain = website.replace("https://", "").replace("http://", "").replace("www.", "").split("/")[0] if website else "company.com"
         return {
-            "error": str(e),
+            "api_warning": str(e),
             "contact_details": {
                 "primary_email": f"contact@{domain}",
                 "primary_phone": "+1 555-0199",

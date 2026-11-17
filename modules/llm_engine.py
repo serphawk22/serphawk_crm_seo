@@ -135,8 +135,9 @@ Be specific, data-driven, and insightful. Reference real details about this comp
 Do NOT use generic placeholder text anywhere.
 CRITICAL: You are outputting JSON. You MUST properly escape all newlines in your markdown report as \\n."""
 
+        model_name = os.getenv("AI_RESEARCH_MODEL", "gpt-4o-mini")
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=model_name,
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
             temperature=0.4

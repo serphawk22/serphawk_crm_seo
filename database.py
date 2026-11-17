@@ -1451,6 +1451,13 @@ class Lead(SQLModel, table=True):
     email: Optional[str] = Field(default=None, max_length=255)
     phone: Optional[str] = Field(default=None, max_length=100)
     address: Optional[str] = Field(default=None, sa_column=Column(Text))
+    city: Optional[str] = Field(default=None, max_length=120)
+    country: Optional[str] = Field(default=None, max_length=120)
+    deal_value: Optional[float] = Field(default=None)
+    linkedin_url: Optional[str] = Field(default=None, max_length=500)
+    twitter_url: Optional[str] = Field(default=None, max_length=500)
+    instagram_url: Optional[str] = Field(default=None, max_length=500)
+    facebook_url: Optional[str] = Field(default=None, max_length=500)
     source: Optional[str] = Field(default=None, max_length=100)
     owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
     status: str = Field(default="New")
@@ -1465,6 +1472,34 @@ class Lead(SQLModel, table=True):
 
     account: Optional[Account] = Relationship(back_populates="leads")
     contacts: List["Contact"] = Relationship(back_populates="lead")
+
+
+class TempLead(SQLModel, table=True):
+    """Temporary discovered leads (Radar / Google Maps / Scraper) awaiting verification before promotion to CRM Leads."""
+    __tablename__ = "temp_leads"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    company_name: str = Field(max_length=255, index=True)
+    city: Optional[str] = Field(default=None, max_length=150)
+    country: Optional[str] = Field(default=None, max_length=150)
+    category: Optional[str] = Field(default=None, max_length=150)
+    address: Optional[str] = Field(default=None, max_length=500)
+    phone: Optional[str] = Field(default=None, max_length=100)
+    website: Optional[str] = Field(default=None, max_length=500)
+    rating: Optional[float] = Field(default=None)
+    reviews_count: Optional[int] = Field(default=None)
+    place_id: Optional[str] = Field(default=None, max_length=255, index=True)
+    maps_url: Optional[str] = Field(default=None, sa_column=Column(Text))
+    source: Optional[str] = Field(default="Radar Analysis", max_length=100)
+    verified_with_ai: bool = Field(default=False)
+    verification_status: str = Field(default="pending", max_length=50)  # "pending", "verified", "questionable", "invalid"
+    verification_notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    verified_data: Optional[str] = Field(default=None, sa_column=Column(Text))
+    is_promoted: bool = Field(default=False)
+    promoted_lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
 
 class LeadNote(SQLModel, table=True):
     """Note attached to an individual lead, with author and timestamp"""
