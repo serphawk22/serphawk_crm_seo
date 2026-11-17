@@ -201,3 +201,10 @@ select option {
   background: linear-gradient(90deg, var(--border) 25%, var(--card) 50%, var(--border) 75%);
   background-size: 200% 100%;
 }
+
+/* Free, watermark-free dark theme map tiles using OpenStreetMap */
+.dark-map-tiles .leaflet-tile,
+.leaflet-tile.dark-map-tiles {
+  filter: brightness(0.65) invert(1) contrast(2.5) hue-rotate(200deg) saturate(0.3) brightness(0.75) !important;
+}
+
