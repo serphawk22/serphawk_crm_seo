@@ -1510,12 +1510,14 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
                         _ed = _err_json.loads(_ecr.email_agent_data) if _ecr.email_agent_data else {}
                         if not isinstance(_ed, dict):
                             _ed = {}
-                        _ed["__report_status"] = "error"
-                        _ed["__error_message"] = str(ex)
-                        _ecr.email_agent_data = _err_json.dumps(_ed, default=str)
-                        _ecr.updated_at = datetime.now(timezone.utc)
-                        _es.add(_ecr)
-                        _es.commit()
+                        # Only mark as error if no usable report or tables were generated
+                        if not _ed.get("full_markdown_report") and not _ed.get("tables"):
+                            _ed["__report_status"] = "error"
+                            _ed["__error_message"] = str(ex)
+                            _ecr.email_agent_data = _err_json.dumps(_ed, default=str)
+                            _ecr.updated_at = datetime.now(timezone.utc)
+                            _es.add(_ecr)
+                            _es.commit()
             except Exception:
                 pass
         finally:

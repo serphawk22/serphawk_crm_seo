@@ -78,9 +78,6 @@ export default function AiDataTab({ clientId, websiteUrl, onClientRefresh, resou
     if (agentData?.__report_status === "pending") {
       return { status: "pending", report: null };
     }
-    if (agentData?.__report_status === "error") {
-      return { status: "error", report: null, message: agentData?.__error_message || agentData?.error || "AI data extraction failed." };
-    }
 
     const t = agentData?.tables ? agentData : (agentData?.__x360 || null);
     if (t) {
@@ -91,6 +88,10 @@ export default function AiDataTab({ clientId, websiteUrl, onClientRefresh, resou
       || agentData?.__full_report
       || research.company_overview
       || (Object.keys(research).length > 0 ? JSON.stringify(research, null, 2) : null);
+
+    if (agentData?.__report_status === "error" && !rep && !t) {
+      return { status: "error", report: null, message: agentData?.__error_message || agentData?.error || "AI data extraction failed." };
+    }
 
     return rep ? { status: "done", report: rep, tables: t } : { status: "not_started", report: null };
   }, [resourcePath, resourceType]);
