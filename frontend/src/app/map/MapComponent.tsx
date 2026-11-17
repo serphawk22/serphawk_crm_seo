@@ -47,11 +47,11 @@ export default function MapComponent({ pins }: { pins: MapPin[] }) {
       });
       mapRef.current = map;
 
-      // Dark tile layer that looks great
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-        attribution: '© OpenStreetMap contributors © CARTO',
-        subdomains: "abcd",
+      // Dark tile layer using OpenStreetMap
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '© OpenStreetMap contributors',
         maxZoom: 19,
+        className: 'dark-map-tiles',
       }).addTo(map);
 
       // Clear old markers

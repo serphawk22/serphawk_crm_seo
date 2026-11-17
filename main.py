@@ -1432,13 +1432,14 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
                         # Update address if missing and genuine
                         if phys_address and not lead_obj.address and not _is_placeholder(phys_address):
                             lead_obj.address = phys_address
-                        if not lead_obj.city or not lead_obj.country:
-                            from modules.location_helper import extract_city_country_from_address
-                            c_city, c_country = extract_city_country_from_address(lead_obj.address or phys_address)
-                            if c_city and not lead_obj.city:
-                                lead_obj.city = c_city
-                            if c_country and not lead_obj.country:
-                                lead_obj.country = c_country
+                        if hasattr(lead_obj, 'city') and hasattr(lead_obj, 'country'):
+                            if not getattr(lead_obj, 'city', None) or not getattr(lead_obj, 'country', None):
+                                from modules.location_helper import extract_city_country_from_address
+                                c_city, c_country = extract_city_country_from_address(getattr(lead_obj, 'address', None) or phys_address)
+                                if c_city and not getattr(lead_obj, 'city', None):
+                                    setattr(lead_obj, 'city', c_city)
+                                if c_country and not getattr(lead_obj, 'country', None):
+                                    setattr(lead_obj, 'country', c_country)
                         sess.add(lead_obj)
 
                         # Create or update Contact record
@@ -13295,6 +13296,9 @@ def auto_analyze_all_leads(session: Session = Depends(get_session)):
     def _bulk_worker(lead_items, tenant_id):
         worker_st = _tenant_auto_analyze_state.get(tenant_id)
         for item in lead_items:
+            if not worker_st or not worker_st.is_running:
+                print(f"[BulkAutoAnalyze] Stopped early by user request for tenant {tenant_id}")
+                break
             lid = item["id"]
             name = item["name"]
             web = item["website"]
@@ -13328,6 +13332,17 @@ def auto_analyze_all_leads(session: Session = Depends(get_session)):
         "already_completed": len(done_ids),
         "total": len(all_leads)
     }
+
+
+@app.post("/leads/auto-analyze-stop")
+def stop_auto_analyze(session: Session = Depends(get_session)):
+    tid = current_tenant_id.get() or 1
+    st = _tenant_auto_analyze_state.get(tid)
+    if st:
+        st.is_running = False
+        st.current_company = ""
+    return {"ok": True, "message": "Bulk AI analysis stopped successfully."}
+
 
 
 @app.get("/leads/auto-analyze-status")

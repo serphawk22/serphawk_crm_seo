@@ -185,6 +185,18 @@ export default function LeadsPage() {
     }
   };
 
+  const handleStopAutoAnalyze = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/leads/auto-analyze-stop`, { method: "POST" });
+      if (res.ok) {
+        setAnalyzeProgress(null);
+        fetchLeads();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     let active = true;
     const checkStatus = async () => {
@@ -629,9 +641,17 @@ export default function LeadsPage() {
               )}
             </div>
           </div>
-          <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/60 px-2 py-0.5 rounded-md shrink-0">
-            Runs uninterrupted in background
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/60 px-2 py-0.5 rounded-md">
+              Running
+            </span>
+            <button
+              onClick={handleStopAutoAnalyze}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800 transition shadow-xs"
+            >
+              Stop Bulk AI
+            </button>
+          </div>
         </div>
       )}
 
@@ -830,20 +850,20 @@ export default function LeadsPage() {
           </div>
         ) : (
           <div className="w-full p-3 sm:p-4 space-y-2 overflow-x-auto scrollbar-thin">
-            <div className="min-w-[1020px] space-y-2">
+            <div className="min-w-[1160px] space-y-2">
             {/* Subtle column headers for desktop */}
-            <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-1 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider items-center min-w-[1020px]">
-              <div className="col-span-3 cursor-pointer hover:text-blue-500" onClick={() => setSortOption(s => s === 'name' ? 'recent' : 'name')}>
+            <div className="hidden lg:grid grid-cols-[minmax(220px,2.2fr)_minmax(160px,1.6fr)_minmax(160px,1.6fr)_minmax(130px,1.2fr)_minmax(120px,1fr)_minmax(310px,auto)] gap-3 px-4 py-1 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider items-center">
+              <div className="cursor-pointer hover:text-blue-500 truncate" onClick={() => setSortOption(s => s === 'name' ? 'recent' : 'name')}>
                 <LocalizedText text={institute ? "Student & course" : "Company"} /> {sortOption === 'name' ? '↑' : ''}
               </div>
-              <div className="col-span-2"><LocalizedText text={"Contact"} /></div>
-              <div className="col-span-2 flex items-center gap-1 cursor-pointer hover:text-blue-500" onClick={() => setSortOption(s => s === 'place' ? 'country' : 'place')}>
+              <div className="truncate"><LocalizedText text={"Contact"} /></div>
+              <div className="flex items-center gap-1 cursor-pointer hover:text-blue-500 truncate" onClick={() => setSortOption(s => s === 'place' ? 'country' : 'place')}>
                 <MapPin className="w-3 h-3 text-rose-500 shrink-0" />
                 <span>Place & Country</span> {sortOption === 'place' ? '↑ City' : sortOption === 'country' ? '↑ Ctr' : ''}
               </div>
-              <div className="col-span-1"><LocalizedText text={"Salesperson"} /></div>
-              <div className="col-span-1"><LocalizedText text={"Source"} /></div>
-              <div className="col-span-3 text-right"><LocalizedText text={institute ? "Stage & Actions" : "Status & Actions"} /></div>
+              <div className="truncate"><LocalizedText text={"Salesperson"} /></div>
+              <div className="truncate"><LocalizedText text={"Source"} /></div>
+              <div className="text-right truncate"><LocalizedText text={institute ? "Stage & Actions" : "Status & Actions"} /></div>
             </div>
 
             <AnimatePresence>
@@ -856,9 +876,9 @@ export default function LeadsPage() {
                   onClick={() => router.push(`/leads/${lead.id}`)}
                   className="group rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#111111]/90 p-3 sm:px-4 sm:py-2.5 shadow-xs hover:border-blue-500/60 dark:hover:border-blue-500/50 hover:shadow-md transition-all duration-150 cursor-pointer"
                 >
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center">
+                  <div className="grid grid-cols-[minmax(220px,2.2fr)_minmax(160px,1.6fr)_minmax(160px,1.6fr)_minmax(130px,1.2fr)_minmax(120px,1fr)_minmax(310px,auto)] gap-3 items-center">
                     {/* Company & Website */}
-                    <div className="col-span-1 sm:col-span-2 lg:col-span-3 min-w-0 flex items-center gap-2.5">
+                    <div className="min-w-0 flex items-center gap-2.5">
                       <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-xs">
                         {lead.company_name[0]?.toUpperCase() || "L"}
                       </div>
@@ -901,7 +921,7 @@ export default function LeadsPage() {
                     </div>
 
                     {/* Contact Info */}
-                    <div className="col-span-1 lg:col-span-2 min-w-0">
+                    <div className="min-w-0">
                       {lead.email ? (
                         <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-zinc-300 truncate" title={lead.email}>
                           <Mail className="w-3 h-3 text-slate-400 shrink-0" />
@@ -920,7 +940,7 @@ export default function LeadsPage() {
                     </div>
 
                     {/* Place & Country */}
-                    <div className="col-span-1 lg:col-span-2 min-w-0">
+                    <div className="min-w-0">
                       {lead.city || lead.country || lead.address ? (
                         <div className="flex flex-col gap-0.5">
                           <span className="text-xs font-semibold text-slate-700 dark:text-zinc-200 truncate flex items-center gap-1" title={lead.city || lead.address || ''}>
@@ -937,12 +957,12 @@ export default function LeadsPage() {
                     </div>
 
                     {/* Salesperson */}
-                    <div className="col-span-1 lg:col-span-1 min-w-0" onClick={e => e.stopPropagation()}>
+                    <div className="min-w-0" onClick={e => e.stopPropagation()}>
                       {isAdmin ? (
                         <select
                           value={lead.owner_id || ""}
                           onChange={e => handleAssignSalesperson(lead.id, e.target.value ? Number(e.target.value) : null)}
-                          className="text-xs font-medium bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer w-full max-w-[115px] truncate shadow-xs"
+                          className="text-xs font-medium bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer w-full max-w-[125px] truncate shadow-xs"
                           title="Assign Salesperson"
                         >
                           <option value=""><LocalizedText text={"Unassigned"} /></option>
@@ -965,14 +985,14 @@ export default function LeadsPage() {
                     </div>
 
                     {/* Source */}
-                    <div className="col-span-1 lg:col-span-1 min-w-0">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-200/60 dark:border-white/5 truncate max-w-[110px]" title={lead.source || "Unknown"}>
+                    <div className="min-w-0">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-200/60 dark:border-white/5 truncate max-w-[115px]" title={lead.source || "Unknown"}>
                         {lead.source || "Unknown"}
                       </span>
                     </div>
 
                     {/* Status & Actions */}
-                    <div className="col-span-1 sm:col-span-2 lg:col-span-3 flex items-center justify-end gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                       <select
                         value={lead.is_converted ? "Converted" : lead.status}
                         onChange={e => handleStatusChange(lead.id, e.target.value)}
