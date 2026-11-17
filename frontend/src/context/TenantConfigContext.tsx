@@ -75,6 +75,12 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
         setFeatures((prev) => (JSON.stringify(prev) === JSON.stringify(data.features || {}) ? prev : data.features || {}));
         setSettings((prev) => (JSON.stringify(prev) === JSON.stringify(data.settings || {}) ? prev : data.settings || {}));
         setPreset(data.preset ?? null);
+        if (data.settings?.locale && typeof window !== "undefined" && !localStorage.getItem("crm-language-manual")) {
+          const desired = data.settings.locale === "es" ? "es" : "en";
+          localStorage.setItem("language", desired);
+          localStorage.setItem("crm-language", desired);
+          document.documentElement.lang = desired;
+        }
         setLoaded(true);
       } catch {
         /* keep the previous config; every module stays visible */

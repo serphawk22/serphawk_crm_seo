@@ -569,12 +569,7 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
 
 
 
-      {/* SWOT Section */}
-      <CollapsibleSection title="SWOT Analysis" icon={Radar} accentColor="#f97316" defaultOpen={true}>
-        <div style={{ paddingTop: 16 }}>
-          <LeadSwotTab lead={lead} onRefresh={onRefresh} />
-        </div>
-      </CollapsibleSection>
+
     </div>
   );
 }
@@ -804,7 +799,14 @@ export default function LeadDetailsPage() {
         const fVal = Array.isArray(filesRes.value?.files) ? filesRes.value.files : (Array.isArray(filesRes.value) ? filesRes.value : []);
         setFiles(fVal);
       }
-      if (researchRes.status === 'fulfilled') setResearch(researchRes.value.research || null);
+      if (researchRes.status === 'fulfilled') {
+        const rData = researchRes.value.research || null;
+        setResearch(rData);
+        // Automatic AI Profile Preparation on lead opening if research not started
+        if (!rData || !rData.email_agent_data) {
+          fetch(`${API_BASE_URL}/leads/${id}/auto-research`, { method: 'POST' }).catch(() => {});
+        }
+      }
     } catch (e) { console.error(e); }
     finally { setPageLoading(false); }
   }, [id]);

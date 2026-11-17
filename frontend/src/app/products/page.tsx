@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Package, Plus, Search, CheckCircle2, XCircle, MoreVertical, Edit2, Trash2, X, RefreshCw, Upload, Camera } from 'lucide-react';
+import { Package, Plus, Search, CheckCircle2, XCircle, MoreVertical, Edit2, Trash2, X, RefreshCw, Upload, Camera, Sparkles, Globe, Check, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { ExportActions } from '@/components/ExportActions';
 import { API_BASE_URL } from '@/config';
 import { fetchWithCache } from '@/lib/cache';
@@ -34,6 +34,73 @@ export default function ProductsPage() {
   const [showPhotoStep, setShowPhotoStep] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [tempPhotoUrl, setTempPhotoUrl] = useState('');
+
+  // AI Web Scraper State
+  const [scrapeUrl, setScrapeUrl] = useState('');
+  const [scrapeCurrency, setScrapeCurrency] = useState('USD');
+  const [scraping, setScraping] = useState(false);
+  const [scrapedItems, setScrapedItems] = useState<any[]>([]);
+  const [selectedScrapedIdxs, setSelectedScrapedIdxs] = useState<number[]>([]);
+  const [scrapeMsg, setScrapeMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [importingBulk, setImportingBulk] = useState(false);
+  const [showScraperPreview, setShowScraperPreview] = useState(true);
+
+  const handleScrapeCatalog = async () => {
+    if (!scrapeUrl.trim()) {
+      setScrapeMsg({ ok: false, text: 'Please enter a website URL to scrape.' });
+      return;
+    }
+    setScraping(true);
+    setScrapeMsg(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/products/scrape-website`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ website_url: scrapeUrl.trim(), currency: scrapeCurrency }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Scraping failed');
+      const list = data.products || [];
+      setScrapedItems(list);
+      setSelectedScrapedIdxs(list.map((_: any, idx: number) => idx));
+      setShowScraperPreview(true);
+      if (list.length === 0) {
+        setScrapeMsg({ ok: false, text: 'No products or services found on this website. Try entering a specific /services or /pricing URL.' });
+      } else {
+        setScrapeMsg({ ok: true, text: `Successfully extracted ${list.length} catalog items from website! Review and import below.` });
+      }
+    } catch (e: any) {
+      setScrapeMsg({ ok: false, text: e.message || 'Scraping failed' });
+    } finally {
+      setScraping(false);
+    }
+  };
+
+  const handleImportScraped = async () => {
+    const toImport = scrapedItems.filter((_, idx) => selectedScrapedIdxs.includes(idx));
+    if (toImport.length === 0) {
+      alert('Please select at least one item to import.');
+      return;
+    }
+    setImportingBulk(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/products/bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ products: toImport }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Import failed');
+      alert(`Imported ${data.created_count} items into catalog (${data.skipped_count} skipped as duplicates).`);
+      setScrapedItems([]);
+      setSelectedScrapedIdxs([]);
+      fetchProducts();
+    } catch (e: any) {
+      alert(`Failed to import: ${e.message}`);
+    } finally {
+      setImportingBulk(false);
+    }
+  };
   
   // Form State
   const [formData, setFormData] = useState({
@@ -194,6 +261,127 @@ export default function ProductsPage() {
             <Plus className="w-4 h-4" /> {t('products.add_item')}
           </button>
         </div>
+      </div>
+
+      {/* AI Product & Service Catalog Scraper Hero Card (Top of page default) */}
+      <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-indigo-500/10 dark:from-emerald-950/40 dark:via-teal-950/30 dark:to-indigo-950/30 rounded-2xl border border-emerald-500/30 dark:border-emerald-500/20 p-5 shadow-sm space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold uppercase tracking-wider">
+              <Sparkles className="w-3.5 h-3.5" />
+              {t("Fill Catalog from Website")}
+            </div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+              {t("AI Web Scraping for Products & Services")}
+            </h2>
+            <p className="text-xs text-slate-600 dark:text-slate-400 max-w-2xl">
+              {t("Automatically extract products, packages, deliverables, pricing, and descriptions directly from your company's website or any client URL into this catalog.")}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <div className="relative flex-1 w-full">
+            <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="url"
+              placeholder="https://company.com or https://company.com/services"
+              value={scrapeUrl}
+              onChange={(e) => setScrapeUrl(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-emerald-500 shadow-xs"
+            />
+          </div>
+          <select
+            value={scrapeCurrency}
+            onChange={(e) => setScrapeCurrency(e.target.value)}
+            className="w-full sm:w-28 py-2.5 px-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold focus:outline-none focus:border-emerald-500 shadow-xs"
+          >
+            <option value="USD">USD ($)</option>
+            <option value="INR">INR (₹)</option>
+            <option value="MXN">MXN ($)</option>
+            <option value="EUR">EUR (€)</option>
+            <option value="GBP">GBP (£)</option>
+          </select>
+          <button
+            type="button"
+            disabled={scraping}
+            onClick={handleScrapeCatalog}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow transition-colors disabled:opacity-50 whitespace-nowrap"
+          >
+            {scraping ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {t("Scrape Website")}
+          </button>
+        </div>
+
+        {scrapeMsg && (
+          <p className={`text-xs font-semibold ${scrapeMsg.ok ? "text-emerald-700 dark:text-emerald-300" : "text-rose-600 dark:text-rose-400"}`}>
+            {scrapeMsg.text}
+          </p>
+        )}
+
+        {/* Scraped Preview Table */}
+        {scrapedItems.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-emerald-500/20 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                {scrapedItems.length} {t("Discovered Offerings")} ({selectedScrapedIdxs.length} {t("selected")})
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedScrapedIdxs(selectedScrapedIdxs.length === scrapedItems.length ? [] : scrapedItems.map((_, i) => i))}
+                  className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
+                >
+                  {selectedScrapedIdxs.length === scrapedItems.length ? t("Deselect all") : t("Select all")}
+                </button>
+                <button
+                  type="button"
+                  disabled={importingBulk || selectedScrapedIdxs.length === 0}
+                  onClick={handleImportScraped}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs disabled:opacity-50"
+                >
+                  {importingBulk ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                  {t("Import Selected into Catalog")}
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 font-bold text-slate-500 uppercase">
+                    <th className="p-2.5 w-8"></th>
+                    <th className="p-2.5">{t("Name")}</th>
+                    <th className="p-2.5">{t("Category")}</th>
+                    <th className="p-2.5">{t("Price")}</th>
+                    <th className="p-2.5">{t("Description")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {scrapedItems.map((item, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                      <td className="p-2.5">
+                        <input
+                          type="checkbox"
+                          checked={selectedScrapedIdxs.includes(idx)}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedScrapedIdxs([...selectedScrapedIdxs, idx]);
+                            else setSelectedScrapedIdxs(selectedScrapedIdxs.filter(i => i !== idx));
+                          }}
+                          className="rounded text-emerald-600 focus:ring-emerald-500"
+                        />
+                      </td>
+                      <td className="p-2.5 font-semibold text-slate-900 dark:text-white max-w-[200px] truncate">{item.name}</td>
+                      <td className="p-2.5 text-slate-600 dark:text-slate-400">{item.category || "Service"}</td>
+                      <td className="p-2.5 font-mono text-emerald-600 font-semibold">{item.currency} {item.unit_price || 0}</td>
+                      <td className="p-2.5 text-slate-500 dark:text-slate-400 max-w-[300px] truncate">{item.description}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Stats */}

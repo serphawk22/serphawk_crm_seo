@@ -84,13 +84,23 @@ def track_api_call(
     status_code: int = 200,
     success: bool = True,
     content_type: str = "general",
-    request_meta: dict = None
+    request_meta: dict = None,
+    tenant_id: int = None
 ):
     in_cost, out_cost, total_cost = calculate_cost(model, input_tokens, output_tokens)
     provider = determine_provider(model)
     total_tokens = input_tokens + output_tokens + reasoning_tokens
+
+    tid = tenant_id
+    if not tid:
+        try:
+            from modules.tenant_context import current_tenant_id
+            tid = current_tenant_id.get()
+        except Exception:
+            tid = None
     
     req = ApiRequest(
+        tenant_id=tid,
         salesperson_id=salesperson_id,
         client_id=client_id,
         endpoint=endpoint,

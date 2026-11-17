@@ -2475,3 +2475,24 @@ class CallKnowledge(SQLModel, table=True):
     usage_count: int = Field(default=0)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class DeletedRecord(SQLModel, table=True):
+    """Stores full metadata and snapshots of deleted records (salespersons, leads, clients, contacts, etc.)
+    with offboarding and fair lead transfer audit trails, supporting recovery/restore.
+    """
+    __tablename__ = "deleted_records"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    record_type: str = Field(index=True)  # "salesperson", "user", "lead", "client", "contact"
+    record_id: int = Field(index=True)
+    record_name: str = Field(max_length=255)
+    details: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    deleted_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    deleted_by_name: Optional[str] = Field(default=None, max_length=255)
+    deleted_at: datetime = Field(default_factory=_utcnow, index=True)
+    is_restored: bool = Field(default=False, index=True)
+    restored_at: Optional[datetime] = Field(default=None)
+    restored_by_id: Optional[int] = Field(default=None)
+    transfer_summary: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+

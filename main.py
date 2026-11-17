@@ -1218,6 +1218,19 @@ class SmartResearchRequest(BaseModel):
     owner_name: Optional[str] = "Varshith"
 
 
+# ─── Global Background Research Worker Management ──────────────────────────
+_active_research_tasks: set = set()
+
+class _AutoAnalyzeState:
+    def __init__(self):
+        self.is_running: bool = False
+        self.total: int = 0
+        self.completed: int = 0
+        self.pending: int = 0
+        self.current_company: str = ""
+
+_tenant_auto_analyze_state: dict = {}
+
 # ─── Background Auto-Research Helper ────────────────────────────────────────
 def _trigger_background_research(entity_id: int, entity_type: str, company_name: str, website: str, session_factory=None):
     """
@@ -1225,6 +1238,12 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
     lead or client and stores results in ClientResearch.
     entity_type: 'lead' or 'client'
     """
+    task_key = (entity_type, entity_id)
+    if task_key in _active_research_tasks:
+        print(f"[AutoResearch] Task already active for {entity_type} id={entity_id}, continuing in background.")
+        return
+    _active_research_tasks.add(task_key)
+
     import threading
     import json as _init_json
     from sqlmodel import Session as _InitSession, select as _init_select
@@ -1232,6 +1251,7 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
 
     resolved_tenant_id = current_tenant_id.get()
     inferred_email = ""
+    loc_hint = ""
     try:
         with _InitSession(_init_engine) as _s:
             if entity_type == "lead":
@@ -1241,6 +1261,9 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
                     company_name = company_name or _obj.company_name or ""
                     website = website or _obj.website or ""
                     inferred_email = _obj.email or ""
+                    loc_hint = f"{getattr(_obj, 'city', '') or ''}, {getattr(_obj, 'country', '') or ''}".strip(', ')
+                    if not loc_hint and getattr(_obj, 'address', None):
+                        loc_hint = _obj.address
                 _cr = _s.exec(_init_select(_InitCR).where(_InitCR.lead_id == entity_id).execution_options(skip_tenant=True)).first()
                 if not _cr:
                     _cr = _InitCR(lead_id=entity_id, tenant_id=resolved_tenant_id)
@@ -1303,25 +1326,37 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
             raw_text = ""
             if url:
                 try:
+                    from modules.scraper import scrape_website
                     loop = _asyncio.new_event_loop()
-                    scrape_result = loop.run_until_complete(
-                        research_and_map_company(url))
+                    raw_text = loop.run_until_complete(scrape_website(url))
                     loop.close()
-                    raw_text = scrape_result.get("raw_text", "") or ""
+                    if isinstance(raw_text, dict):
+                        raw_text = raw_text.get("raw_text", "") or ""
                 except Exception as scrape_err:
                     print(
                         f"[AutoResearch] Scrape failed (using GPT knowledge only): {scrape_err}")
 
-            # Step 2: Run the deep investigation with GPT-4o
-            print(
-                f"[AutoResearch] Running deep investigation for {comp} ({url})")
-            data = deep_investigate_company(
+            # Step 2: Run the deep 360 investigation with GPT-4o including X x Y Fit Analysis
+            print(f"[AutoResearch] Running 360 investigation for {comp} ({url})")
+            from modules.investigation_360 import get_x_workspace_profile, deep_investigate_360
+            x_profile = None
+            try:
+                with _InitSession(_init_engine) as _xsess:
+                    x_profile = get_x_workspace_profile(_xsess, tenant_id=resolved_tenant_id)
+            except Exception as _xerr:
+                print(f"[AutoResearch] Could not load X profile: {_xerr}")
+
+            data_360 = deep_investigate_360(
                 company_name=comp,
                 website=url or "N/A",
-                scraped_text=raw_text
+                scraped_text=raw_text,
+                x_profile=x_profile,
+                location_hint=loc_hint,
             )
-            if not isinstance(data, dict):
-                data = {}
+
+            data = dict(data_360) if isinstance(data_360, dict) else {}
+            contacts_list = data.get("contacts") or data.get("tables", {}).get("decision_makers") or []
+            data["contacts"] = contacts_list
 
             overview = data.get("company_overview") or data.get("executive_verdict") or f"{comp} ({url or 'website not provided'})."
             if not data.get("full_markdown_report"):
@@ -1336,23 +1371,49 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
             data["__full_report"] = data["full_markdown_report"]
 
             # Step 3: Extract key contact info to also update the lead/client record
-            contacts = data.get("contacts", []) or []
-            contact = contacts[0] if contacts else {}
-            email_addr = contact.get("email") or ""
-            phone_num = contact.get("phone_number") or ""
-            company_info = data.get("company_info", {}) or {}
-            if not email_addr:
-                extracted = company_info.get("extracted_emails", "") or ""
-                email_addr = extracted.split(
-                    ",")[0].strip() if extracted else ""
-            if not phone_num:
-                extracted_ph = company_info.get(
-                    "extracted_phone_numbers", "") or ""
-                phone_num = extracted_ph.split(
-                    ",")[0].strip() if extracted_ph else ""
+            contact_details = data.get("contact_details", {}) or {}
+            email_addr = (contact_details.get("primary_email") or "").strip()
+            phone_num = (contact_details.get("primary_phone") or "").strip()
+            contact_person = (contact_details.get("contact_person") or "").strip()
+            phys_address = (contact_details.get("physical_address") or "").strip()
+
+            def _is_placeholder(val: str) -> bool:
+                if not val:
+                    return True
+                v = val.lower().strip()
+                return any(p in v for p in ["tucorreo", "mail.com", "example.com", "test.com", "placeholder", "yourname", "domain.com", "555-0199"])
+
+            # Check decision makers list if email/phone still placeholder or missing
+            dms = data.get("tables", {}).get("decision_makers", []) or []
+            if _is_placeholder(email_addr) and dms:
+                for dm in dms:
+                    em = (dm.get("email") or dm.get("email_pattern") or "").strip()
+                    if em and "@" in em and not _is_placeholder(em):
+                        email_addr = em
+                        if not contact_person:
+                            contact_person = dm.get("name") or ""
+                        break
+
+            # Regex extract from raw scraped text if still placeholder or missing
+            if raw_text and (_is_placeholder(email_addr) or not phone_num):
+                import re
+                if _is_placeholder(email_addr):
+                    all_emails = re.findall(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', raw_text)
+                    valid_emails = [
+                        e for e in all_emails
+                        if not _is_placeholder(e) and not any(ext in e.lower() for ext in [".png", ".jpg", ".jpeg", ".svg", ".webp", "wixpress", "sentry"])
+                    ]
+                    if valid_emails:
+                        email_addr = valid_emails[0]
+
+                if not phone_num:
+                    all_phones = re.findall(r'(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}', raw_text)
+                    valid_phones = [p.strip() for p in all_phones if 8 <= len(re.sub(r'\D', '', p)) <= 15]
+                    if valid_phones:
+                        phone_num = valid_phones[0]
 
             from sqlmodel import Session as _Session, select as _select
-            from database import ClientResearch, Lead, ClientProfile, engine as _engine
+            from database import ClientResearch, Lead, ClientProfile, Contact, engine as _engine
             with _Session(_engine) as sess:
                 if entity_type == "lead":
                     lead_obj = sess.exec(_select(Lead).where(Lead.id == entity_id).execution_options(skip_tenant=True)).first()
@@ -1362,11 +1423,42 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
                         cr = ClientResearch(lead_id=entity_id)
                     if lead_obj:
                         cr.tenant_id = lead_obj.tenant_id or resolved_tenant_id
-                        if not lead_obj.email and email_addr:
+                        # Update email if missing or placeholder
+                        if email_addr and (not lead_obj.email or _is_placeholder(lead_obj.email)):
                             lead_obj.email = email_addr
-                        if not lead_obj.phone and phone_num:
+                        # Update phone if missing
+                        if phone_num and not lead_obj.phone:
                             lead_obj.phone = phone_num
+                        # Update address if missing and genuine
+                        if phys_address and not lead_obj.address and not _is_placeholder(phys_address):
+                            lead_obj.address = phys_address
+                        if not lead_obj.city or not lead_obj.country:
+                            from modules.location_helper import extract_city_country_from_address
+                            c_city, c_country = extract_city_country_from_address(lead_obj.address or phys_address)
+                            if c_city and not lead_obj.city:
+                                lead_obj.city = c_city
+                            if c_country and not lead_obj.country:
+                                lead_obj.country = c_country
                         sess.add(lead_obj)
+
+                        # Create or update Contact record
+                        if contact_person or email_addr:
+                            existing_contact = sess.exec(_select(Contact).where(Contact.lead_id == entity_id).execution_options(skip_tenant=True)).first()
+                            if not existing_contact:
+                                parts = (contact_person or "Primary Contact").split(" ", 1)
+                                fname = parts[0]
+                                lname = parts[1] if len(parts) > 1 else ""
+                                new_c = Contact(
+                                    lead_id=entity_id,
+                                    tenant_id=lead_obj.tenant_id,
+                                    first_name=fname,
+                                    last_name=lname,
+                                    full_name=contact_person or fname,
+                                    email=email_addr or None,
+                                    mobile_number=phone_num or None,
+                                    designation=dms[0].get("role") if dms else "Decision Maker"
+                                )
+                                sess.add(new_c)
                     elif resolved_tenant_id:
                         cr.tenant_id = resolved_tenant_id
                 else:
@@ -1377,17 +1469,24 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
                         cr = ClientResearch(client_id=entity_id)
                     if cp_obj:
                         cr.tenant_id = cp_obj.tenant_id or resolved_tenant_id
+                        if email_addr and (not cp_obj.email or _is_placeholder(cp_obj.email)):
+                            cp_obj.email = email_addr
+                        if phone_num and not cp_obj.phone:
+                            cp_obj.phone = phone_num
+                        if contact_person and not cp_obj.contactPerson:
+                            cp_obj.contactPerson = contact_person
+                        sess.add(cp_obj)
                     elif resolved_tenant_id:
                         cr.tenant_id = resolved_tenant_id
-                cr.email_agent_data = json.dumps(data)
+                cr.email_agent_data = json.dumps(data, default=str)
                 cr.company_overview = overview
-                cr.key_decision_makers = json.dumps(contacts)
+                cr.key_decision_makers = json.dumps(contacts_list, default=str)
                 # Store additional rich fields
                 icps = data.get("ideal_customer_profiles", [])
-                cr.pain_points = json.dumps(icps) if icps else None
-                cr.business_goals = json.dumps(data.get("gtm_recommendations", {})) if data.get(
+                cr.pain_points = json.dumps(icps, default=str) if icps else None
+                cr.business_goals = json.dumps(data.get("gtm_recommendations", {}), default=str) if data.get(
                     "gtm_recommendations") else None
-                cr.competitors = json.dumps(data.get("competitive_landscape", {})) if data.get(
+                cr.competitors = json.dumps(data.get("competitive_landscape", {}), default=str) if data.get(
                     "competitive_landscape") else None
                 cr.updated_at = datetime.now(timezone.utc)
                 sess.add(cr)
@@ -1412,12 +1511,14 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
                             _ed = {}
                         _ed["__report_status"] = "error"
                         _ed["__error_message"] = str(ex)
-                        _ecr.email_agent_data = _err_json.dumps(_ed)
+                        _ecr.email_agent_data = _err_json.dumps(_ed, default=str)
                         _ecr.updated_at = datetime.now(timezone.utc)
                         _es.add(_ecr)
                         _es.commit()
             except Exception:
                 pass
+        finally:
+            _active_research_tasks.discard(task_key)
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
@@ -1931,10 +2032,36 @@ def delete_client(client_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Client not found")
 
     from sqlmodel import delete
+    from database import DeletedRecord
+    uid = current_salesperson_id.get()
+    actor_user = session.get(User, uid) if uid else None
 
     # We execute all deletes in a single transaction block.
     # No mid-loop rollbacks! We use the exact model attributes defined in database.py
     try:
+        del_rec = DeletedRecord(
+            tenant_id=cp.tenant_id or current_tenant_id.get(),
+            record_type="client",
+            record_id=cp.id,
+            record_name=cp.companyName or f"Client #{cp.id}",
+            details={
+                "snapshot": {
+                    "companyName": cp.companyName,
+                    "websiteUrl": cp.websiteUrl,
+                    "email": cp.email,
+                    "phone": cp.phone,
+                    "contactPerson": cp.contactPerson,
+                    "status": cp.status,
+                    "assignedEmployeeId": cp.assignedEmployeeId
+                }
+            },
+            deleted_by_id=actor_user.id if actor_user else None,
+            deleted_by_name=actor_user.name or actor_user.email if actor_user else "Admin",
+            deleted_at=datetime.now(timezone.utc),
+        )
+        session.add(del_rec)
+        session.flush()
+
         session.execute(delete(ServiceRequest).where(
             ServiceRequest.client_id == client_id))
         session.execute(delete(MessageThread).where(
@@ -2957,6 +3084,148 @@ def get_all_tenants(session: Session = Depends(get_session)):
         current_tenant_id.set(old_tenant)
 
 
+
+@app.get("/superadmin/tenants/{tenant_id}/api-usage")
+def get_tenant_api_usage(tenant_id: int, session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
+    from database import ApiRequest, ClientProfile
+
+    q = select(ApiRequest)
+    if tenant_id > 0:
+        q = q.where(ApiRequest.tenant_id == tenant_id)
+
+    requests = session.exec(q.order_by(ApiRequest.timestamp.desc()).execution_options(skip_tenant=True)).all()
+
+    total_calls = len(requests)
+    total_cost = sum(r.total_cost or 0.0 for r in requests)
+    total_in_tokens = sum(r.input_tokens or 0 for r in requests)
+    total_out_tokens = sum(r.output_tokens or 0 for r in requests)
+    avg_latency = (sum(r.response_time_ms or 0 for r in requests) / total_calls) if total_calls > 0 else 0
+
+    by_provider: dict = {}
+    by_model: dict = {}
+    by_endpoint: dict = {}
+    by_client: dict = {}
+
+    for r in requests:
+        prov = r.provider or "other"
+        by_provider[prov] = by_provider.get(prov, {"calls": 0, "cost": 0.0, "tokens": 0})
+        by_provider[prov]["calls"] += 1
+        by_provider[prov]["cost"] = round(by_provider[prov]["cost"] + (r.total_cost or 0.0), 4)
+        by_provider[prov]["tokens"] += (r.total_tokens or 0)
+
+        mod = r.model or "unknown"
+        by_model[mod] = by_model.get(mod, {"calls": 0, "cost": 0.0})
+        by_model[mod]["calls"] += 1
+        by_model[mod]["cost"] = round(by_model[mod]["cost"] + (r.total_cost or 0.0), 4)
+
+        ep = r.endpoint or "general"
+        by_endpoint[ep] = by_endpoint.get(ep, {"calls": 0, "cost": 0.0})
+        by_endpoint[ep]["calls"] += 1
+        by_endpoint[ep]["cost"] = round(by_endpoint[ep]["cost"] + (r.total_cost or 0.0), 4)
+
+        if r.client_id:
+            cid = str(r.client_id)
+            by_client[cid] = by_client.get(cid, {"calls": 0, "cost": 0.0, "client_id": r.client_id, "name": f"Client #{r.client_id}"})
+            by_client[cid]["calls"] += 1
+            by_client[cid]["cost"] = round(by_client[cid]["cost"] + (r.total_cost or 0.0), 4)
+
+    client_ids = [int(cid) for cid in by_client.keys() if cid.isdigit()]
+    if client_ids:
+        clients = session.exec(select(ClientProfile).where(ClientProfile.id.in_(client_ids)).execution_options(skip_tenant=True)).all()
+        for c in clients:
+            if str(c.id) in by_client:
+                by_client[str(c.id)]["name"] = c.companyName or f"Client #{c.id}"
+
+    recent_calls = [
+        {
+            "id": r.id,
+            "endpoint": r.endpoint,
+            "model": r.model,
+            "provider": r.provider,
+            "client_id": r.client_id,
+            "input_tokens": r.input_tokens,
+            "output_tokens": r.output_tokens,
+            "total_tokens": r.total_tokens,
+            "total_cost": round(r.total_cost or 0.0, 5),
+            "response_time_ms": r.response_time_ms,
+            "status_code": r.status_code,
+            "success": r.success,
+            "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+        }
+        for r in requests[:50]
+    ]
+
+    return {
+        "tenant_id": tenant_id,
+        "total_calls": total_calls,
+        "total_cost": round(total_cost, 4),
+        "total_input_tokens": total_in_tokens,
+        "total_output_tokens": total_out_tokens,
+        "avg_response_time_ms": round(avg_latency, 1),
+        "by_provider": by_provider,
+        "by_model": by_model,
+        "by_endpoint": by_endpoint,
+        "by_client": list(by_client.values()),
+        "recent_calls": recent_calls,
+    }
+
+
+@app.get("/superadmin/clients/{client_id}/api-usage")
+def get_client_api_usage(client_id: int, session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
+    from database import ApiRequest
+
+    requests = session.exec(
+        select(ApiRequest)
+        .where(ApiRequest.client_id == client_id)
+        .order_by(ApiRequest.timestamp.desc())
+        .execution_options(skip_tenant=True)
+    ).all()
+
+    total_calls = len(requests)
+    total_cost = sum(r.total_cost or 0.0 for r in requests)
+
+    by_model: dict = {}
+    by_endpoint: dict = {}
+    for r in requests:
+        mod = r.model or "unknown"
+        by_model[mod] = by_model.get(mod, {"calls": 0, "cost": 0.0})
+        by_model[mod]["calls"] += 1
+        by_model[mod]["cost"] = round(by_model[mod]["cost"] + (r.total_cost or 0.0), 4)
+
+        ep = r.endpoint or "general"
+        by_endpoint[ep] = by_endpoint.get(ep, {"calls": 0, "cost": 0.0})
+        by_endpoint[ep]["calls"] += 1
+        by_endpoint[ep]["cost"] = round(by_endpoint[ep]["cost"] + (r.total_cost or 0.0), 4)
+
+    recent_calls = [
+        {
+            "id": r.id,
+            "endpoint": r.endpoint,
+            "model": r.model,
+            "provider": r.provider,
+            "input_tokens": r.input_tokens,
+            "output_tokens": r.output_tokens,
+            "total_tokens": r.total_tokens,
+            "total_cost": round(r.total_cost or 0.0, 5),
+            "response_time_ms": r.response_time_ms,
+            "status_code": r.status_code,
+            "success": r.success,
+            "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+        }
+        for r in requests[:50]
+    ]
+
+    return {
+        "client_id": client_id,
+        "total_calls": total_calls,
+        "total_cost": round(total_cost, 4),
+        "by_model": by_model,
+        "by_endpoint": by_endpoint,
+        "recent_calls": recent_calls,
+    }
+
 class RequestUpgradeRequest(BaseModel):
     limit_type: str
 
@@ -3941,9 +4210,11 @@ def test_email_integration(body: EmailIntegrationTestRequest, session: Session =
     return result
 
 @app.get("/users")
-def list_users(role: Optional[str] = None, session: Session = Depends(get_session)):
+def list_users(role: Optional[str] = None, include_deleted: bool = False, session: Session = Depends(get_session)):
     from modules import sales_access
-    query = select(User).where(User.is_active == True)
+    query = select(User)
+    if not include_deleted:
+        query = query.where(User.is_active == True)
     if sales_access.is_sales():
         query = query.where(User.id == current_salesperson_id.get())
     tenant_id = current_tenant_id.get()
@@ -4036,11 +4307,250 @@ def delete_user(user_id: int, session: Session = Depends(get_session)):
         admins = session.exec(select(User).where(User.tenant_id == user.tenant_id, User.is_active == True)).all()
         if sum(_normalize_role(u.role) == "Admin" for u in admins) <= 1:
             raise HTTPException(status_code=409, detail="Keep at least one active Admin")
-    # Preserve foreign-key references and history while revoking every session.
+
+    t_id = user.tenant_id or current_tenant_id.get()
+
+    # 1. Gather all leads assigned to this salesperson
+    leads = session.exec(
+        select(Lead).where(
+            Lead.owner_id == user.id,
+            (Lead.tenant_id == t_id) if t_id else True
+        ).execution_options(skip_tenant=True)
+    ).all()
+
+    # 2. Find all other ACTIVE salespersons / eligible staff in this tenant
+    active_reps = session.exec(
+        select(User).where(
+            (User.tenant_id == t_id) if t_id else True,
+            User.is_active == True,
+            User.id != user.id,
+            User.role.in_(["Sales", "SalesManager", "Employee", "Admin"])
+        ).execution_options(skip_tenant=True)
+    ).all()
+
+    pure_sales = [r for r in active_reps if r.role in ("Sales", "SalesManager", "Employee")]
+    reps_to_use = pure_sales if pure_sales else active_reps
+
+    transfers = {}
+    transferred_count = 0
+    if leads:
+        if reps_to_use:
+            # Fair distribution: Balance workload by counting existing active leads for each eligible rep
+            rep_load = {}
+            for r in reps_to_use:
+                load = len(session.exec(
+                    select(Lead.id).where(
+                        Lead.owner_id == r.id,
+                        Lead.is_converted == False,
+                        (Lead.tenant_id == t_id) if t_id else True
+                    ).execution_options(skip_tenant=True)
+                ).all())
+                rep_load[r.id] = load
+
+            from database import ActivityLog, LeadNote
+
+            for lead in leads:
+                # Pick eligible rep with lowest active workload
+                best_rep_id = min(rep_load.keys(), key=lambda rid: rep_load[rid])
+                best_rep = next(r for r in reps_to_use if r.id == best_rep_id)
+
+                prev_name = user.name or user.email
+                new_name = best_rep.name or best_rep.email
+
+                lead.owner_id = best_rep.id
+                rep_load[best_rep_id] += 1
+                transferred_count += 1
+                transfers[new_name] = transfers.get(new_name, 0) + 1
+
+                session.add(lead)
+                session.add(ActivityLog(
+                    tenant_id=t_id,
+                    lead_id=lead.id,
+                    user_id=actor.id,
+                    action=f"Lead transferred from {prev_name} to {new_name} (Salesperson deleted/offboarded)",
+                    timestamp=datetime.now(timezone.utc)
+                ))
+                session.add(LeadNote(
+                    tenant_id=t_id,
+                    lead_id=lead.id,
+                    content=f"Transferred to {new_name} because previous salesperson {prev_name} was removed from the team.",
+                    author_id=actor.id,
+                    author_name=actor.name or "System"
+                ))
+        else:
+            # Fallback when no other team member is available
+            for lead in leads:
+                lead.owner_id = None
+                session.add(lead)
+            transfers["Unassigned"] = len(leads)
+            transferred_count = len(leads)
+
+    # 3. Reassign active ClientProfile records where assignedEmployeeId == user.id
+    client_profiles = session.exec(
+        select(ClientProfile).where(
+            ClientProfile.assignedEmployeeId == user.id,
+            (ClientProfile.tenant_id == t_id) if t_id else True
+        ).execution_options(skip_tenant=True)
+    ).all()
+    if client_profiles and reps_to_use:
+        for idx, cp in enumerate(client_profiles):
+            chosen = reps_to_use[idx % len(reps_to_use)]
+            cp.assignedEmployeeId = chosen.id
+            session.add(cp)
+
+    # 4. Deactivate user and track deletion
     user.is_active = False
+    user.status = "Deleted"
+    user.updatedAt = datetime.now(timezone.utc)
     session.add(user)
+
+    # 5. Record in DeletedRecord table
+    from database import DeletedRecord
+    del_rec = DeletedRecord(
+        tenant_id=t_id,
+        record_type="salesperson" if user.role in ("Sales", "SalesManager", "Employee") else "user",
+        record_id=user.id,
+        record_name=user.name or user.email,
+        details={
+            "email": user.email,
+            "role": user.role,
+            "phone": user.phone,
+            "transferred_leads_count": transferred_count,
+            "transferred_clients_count": len(client_profiles)
+        },
+        deleted_by_id=actor.id,
+        deleted_by_name=actor.name or actor.email,
+        deleted_at=datetime.now(timezone.utc),
+        transfer_summary=transfers
+    )
+    session.add(del_rec)
     session.commit()
-    return {"ok": True}
+
+    return {
+        "ok": True,
+        "message": f"Salesperson {user.name or user.email} removed. {transferred_count} lead(s) transferred fairly among active salespersons.",
+        "transferred_leads_count": transferred_count,
+        "transfers": transfers
+    }
+
+
+@app.post("/users/{user_id}/restore")
+def restore_user(user_id: int, session: Session = Depends(get_session)):
+    actor = _require_roles(session, ["Admin"])
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_active = True
+    user.status = "Active"
+    user.updatedAt = datetime.now(timezone.utc)
+    session.add(user)
+
+    from database import DeletedRecord
+    # Mark associated DeletedRecord as restored
+    d_recs = session.exec(
+        select(DeletedRecord).where(
+            DeletedRecord.record_id == user.id,
+            DeletedRecord.record_type.in_(["salesperson", "user"]),
+            DeletedRecord.is_restored == False
+        )
+    ).all()
+    for dr in d_recs:
+        dr.is_restored = True
+        dr.restored_at = datetime.now(timezone.utc)
+        dr.restored_by_id = actor.id
+        session.add(dr)
+
+    session.commit()
+    return {"ok": True, "message": f"User {user.name or user.email} successfully restored to active status."}
+
+
+@app.get("/deleted-records")
+def get_deleted_records(
+    record_type: Optional[str] = None,
+    search: Optional[str] = None,
+    include_restored: bool = False,
+    limit: int = 100,
+    offset: int = 0,
+    session: Session = Depends(get_session)
+):
+    _require_roles(session, ["Admin", "SalesManager"])
+    from database import DeletedRecord
+    tenant_id = current_tenant_id.get()
+
+    query = select(DeletedRecord)
+    if tenant_id:
+        query = query.where(DeletedRecord.tenant_id == tenant_id)
+    if not include_restored:
+        query = query.where(DeletedRecord.is_restored == False)
+    if record_type and record_type.lower() != "all":
+        query = query.where(DeletedRecord.record_type == record_type.lower())
+    if search:
+        s = f"%{search.strip().lower()}%"
+        query = query.where(func.lower(DeletedRecord.record_name).like(s))
+
+    total = len(session.exec(query).all())
+    query = query.order_by(DeletedRecord.deleted_at.desc()).offset(offset).limit(limit)
+    records = session.exec(query).all()
+
+    return {
+        "total": total,
+        "records": [
+            {
+                "id": r.id,
+                "tenant_id": r.tenant_id,
+                "record_type": r.record_type,
+                "record_id": r.record_id,
+                "record_name": r.record_name,
+                "details": r.details or {},
+                "deleted_by_id": r.deleted_by_id,
+                "deleted_by_name": r.deleted_by_name or "Admin",
+                "deleted_at": r.deleted_at.isoformat() if r.deleted_at else None,
+                "is_restored": r.is_restored,
+                "restored_at": r.restored_at.isoformat() if r.restored_at else None,
+                "transfer_summary": r.transfer_summary or {}
+            }
+            for r in records
+        ]
+    }
+
+
+@app.post("/deleted-records/{record_id}/restore")
+def restore_deleted_record(record_id: int, session: Session = Depends(get_session)):
+    actor = _require_roles(session, ["Admin"])
+    from database import DeletedRecord
+    del_rec = session.get(DeletedRecord, record_id)
+    if not del_rec:
+        raise HTTPException(status_code=404, detail="Deleted record not found")
+    if del_rec.is_restored:
+        raise HTTPException(status_code=400, detail="Record already restored")
+
+    if del_rec.record_type in ("salesperson", "user"):
+        u = session.get(User, del_rec.record_id)
+        if u:
+            u.is_active = True
+            u.status = "Active"
+            u.updatedAt = datetime.now(timezone.utc)
+            session.add(u)
+    elif del_rec.record_type == "lead":
+        lead = session.get(Lead, del_rec.record_id)
+        if lead:
+            lead.status = (del_rec.details or {}).get("previous_status", "New")
+            session.add(lead)
+        else:
+            snap = (del_rec.details or {}).get("snapshot", {})
+            if snap:
+                snap.pop("id", None)
+                new_lead = Lead(**snap)
+                session.add(new_lead)
+
+    del_rec.is_restored = True
+    del_rec.restored_at = datetime.now(timezone.utc)
+    del_rec.restored_by_id = actor.id
+    session.add(del_rec)
+    session.commit()
+
+    return {"ok": True, "message": f"Successfully restored {del_rec.record_name}"}
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -11840,6 +12350,27 @@ class RadarSearchRequest(BaseModel):
     website: Optional[str] = None
 
 
+
+def deduce_business_niche(query_str: str, types_list: list = None, scraped: str = "") -> tuple[str, list]:
+    q = (query_str + " " + " ".join(types_list or []) + " " + scraped[:1500]).lower()
+    if any(k in q for k in ["seminuevo", "used car", "auto dealer", "concesionaria", "coche", "automotriz", "autos"]):
+        return "used car dealer", ["Used Car Dealer", "Auto Dealership", "Car Repair & Service", "Auto Detailing"]
+    if any(k in q for k in ["business center", "oficina", "coworking", "workspace", "virtual office"]):
+        return "business center", ["Business Center", "Coworking Space", "Virtual Office", "Executive Suites"]
+    if any(k in q for k in ["transport", "flete", "logistica", "freight", "cargo", "mudanza", "logistics"]):
+        return "freight forwarding service", ["Freight Forwarding", "Logistics & Warehousing", "Trucking & Transport", "Courier Service"]
+    if any(k in q for k in ["ai", "inteligencia artificial", "artificial intelligence", "machine learning", "saas"]):
+        return "artificial intelligence company", ["Artificial Intelligence Company", "Software Development", "IT Consulting", "Cloud Services"]
+    if any(k in q for k in ["seo", "marketing", "publicidad", "ads", "digital agency", "posicionamiento"]):
+        return "digital marketing agency", ["Digital Marketing Agency", "SEO Agency", "Social Media Agency", "Web Design"]
+    if any(k in q for k in ["constructora", "construction", "edificacion", "arquitectura", "remodelacion"]):
+        return "construction company", ["Construction Company", "General Contractor", "Architecture Firm", "Commercial Building"]
+    if any(k in q for k in ["dental", "dentist", "dientes", "odontolog", "ortodoncia"]):
+        return "dentist", ["Dental Clinic", "Dentist", "Orthodontist", "Cosmetic Dentistry"]
+    if any(k in q for k in ["restauran", "comida", "bar", "cafe", "food"]):
+        return "restaurant", ["Restaurant", "Bar & Grill", "Cafeteria", "Catering"]
+    return "business", ["Corporate Office", "Professional Services", "Consulting Agency", "Commercial Services"]
+
 class RadarAnalyzeRequest(BaseModel):
     place_id: str
     target_name: str
@@ -11850,7 +12381,7 @@ class RadarAnalyzeRequest(BaseModel):
     target_website: Optional[str] = None
     target_rating: Optional[float] = None
     target_reviews: Optional[int] = None
-    target_category: str = "digital marketing agency"
+    target_category: str = "business"
     target_types: Optional[list] = []
     radius_km: int = 5
     client_id: Optional[int] = None
@@ -11867,14 +12398,18 @@ class RadarAddClientRequest(BaseModel):
 
 @app.post("/radar/search")
 async def radar_search(body: RadarSearchRequest):
-    """Search for a business on Google Maps and return its exact place details."""
+    """Search for a business on Google Maps and return its exact place details and branch locations."""
     try:
-        from modules.radar_engine import find_place
+        from modules.radar_engine import find_place, find_places, get_place_details
+        all_places = []
+        scraped_text = ""
         if body.place_id:
-            from modules.radar_engine import get_place_details
             place = await get_place_details(body.place_id)
+            if place:
+                all_places = [place]
         else:
-            place = await find_place(body.query, body.location_hint)
+            all_places = await find_places(body.query, body.location_hint)
+            place = all_places[0] if all_places else None
 
         if not place:
             fallback_location = body.location_hint
@@ -11893,9 +12428,6 @@ async def radar_search(body: RadarSearchRequest):
             if not fallback_location and website_to_scrape:
                 try:
                     from modules.scraper import scrape_website
-                    from openai import AsyncOpenAI
-                    import os
-
                     try:
                         scraped_text = await scrape_website(website_to_scrape)
                     except Exception:
@@ -11907,7 +12439,7 @@ async def radar_search(body: RadarSearchRequest):
                         model="gpt-4o-mini",
                         messages=[
                             {"role": "system",
-                                "content": "You are a data extraction assistant. Return ONLY the primary physical city and state (e.g. 'Miami, FL' or 'San Francisco, CA') for the given company. Use the provided website content if available, otherwise use your internal knowledge. If totally unknown, reply 'UNKNOWN'."},
+                                "content": "You are a data extraction assistant. Return ONLY the primary physical city and state or country (e.g. 'Miami, FL' or 'Mexico City, Mexico') for the given company. Use the provided website content if available, otherwise use your internal knowledge. If totally unknown, reply 'UNKNOWN'."},
                             {"role": "user",
                                 "content": f"Company: {body.company_name or body.query}\nWebsite: {website_to_scrape}\n\nWebsite Content:\n{scraped_text[:10000]}"}
                         ],
@@ -11919,15 +12451,39 @@ async def radar_search(body: RadarSearchRequest):
                 except Exception as e:
                     print(f"Failed to scrape/extract location: {e}")
 
+            # If still no location, infer location from company name with GPT
+            if not fallback_location and (body.company_name or body.query):
+                try:
+                    from modules.llm_engine import get_openai_client
+                    client_ai = get_openai_client()
+                    resp = client_ai.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": "You are a business location assistant. Given a company name, return ONLY their primary physical headquarters city and country/state (e.g. 'Mexico City, Mexico' or 'Monterrey, Mexico'). If unknown, return 'UNKNOWN'."},
+                            {"role": "user", "content": f"Company Name: {body.company_name or body.query}"}
+                        ],
+                        temperature=0
+                    )
+                    inferred_loc = resp.choices[0].message.content.strip()
+                    if inferred_loc and inferred_loc.upper() != "UNKNOWN":
+                        fallback_location = inferred_loc
+                except Exception:
+                    pass
+
             geocode_place = None
             if fallback_location:
-                geocode_place = await find_place(fallback_location)
+                geocode_place = await find_place(f"{body.company_name or body.query} {fallback_location}")
+                if not geocode_place:
+                    geocode_place = await find_place(fallback_location)
+
+            if not geocode_place and (body.company_name or body.query):
+                geocode_place = await find_place(body.company_name or body.query)
 
             if geocode_place:
                 place = {
                     "place_id": geocode_place.get("place_id", "synthetic_id"),
                     "name": body.company_name or (body.query.split()[0] if body.query else "Target Business"),
-                    "address": geocode_place.get("address", fallback_location),
+                    "address": geocode_place.get("address", fallback_location or "Target Location"),
                     "lat": geocode_place.get("lat"),
                     "lng": geocode_place.get("lng"),
                     "website": website_to_scrape or "",
@@ -11938,18 +12494,30 @@ async def radar_search(body: RadarSearchRequest):
                     "business_status": "OPERATIONAL"
                 }
             else:
-                # If no location is found from Google API or GPT, we don't default to NY.
-                # We tell the user exactly what happened.
                 if not fallback_location and not scraped_text:
-                    err = f"Could not find a location on the website for '{body.company_name or body.query}'. The business might be fully remote. Please provide a manual location below."
+                    err = f"Could not find a location for '{body.company_name or body.query}'. Please enter a location hint below."
                 elif not fallback_location and scraped_text:
-                    err = f"Our AI scanned the website, but '{body.company_name or body.query}' appears to be a fully remote business with no physical headquarters. Please manually enter a target city to scan."
+                    err = f"Our AI scanned the website, but '{body.company_name or body.query}' has no clear physical headquarters on site. Please enter a target city to scan."
                 else:
                     err = f"Could not find the target location '{fallback_location}' on Google Maps. The name might be ambiguous."
 
                 raise HTTPException(status_code=404, detail=err)
 
-        return {"place": place}
+        # Smart niche deduction based on place info and query
+        cat, niches = deduce_business_niche(
+            query_str=f"{body.company_name or ''} {body.query} {place.get('name', '')}",
+            types_list=place.get("types", []),
+            scraped=scraped_text if 'scraped_text' in locals() else ""
+        )
+        if not all_places and place:
+            all_places = [place]
+
+        return {
+            "place": place,
+            "places": all_places,
+            "suggested_category": cat,
+            "suggested_niches": niches
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -12074,6 +12642,250 @@ def get_client_radar_analyses(client_id: int, session: Session = Depends(get_ses
     ]
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# TEMPORARY LEADS (Radar -> Temp Leads -> ChatGPT Verification -> Promote to CRM)
+# ═══════════════════════════════════════════════════════════════════════════════
+class TempLeadCreateRequest(BaseModel):
+    company_name: str
+    city: Optional[str] = None
+    category: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
+    rating: Optional[float] = None
+    reviews_count: Optional[int] = None
+    place_id: Optional[str] = None
+    maps_url: Optional[str] = None
+    source: Optional[str] = "Radar Analysis"
+
+
+class TempLeadBulkRadarRequest(BaseModel):
+    competitors: List[dict]
+    city: Optional[str] = None
+    category: Optional[str] = None
+
+
+@app.get("/temp-leads")
+def list_temp_leads(
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    promoted: Optional[bool] = None,
+    session: Session = Depends(get_session),
+):
+    from database import TempLead
+    tid = current_tenant_id.get()
+    q = select(TempLead).order_by(TempLead.created_at.desc())
+    if tid:
+        q = q.where(TempLead.tenant_id == tid)
+    if status:
+        q = q.where(TempLead.verification_status == status)
+    if promoted is not None:
+        q = q.where(TempLead.is_promoted == promoted)
+    if search:
+        s = f"%{search.lower()}%"
+        q = q.where(
+            func.lower(TempLead.company_name).like(s) |
+            func.lower(TempLead.city).like(s) |
+            func.lower(TempLead.category).like(s)
+        )
+    rows = session.exec(q).all()
+    return {"temp_leads": [r.model_dump() for r in rows], "count": len(rows)}
+
+
+@app.post("/temp-leads")
+def create_temp_lead(body: TempLeadCreateRequest, session: Session = Depends(get_session)):
+    from database import TempLead
+    tid = current_tenant_id.get()
+    tl = TempLead(
+        tenant_id=tid,
+        company_name=body.company_name,
+        city=body.city,
+        category=body.category,
+        address=body.address,
+        phone=body.phone,
+        website=body.website,
+        rating=body.rating,
+        reviews_count=body.reviews_count,
+        place_id=body.place_id,
+        maps_url=body.maps_url,
+        source=body.source or "Radar Analysis",
+    )
+    session.add(tl)
+    session.commit()
+    session.refresh(tl)
+    return {"temp_lead": tl.model_dump()}
+
+
+@app.post("/temp-leads/bulk-from-radar")
+def bulk_create_temp_leads_from_radar(body: TempLeadBulkRadarRequest, session: Session = Depends(get_session)):
+    from database import TempLead
+    tid = current_tenant_id.get()
+    created = 0
+    skipped = 0
+
+    existing_places = set(
+        session.exec(select(TempLead.place_id).where(TempLead.tenant_id == tid)).all()
+    ) if tid else set()
+
+    added_leads = []
+    for comp in body.competitors:
+        pid = comp.get("place_id") or ""
+        name = (comp.get("name") or "").strip()
+        if not name:
+            skipped += 1
+            continue
+        if pid and pid in existing_places:
+            skipped += 1
+            continue
+
+        c_addr = comp.get("address") or ""
+        from modules.location_helper import extract_city_country_from_address
+        c_city, c_country = extract_city_country_from_address(c_addr)
+        tl = TempLead(
+            tenant_id=tid,
+            company_name=name,
+            city=comp.get("city") or c_city or body.city or "",
+            country=comp.get("country") or c_country or "",
+            category=comp.get("category") or body.category or "",
+            address=c_addr,
+            phone=comp.get("phone") or None,
+            website=comp.get("website") or None,
+            rating=float(comp.get("rating") or 0.0) if comp.get("rating") else None,
+            reviews_count=int(comp.get("reviews") or 0) if comp.get("reviews") else None,
+            place_id=pid or None,
+            maps_url=comp.get("maps_url") or None,
+            source="Radar Analysis",
+        )
+        session.add(tl)
+        if pid:
+            existing_places.add(pid)
+        created += 1
+        added_leads.append(tl)
+
+    session.commit()
+    return {"created": created, "skipped": skipped, "total": len(body.competitors)}
+
+
+@app.delete("/temp-leads/{temp_id}")
+def delete_temp_lead(temp_id: int, session: Session = Depends(get_session)):
+    from database import TempLead
+    tl = session.get(TempLead, temp_id)
+    if not tl:
+        raise HTTPException(status_code=404, detail="Temporary lead not found")
+    session.delete(tl)
+    session.commit()
+    return {"ok": True}
+
+
+@app.post("/temp-leads/{temp_id}/verify")
+def verify_temp_lead_chatgpt(temp_id: int, session: Session = Depends(get_session)):
+    """Verify company details with ChatGPT (gpt-4o-mini)."""
+    from database import TempLead
+    from modules.llm_engine import get_openai_client
+    import json
+
+    tl = session.get(TempLead, temp_id)
+    if not tl:
+        raise HTTPException(status_code=404, detail="Temporary lead not found")
+
+    prompt = f"""You are a business intelligence verification analyst. Reverifty the following business discovered via Google Maps / Radar:
+
+Company Name: {tl.company_name}
+City / Region: {tl.city or 'Unknown'}
+Business Category: {tl.category or 'Unknown'}
+Address: {tl.address or 'Unknown'}
+Phone: {tl.phone or 'Unknown'}
+Website: {tl.website or 'Unknown'}
+
+Perform a quick verification and return a pure JSON object:
+{{
+  "verification_status": "verified" | "questionable" | "invalid",
+  "confidence_score": 1 to 10,
+  "is_active_business": true | false,
+  "verified_company_name": "Official verified name",
+  "verified_category": "Standardized primary industry category",
+  "verified_website": "Official clean website or null",
+  "verified_phone": "Verified phone format or null",
+  "summary_note": "1-2 sentences on company legitimacy, real-world presence, and target quality"
+}}
+"""
+    try:
+        client = get_openai_client()
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+        )
+        v_data = json.loads(resp.choices[0].message.content or "{}")
+        tl.verified_with_ai = True
+        tl.verification_status = v_data.get("verification_status") or "verified"
+        tl.verification_notes = v_data.get("summary_note") or "Verified with ChatGPT"
+        tl.verified_data = json.dumps(v_data)
+
+        if v_data.get("verified_website") and not tl.website:
+            tl.website = v_data["verified_website"]
+        if v_data.get("verified_category") and not tl.category:
+            tl.category = v_data["verified_category"]
+
+        session.add(tl)
+        session.commit()
+        session.refresh(tl)
+        return {"temp_lead": tl.model_dump(), "verification": v_data}
+    except Exception as e:
+        tl.verified_with_ai = True
+        tl.verification_status = "questionable"
+        tl.verification_notes = f"Verification check encountered an error: {str(e)}"
+        session.add(tl)
+        session.commit()
+        return {"temp_lead": tl.model_dump(), "error": str(e)}
+
+
+@app.post("/temp-leads/{temp_id}/promote")
+def promote_temp_lead_to_crm(temp_id: int, session: Session = Depends(get_session)):
+    """Promote a Temporary Lead into a full CRM Lead."""
+    from database import TempLead, Lead
+    tl = session.get(TempLead, temp_id)
+    if not tl:
+        raise HTTPException(status_code=404, detail="Temporary lead not found")
+
+    tid = tl.tenant_id or current_tenant_id.get()
+
+    lead = Lead(
+        tenant_id=tid,
+        company_name=tl.company_name,
+        phone=tl.phone,
+        website=tl.website,
+        address=tl.address,
+        industry=tl.category,
+        source=tl.source or "Radar Analysis",
+        status="New",
+        notes=f"Promoted from Temporary Leads. Rating: {tl.rating or 'N/A'}. {tl.verification_notes or ''}".strip(),
+    )
+    session.add(lead)
+    session.flush()
+
+    tl.is_promoted = True
+    tl.promoted_lead_id = lead.id
+    session.add(tl)
+    session.commit()
+    session.refresh(lead)
+
+    # Fire background 360 research
+    if lead.id and (lead.website or lead.company_name):
+        try:
+            _trigger_background_research(
+                entity_id=lead.id,
+                entity_type="lead",
+                company_name=lead.company_name or "",
+                website=lead.website or "",
+            )
+        except Exception:
+            pass
+
+    return {"lead": lead.model_dump(), "promoted": True}
+
+
 @app.post("/radar/add-client")
 def radar_add_client(body: RadarAddClientRequest, session: Session = Depends(get_session)):
     """Add a competitor discovered via radar to the CRM as a Lead (not a Client)."""
@@ -12086,21 +12898,30 @@ def radar_add_client(body: RadarAddClientRequest, session: Session = Depends(get
         industry = comp.get("category") or None
 
         # Check for existing Lead by website or name to avoid duplicates
+        tid = current_tenant_id.get()
         existing_lead = None
+        q = select(Lead)
+        if tid:
+            q = q.where(Lead.tenant_id == tid)
         if website:
-            existing_lead = session.exec(
-                select(Lead).where(Lead.website == website)).first()
+            existing_lead = session.exec(q.where(Lead.website == website)).first()
         if not existing_lead:
-            existing_lead = session.exec(
-                select(Lead).where(Lead.company_name == name)).first()
+            existing_lead = session.exec(q.where(Lead.company_name == name)).first()
+
+        from modules.location_helper import extract_city_country_from_address
+        c_city, c_country = extract_city_country_from_address(address)
 
         if existing_lead:
-            # Update existing lead with fresher radar data
+            # Update existing lead with fresher radar data without overriding user values
             existing_lead.last_activity = f"Re-discovered via Radar from {body.source_client_name}"
             if phone and not existing_lead.phone:
                 existing_lead.phone = phone
             if address and not existing_lead.address:
                 existing_lead.address = address
+            if c_city and not existing_lead.city:
+                existing_lead.city = c_city
+            if c_country and not existing_lead.country:
+                existing_lead.country = c_country
             if industry and not existing_lead.industry:
                 existing_lead.industry = industry
             session.add(existing_lead)
@@ -12108,12 +12929,14 @@ def radar_add_client(body: RadarAddClientRequest, session: Session = Depends(get
             lead = existing_lead
             is_new = False
         else:
-            # Create new Lead
+            # Create new Lead with real extracted city and country from radar
             lead = Lead(
                 company_name=name,
                 website=website,
                 phone=phone,
                 address=address,
+                city=c_city,
+                country=c_country,
                 industry=industry,
                 source="Radar Analysis",
                 status="New",
@@ -12343,6 +13166,13 @@ class LeadCreateRequest(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    deal_value: Optional[float] = None
+    linkedin_url: Optional[str] = None
+    twitter_url: Optional[str] = None
+    instagram_url: Optional[str] = None
+    facebook_url: Optional[str] = None
     source: Optional[str] = None
     owner_id: Optional[int] = None
     status: str = "New"
@@ -12397,16 +13227,121 @@ def get_leads(owner_id: Optional[int] = None, session: Session = Depends(get_ses
     } if owner_ids else {}
     from modules.lead_calls import latest_call_info
     latest_calls = latest_call_info(session, [lead.id for lead in leads])
+
+    lead_ids = [l.id for l in leads]
+    ai_status_map = {}
+    if lead_ids:
+        from database import ClientResearch
+        cr_rows = session.exec(select(ClientResearch.lead_id, ClientResearch.email_agent_data).where(ClientResearch.lead_id.in_(lead_ids)).execution_options(skip_tenant=True)).all()
+        for lid, ead in cr_rows:
+            if not ead:
+                ai_status_map[lid] = "not_started"
+            elif '"__report_status": "pending"' in str(ead):
+                ai_status_map[lid] = "pending"
+            elif '"full_markdown_report"' in str(ead) or '"tables"' in str(ead) or '"__report_status": "done"' in str(ead):
+                ai_status_map[lid] = "done"
+            else:
+                ai_status_map[lid] = "not_started"
+
     return {
         "leads": [
             {
                 **lead.model_dump(),
                 "owner_name": owners.get(lead.owner_id),
                 "salesperson_name": owners.get(lead.owner_id),
+                "ai_status": ai_status_map.get(lead.id, "not_started"),
                 **latest_calls.get(lead.id, {}),
             }
             for lead in leads
         ]
+    }
+
+
+@app.post("/leads/auto-analyze-all")
+def auto_analyze_all_leads(session: Session = Depends(get_session)):
+    import time
+    import threading
+    tid = current_tenant_id.get() or 1
+    query = select(Lead).where(Lead.is_converted == False, Lead.converted_client_id.is_(None))
+    if tid and tid != 1:
+        query = query.where(Lead.tenant_id == tid)
+    all_leads = session.exec(query.order_by(Lead.id.desc())).all()
+
+    from database import ClientResearch
+    lead_ids = [l.id for l in all_leads]
+    done_ids = set()
+    if lead_ids:
+        cr_rows = session.exec(select(ClientResearch.lead_id, ClientResearch.email_agent_data).where(ClientResearch.lead_id.in_(lead_ids)).execution_options(skip_tenant=True)).all()
+        for lid, ead in cr_rows:
+            if ead and ('"full_markdown_report"' in str(ead) or '"tables"' in str(ead) or '"__report_status": "done"' in str(ead)):
+                done_ids.add(lid)
+
+    leads_to_queue = [l for l in all_leads if l.id not in done_ids]
+    if not leads_to_queue:
+        return {
+            "ok": True,
+            "message": "All leads already have 360° AI analysis completed!",
+            "queued": 0,
+            "already_completed": len(done_ids),
+            "total": len(all_leads)
+        }
+
+    st = _tenant_auto_analyze_state.setdefault(tid, _AutoAnalyzeState())
+    st.is_running = True
+    st.total = len(leads_to_queue)
+    st.completed = 0
+    st.pending = len(leads_to_queue)
+
+    def _bulk_worker(lead_items, tenant_id):
+        worker_st = _tenant_auto_analyze_state.get(tenant_id)
+        for item in lead_items:
+            lid = item["id"]
+            name = item["name"]
+            web = item["website"]
+            if worker_st:
+                worker_st.current_company = name
+            try:
+                _trigger_background_research(
+                    entity_id=lid,
+                    entity_type="lead",
+                    company_name=name,
+                    website=web,
+                )
+            except Exception as e:
+                print(f"[BulkAutoAnalyze] Error starting lead {lid}: {e}")
+            if worker_st:
+                worker_st.completed += 1
+                worker_st.pending = max(0, worker_st.pending - 1)
+            time.sleep(1.0)
+        if worker_st:
+            worker_st.is_running = False
+            worker_st.current_company = ""
+
+    items = [{"id": l.id, "name": l.company_name or "", "website": l.website or ""} for l in leads_to_queue]
+    t = threading.Thread(target=_bulk_worker, args=(items, tid), daemon=True)
+    t.start()
+
+    return {
+        "ok": True,
+        "message": f"Background 360° AI analysis started for {len(leads_to_queue)} leads.",
+        "queued": len(leads_to_queue),
+        "already_completed": len(done_ids),
+        "total": len(all_leads)
+    }
+
+
+@app.get("/leads/auto-analyze-status")
+def get_auto_analyze_status():
+    tid = current_tenant_id.get() or 1
+    st = _tenant_auto_analyze_state.get(tid)
+    if not st or not st.is_running:
+        return {"is_running": False, "queued": 0, "completed": 0, "total": 0, "pending": 0, "current_company": ""}
+    return {
+        "is_running": st.is_running,
+        "total": st.total,
+        "completed": st.completed,
+        "pending": st.pending,
+        "current_company": st.current_company
     }
 
 
@@ -12578,6 +13513,22 @@ def get_lead(lead_id: int, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
+
+    # Auto AI Profile Preparation on lead opening if research is not started or empty
+    if lead.id and (lead.website or lead.company_name):
+        try:
+            from database import ClientResearch
+            cr = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead.id).execution_options(skip_tenant=True)).first()
+            if not cr or not cr.email_agent_data:
+                _trigger_background_research(
+                    entity_id=lead.id,
+                    entity_type="lead",
+                    company_name=lead.company_name or "",
+                    website=lead.website or ""
+                )
+        except Exception as _ar_err:
+            print(f"[LeadOpenAutoResearch] Warning: {_ar_err}")
+
     from modules.lead_calls import latest_call_info
     return {**lead.model_dump(), **latest_call_info(session, [lead_id]).get(lead_id, {})}
 
@@ -13079,6 +14030,38 @@ def delete_lead(lead_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Lead not found")
 
     try:
+        from database import DeletedRecord
+        uid = current_salesperson_id.get()
+        actor_user = session.get(User, uid) if uid else None
+
+        lead_snap = {
+            "company_name": lead.company_name,
+            "website": lead.website,
+            "email": lead.email,
+            "phone": lead.phone,
+            "city": lead.city,
+            "country": lead.country,
+            "address": lead.address,
+            "status": lead.status,
+            "source": lead.source,
+            "owner_id": lead.owner_id,
+            "deal_value": lead.deal_value,
+            "notes": lead.notes,
+            "tenant_id": lead.tenant_id,
+        }
+        del_rec = DeletedRecord(
+            tenant_id=lead.tenant_id or current_tenant_id.get(),
+            record_type="lead",
+            record_id=lead.id,
+            record_name=lead.company_name or f"Lead #{lead.id}",
+            details={"snapshot": lead_snap, "previous_status": lead.status, "owner_id": lead.owner_id},
+            deleted_by_id=actor_user.id if actor_user else None,
+            deleted_by_name=actor_user.name or actor_user.email if actor_user else "Admin",
+            deleted_at=datetime.now(timezone.utc),
+        )
+        session.add(del_rec)
+        session.flush()
+
         # Delete related records to prevent ForeignKeyViolation
         queries = [
             "DELETE FROM sent_emails WHERE lead_id = :lead_id",
@@ -14321,6 +15304,32 @@ def export_products_pdf(body: dict = {}, session: Session = Depends(get_session)
             raise HTTPException(status_code=500, detail=str(e))
     return Response(content=pdf_bytes, media_type="application/pdf",
                     headers={"Content-Disposition": "attachment; filename=catalog.pdf"})
+
+
+class ProductScrapeRequest(BaseModel):
+    website_url: str
+    currency: Optional[str] = "USD"
+
+
+class ProductBulkCreateRequest(BaseModel):
+    products: List[dict]
+
+
+@app.post("/products/scrape-website")
+async def scrape_product_catalog(body: ProductScrapeRequest):
+    from modules.service_catalog_scraper import scrape_product_catalog_from_website
+    items = await scrape_product_catalog_from_website(
+        website_url=body.website_url,
+        default_currency=body.currency or "USD",
+    )
+    return {"products": items, "count": len(items)}
+
+
+@app.post("/products/bulk")
+def bulk_create_products(body: ProductBulkCreateRequest, session: Session = Depends(get_session)):
+    from modules.service_catalog_scraper import bulk_insert_products
+    result = bulk_insert_products(session, body.products)
+    return result
 
 
 @app.post("/products")

@@ -8,7 +8,7 @@ import {
   Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
   Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar, X,
   Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Edit2, GripVertical, Check,
-  Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb, LogOut
+  Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb, LogOut, Sparkles, Archive, Trash2
 } from "lucide-react";
 import { createVisiblePoll } from "@/lib/visiblePoll";
 import { cn } from "@/lib/utils";
@@ -49,7 +49,7 @@ const iconMap: Record<string, LucideIcon> = {
   LayoutDashboard, Bell, Users, FolderOpen, CheckSquare, CheckCircle, Radar, Mail,
   Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
   Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar, X,
-  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb
+  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb, Sparkles, Archive, Trash2
 };
 
 // Roles that can open /inbox (routers/inbox.py enforces the same list server-side).
@@ -61,7 +61,7 @@ const ITEM_FEATURE: Record<string, string> = {
   "item-dashboard-b2c": "dashboard_b2c",
   "item-admissions": "institute",
   "item-work-queue": "work_queue", "item-inbox": "inbox", "item-followups": "followups",
-  "item-leads": "leads", "item-contacts": "contacts", "item-clients": "clients",
+  "item-leads": "leads", "item-temp-leads": "leads", "item-contacts": "contacts", "item-clients": "clients",
   "item-projects": "projects", "item-task-sheet": "task_sheet", "item-reports": "reports",
   "item-meetings": "meetings", "item-calls": "calls", "item-teams": "teams", "item-leaderboard": "leaderboard",
   "item-email-agent": "email_agent", "item-voice-agent": "voice_agent",
@@ -94,6 +94,7 @@ interface SidebarItem {
   href: string;
   roles: Role[];
   badge?: number;
+  customName?: string;
 }
 
 interface SidebarSection {
@@ -125,8 +126,10 @@ const defaultSidebarSections: SidebarSection[] = [
     heading: "CRM",
     items: [
       { id: "item-leads", name: "Leads", icon: "Radar", href: "/leads", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-temp-leads", name: "Temporary Leads", icon: "Sparkles", href: "/temp-leads", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-contacts", name: "Contacts", icon: "Users", href: "/contacts", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-clients", name: "Clients", icon: "CheckCircle", href: "/clients", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-deleted-records", name: "Deleted Records", icon: "Archive", href: "/deleted-records", roles: ["Admin", "SalesManager", "Demo"] },
     ],
   },
   {
@@ -188,7 +191,7 @@ const defaultSidebarSections: SidebarSection[] = [
     heading: "INVENTORY",
     items: [
       { id: "item-inventory", name: "Inventory", icon: "Package", href: "/inventory", roles: ["Admin", "SalesManager", "Demo"] },
-      { id: "item-products", name: "Products Catalog", icon: "Package", href: "/products", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-products", name: "Product Catalog", icon: "Package", href: "/products", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-orders", name: "Orders", icon: "ShoppingCart", href: "/orders", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-billing", name: "Billing", icon: "FileText", href: "/billing", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-invoices", name: "Invoices", icon: "FileText", href: "/invoices", roles: ["Admin", "SalesManager", "Demo"] },
@@ -241,6 +244,7 @@ interface SortableSectionProps {
   collapsed: boolean;
   isEditMode: boolean;
   onRenameSection: (sectionId: string, name: string) => void;
+  onRenameItem: (itemId: string, name: string) => void;
   unreadCount: number;
   inboxUnread: number;
   favourites: string[];
@@ -250,11 +254,13 @@ interface SortableSectionProps {
   onToggleSection: (sectionId: string) => void;
 }
 
-function SortableSection({ section, role, pathname, collapsed, isEditMode, onRenameSection, unreadCount, inboxUnread, favourites, onToggleFavourite, searchQuery, isOpen, onToggleSection }: SortableSectionProps) {
+function SortableSection({ section, role, pathname, collapsed, isEditMode, onRenameSection, onRenameItem, unreadCount, inboxUnread, favourites, onToggleFavourite, searchQuery, isOpen, onToggleSection }: SortableSectionProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id, disabled: !isEditMode || collapsed });
   const { t } = useLanguage();
   const { hasFeature, isOn } = useTenantConfig();
   const itemLabel = (item: SidebarItem) => {
+    if (item.customName) return item.customName;
+    if (item.id === "item-products" && item.name) return t(item.name);
     if (item.id === "item-dashboard") return t("Command Center");
     if (item.id === "item-dashboard-b2c") return hasFeature("command_center") ? t("Dashboard B2C") : t("Dashboard");
     if (item.id === "item-command-center") return hasFeature("dashboard_b2c") ? t("Dashboard B2B") : t("Dashboard");
@@ -272,6 +278,8 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
 
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(section.heading || "");
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [itemEditValue, setItemEditValue] = useState("");
 
   const handleSave = () => {
     onRenameSection(section.id, editValue);
@@ -378,15 +386,65 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
                     <IconComp className={cn("w-4 h-4 shrink-0 transition-colors", isActive ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400 dark:text-zinc-500 group-hover:text-slate-700 dark:group-hover:text-zinc-200")} />
                     <AnimatePresence>
                       {!collapsed && (
-                        <motion.span
-                          initial={{ opacity: 0, x: -6 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -6 }}
-                          transition={{ duration: 0.14 }}
-                          className={cn("flex-1 text-xs truncate", isActive ? "font-bold text-slate-900 dark:text-white" : "font-medium text-slate-700 dark:text-zinc-300")}
-                        >
-                          {itemLabel(item)}
-                        </motion.span>
+                        editingItemId === item.id && isEditMode ? (
+                          <div className="flex items-center gap-1 flex-1 min-w-0" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                            <input
+                              type="text"
+                              value={itemEditValue}
+                              onChange={(e) => setItemEditValue(e.target.value)}
+                              className="bg-transparent text-xs font-semibold text-slate-800 dark:text-zinc-100 outline-none w-full border-b border-indigo-500 py-0.5"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  onRenameItem(item.id, itemEditValue.trim() || item.name);
+                                  setEditingItemId(null);
+                                } else if (e.key === "Escape") {
+                                  setEditingItemId(null);
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onRenameItem(item.id, itemEditValue.trim() || item.name);
+                                setEditingItemId(null);
+                              }}
+                              className="p-1 hover:bg-green-100 dark:hover:bg-green-950/40 rounded text-green-600"
+                            >
+                              <Check className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between flex-1 min-w-0">
+                            <motion.span
+                              initial={{ opacity: 0, x: -6 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: -6 }}
+                              transition={{ duration: 0.14 }}
+                              className={cn("text-xs truncate", isActive ? "font-bold text-slate-900 dark:text-white" : "font-medium text-slate-700 dark:text-zinc-300")}
+                            >
+                              {itemLabel(item)}
+                            </motion.span>
+                            {isEditMode && (
+                              <button
+                                type="button"
+                                title={t("Rename item")}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setEditingItemId(item.id);
+                                  setItemEditValue(itemLabel(item));
+                                }}
+                                className="p-1 text-slate-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        )
                       )}
                     </AnimatePresence>
                     {badge > 0 && !collapsed && (
@@ -625,6 +683,15 @@ function SidebarContent({ role }: SidebarProps) {
     void saveSidebarPrefs(sections, updated);
   };
 
+  const handleRenameItem = (itemId: string, newName: string) => {
+    const updated = sections.map(sec => ({
+      ...sec,
+      items: sec.items.map(it => it.id === itemId ? { ...it, name: newName, customName: newName } : it)
+    }));
+    setSections(updated);
+    void saveSidebarPrefs(updated);
+  };
+
   const handleRenameSection = (sectionId: string, newName: string) => {
     const updated = sections.map(sec => sec.id === sectionId ? { ...sec, heading: newName } : sec);
     setSections(updated);
@@ -676,6 +743,8 @@ function SidebarContent({ role }: SidebarProps) {
     .map(item => item.id === "item-followups" && isOn("followup_board") ? { ...item, href: "/follow-ups" } : item);
 
   const labelFor = (item: SidebarItem) => {
+    if (item.customName) return item.customName;
+    if (item.id === "item-products" && item.name) return t(item.name);
     if (item.id === "item-dashboard") return t("Command Center");
     if (item.id === "item-dashboard-b2c") return hasFeature("command_center") ? t("Dashboard B2C") : t("Dashboard");
     if (item.id === "item-command-center") return hasFeature("dashboard_b2c") ? t("Dashboard B2B") : t("Dashboard");
@@ -927,6 +996,7 @@ function SidebarContent({ role }: SidebarProps) {
                   collapsed={collapsed} 
                   isEditMode={isEditMode}
                   onRenameSection={handleRenameSection}
+                  onRenameItem={handleRenameItem}
                   favourites={favourites}
                   onToggleFavourite={handleToggleFavourite}
                   searchQuery={searchQuery}

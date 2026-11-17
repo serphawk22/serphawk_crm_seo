@@ -122,6 +122,9 @@ export function CompanySettingsPanel({ embedded = false }: { embedded?: boolean 
   const [logoKey, setLogoKey] = useState(0);
   const [checkKey, setCheckKey] = useState(0);
   const [autoMsg, setAutoMsg] = useState<{ text: string; count?: number } | null>(null);
+  const [autofillUrl, setAutofillUrl] = useState("");
+  const [autofillBusy, setAutofillBusy] = useState(false);
+  const [autofillMsg, setAutofillMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const welcome = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("welcome") === "1";
   const isOperator = user?.role === "SuperAdmin";           // the platform operator is not inside any client workspace
@@ -193,6 +196,46 @@ export function CompanySettingsPanel({ embedded = false }: { embedded?: boolean 
       setLogoMsg({ ok: false, text: e.message });
     } finally {
       setLogoBusy(false);
+    }
+  };
+
+  // ── AI Autofill from Website ──
+  const runAutofill = async () => {
+    const targetUrl = autofillUrl.trim() || values.website_url?.trim();
+    if (!targetUrl) {
+      setAutofillMsg({ ok: false, text: "Please enter your website URL first." });
+      return;
+    }
+    setAutofillBusy(true);
+    setAutofillMsg(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/tenant/autofill-from-website`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ website_url: targetUrl, save: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Could not autofill from website");
+      const ext = data.extracted || {};
+      setValues((prev) => ({
+        ...prev,
+        ...Object.fromEntries(Object.entries(ext).map(([k, v]) => [k, String(v ?? "")])),
+      }));
+      if (ext.industry) setIndustry(ext.industry);
+      if (data.logo_saved) {
+        setLogoKey((k) => k + 1);
+        setCheckKey((k) => k + 1);
+        refresh();
+      }
+      setAutofillMsg({
+        ok: true,
+        text: `Extracted company details${data.logo_saved ? " & logo" : ""} from website! Review and save.`,
+      });
+      refresh();
+    } catch (err: any) {
+      setAutofillMsg({ ok: false, text: err.message || "Failed to pull website details" });
+    } finally {
+      setAutofillBusy(false);
     }
   };
 
@@ -303,7 +346,46 @@ export function CompanySettingsPanel({ embedded = false }: { embedded?: boolean 
       )}
 
       <OnboardingChecklist onLoaded={onChecklist} refreshKey={checkKey} />
-      <SalesAccessSettings />
+      {/* AI Autofill from Website */}
+      <section className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-indigo-950/40 dark:to-blue-950/30 border border-blue-200 dark:border-indigo-800 rounded-xl p-5 space-y-3">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-bold text-blue-950 dark:text-blue-100 flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              {t("Auto-fill Company Details & Logo from Website")}
+            </h2>
+            <p className="text-xs text-blue-800/80 dark:text-blue-300/80 mt-1">
+              {t("Enter your company website to automatically extract logo, contact emails, phone numbers, address, and AI profile description.")}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2 pt-1">
+          <input
+            type="url"
+            className={`${inputCls} flex-1`}
+            placeholder="https://yourcompany.com"
+            value={autofillUrl || values.website_url || ""}
+            onChange={(e) => {
+              setAutofillUrl(e.target.value);
+              setValue("website_url", e.target.value);
+            }}
+          />
+          <button
+            type="button"
+            disabled={autofillBusy}
+            onClick={runAutofill}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 shadow-sm disabled:opacity-50 whitespace-nowrap"
+          >
+            {autofillBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {t("Pull from Website")}
+          </button>
+        </div>
+        {autofillMsg && (
+          <p className={`text-xs font-medium ${autofillMsg.ok ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>
+            {autofillMsg.text}
+          </p>
+        )}
+      </section>
 
       <section className={cardCls}>
         <h2 className="text-lg font-bold"><LocalizedText text={"Logo"} /></h2>
@@ -429,6 +511,10 @@ export function CompanySettingsPanel({ embedded = false }: { embedded?: boolean 
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} <LocalizedText text={"Save"} /> </button>
         {msg && <span className={`text-sm rounded px-2 py-1 bg-white/90 dark:bg-gray-900/90 ${msg.ok ? "text-green-700" : "text-red-700"}`}>{t(msg.text)}</span>}
       </div>
+
+      <section className="space-y-3 pt-6 border-t border-gray-200 dark:border-gray-800">
+        <SalesAccessSettings />
+      </section>
 
       <section id="mailbox" className="space-y-3 pt-4">
         <h2 className="text-lg font-bold flex items-center gap-2"><Mail className="w-5 h-5 text-blue-600" /> {t("Company mailbox")}</h2>

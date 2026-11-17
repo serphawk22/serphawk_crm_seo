@@ -12,7 +12,7 @@ from modules.api_tracker import track_api_call, current_client_id, current_sales
 
 # Force the old API key because it has Places API (New) enabled.
 # The user's environment variable has a new key that only has Maps JS API enabled.
-GOOGLE_MAPS_API_KEY = "AIzaSyAJbAEbE5egi9y-adJ5G804u_vL64We_nc"
+GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY") or "AIzaSyAJbAEbE5egi9y-adJ5G804u_vL64We_nc"
 PLACES_NEW_BASE = "https://places.googleapis.com/v1/places"
 
 SERVICE_KEYWORDS = {
@@ -114,20 +114,65 @@ async def find_place(query, location_hint=None):
             return None
             
         p = places[0]
-        return {
-            "place_id": p.get("id"),
-            "name": p.get("displayName", {}).get("text"),
-            "address": p.get("formattedAddress"),
-            "lat": p.get("location", {}).get("latitude"),
-            "lng": p.get("location", {}).get("longitude"),
-            "website": p.get("websiteUri"),
-            "phone": p.get("nationalPhoneNumber"),
-            "rating": p.get("rating"),
-            "reviews": p.get("userRatingCount"),
-            "types": p.get("types", []),
-            "business_status": p.get("businessStatus"),
-            "maps_url": f"https://www.google.com/maps/place/?q=place_id:{p.get('id')}"
+        return format_place(p)
+
+def format_place(p):
+    if not p:
+        return None
+    return {
+        "place_id": p.get("id"),
+        "name": p.get("displayName", {}).get("text"),
+        "address": p.get("formattedAddress"),
+        "lat": p.get("location", {}).get("latitude"),
+        "lng": p.get("location", {}).get("longitude"),
+        "website": p.get("websiteUri"),
+        "phone": p.get("nationalPhoneNumber"),
+        "rating": p.get("rating"),
+        "reviews": p.get("userRatingCount"),
+        "types": p.get("types", []),
+        "business_status": p.get("businessStatus"),
+        "maps_url": f"https://www.google.com/maps/place/?q=place_id:{p.get('id')}"
+    }
+
+async def find_places(query, location_hint=None):
+    search_query = f"{query} {location_hint}" if location_hint else query
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        headers = {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+            "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.websiteUri,places.nationalPhoneNumber,places.rating,places.userRatingCount,places.types,places.businessStatus"
         }
+        data = {"textQuery": search_query}
+        start_time = time.time()
+        status_code = 200
+        success = True
+        try:
+            resp = await client.post(f"{PLACES_NEW_BASE}:searchText", headers=headers, json=data)
+            resp.raise_for_status()
+            data = resp.json()
+            status_code = resp.status_code
+        except Exception as e:
+            success = False
+            status_code = getattr(e, 'response', None)
+            status_code = status_code.status_code if status_code else 500
+            raise e
+        finally:
+            end_time = time.time()
+            track_api_call(
+                endpoint=current_endpoint.get(),
+                model="places-search-text",
+                input_tokens=0,
+                output_tokens=0,
+                response_time_ms=int((end_time - start_time) * 1000),
+                salesperson_id=current_salesperson_id.get(),
+                client_id=current_client_id.get(),
+                status_code=status_code,
+                success=success,
+                content_type="external_api"
+            )
+
+        places = data.get("places", [])
+        return [format_place(p) for p in places if p]
 
 async def get_place_details(place_id):
     # Backward compatibility: we don't strictly need this if we just use find_place, 
@@ -253,10 +298,14 @@ async def find_nearby_competitors(lat, lng, radius_m, keyword, target_name=""):
         }
         
         overlap = calculate_service_overlap(keyword, types, name)
+        from modules.location_helper import extract_city_country_from_address
+        comp_city, comp_country = extract_city_country_from_address(r.get("formattedAddress"))
         competitors.append({
             "place_id": r.get("id"),
             "name": name,
             "address": r.get("formattedAddress"),
+            "city": comp_city or "",
+            "country": comp_country or "",
             "lat": r_lat,
             "lng": r_lng,
             "rating": r.get("rating"),

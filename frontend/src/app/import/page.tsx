@@ -10,7 +10,8 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useSearchParams } from "next/navigation";
 
 type ImportTarget = "leads" | "clients";
-type ImportResult = { created: number; skipped: number; errors: string[] };
+type FailureItem = { row: number; reason: string; data: Record<string, any> };
+type ImportResult = { created: number; merged?: number; skipped: number; errors: string[]; failures?: FailureItem[] };
 
 const SAMPLE_CSV = `company_name,email,phone,website,industry,source,status,address,notes
 Acme Corp,contact@acme.com,+1-555-0001,https://acme.com,Technology,LinkedIn,New,"123 Main St, San Francisco CA",Great prospect
@@ -29,6 +30,7 @@ export default function ImportPage() {
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [mode, setMode] = useState<"file" | "google">("file");
+  const [duplicateMode, setDuplicateMode] = useState<"merge" | "skip">("merge");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const parseCSV = async (text: string): Promise<{ headers: string[]; rows: string[][] }> => {
@@ -97,7 +99,7 @@ export default function ImportPage() {
       const formData = new FormData();
       formData.append("file", blob, "import.csv");
 
-      const res = await fetch(`${API_BASE_URL}/import/${target}/csv`, {
+      const res = await fetch(`${API_BASE_URL}/import/${target}/csv?duplicate_mode=${duplicateMode}`, {
         method: "POST", body: formData
       });
 
@@ -119,6 +121,26 @@ export default function ImportPage() {
     const a = document.createElement("a");
     a.href = url;
     a.download = "sample_leads_import.csv";
+    a.click();
+  };
+
+  const handleDownloadFailures = () => {
+    if (!result?.failures || result.failures.length === 0) return;
+    const allKeys = Array.from(
+      new Set(result.failures.flatMap(f => Object.keys(f.data || {})))
+    );
+    const headers = ["Row", "Failure_Reason", ...allKeys];
+    const rows = result.failures.map(f => [
+      String(f.row),
+      `"${String(f.reason || '').replaceAll('"', '""')}"`,
+      ...allKeys.map(k => `"${String(f.data?.[k] || '').replaceAll('"', '""')}"`)
+    ]);
+    const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `import_${target}_failures.csv`;
     a.click();
   };
 
@@ -277,6 +299,30 @@ export default function ImportPage() {
               </div>
             </div>
 
+            {/* Duplicate Handling Selector */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl mb-4">
+              <div>
+                <p className="text-sm font-bold text-slate-900 dark:text-white">Duplicate Records Handling</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Choose what to do when a lead/client with same email, phone or name already exists.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDuplicateMode("merge")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${duplicateMode === "merge" ? "bg-indigo-600 text-white shadow-sm" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700"}`}
+                >
+                  Merge with existing (Recommended)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDuplicateMode("skip")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${duplicateMode === "skip" ? "bg-indigo-600 text-white shadow-sm" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700"}`}
+                >
+                  Skip duplicates
+                </button>
+              </div>
+            </div>
+
             {/* Data cleaning note */}
             <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl mb-4 text-xs text-blue-700 dark:text-blue-400 font-medium">
               <CheckCircle className="w-3.5 h-3.5 shrink-0" />
@@ -326,28 +372,70 @@ export default function ImportPage() {
             <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">
               {result.created > 0 ? t("import.import_successful") : t("import.import_complete")}
             </h2>
-            <div className="flex items-center gap-6 mt-4 mb-6">
+            <div className="flex flex-wrap justify-center items-center gap-8 mt-4 mb-6">
               <div className="text-center">
                 <p className="text-3xl font-black text-emerald-600">{result.created}</p>
-                <p className="text-sm text-slate-500">{t("import.created").replace("{target}", target)}</p>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("import.created").replace("{target}", target)}</p>
               </div>
+              {(result.merged ?? 0) > 0 && (
+                <div className="text-center">
+                  <p className="text-3xl font-black text-blue-600">{result.merged}</p>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Merged Duplicates</p>
+                </div>
+              )}
               <div className="text-center">
                 <p className="text-3xl font-black text-amber-600">{result.skipped}</p>
-                <p className="text-sm text-slate-500">{t("import.rows_skipped")}</p>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("import.rows_skipped")}</p>
               </div>
-              {result.errors.length > 0 && (
+              {(result.failures?.length || result.errors.length) > 0 && (
                 <div className="text-center">
-                  <p className="text-3xl font-black text-red-600">{result.errors.length}</p>
-                  <p className="text-sm text-slate-500">{t("import.errors")}</p>
+                  <p className="text-3xl font-black text-red-600">{result.failures?.length || result.errors.length}</p>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Failures / Errors</p>
                 </div>
               )}
             </div>
-            {result.errors.length > 0 && (
-              <div className="w-full max-w-lg p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl mb-6 text-left">
-                <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-2">{t("import.errors_label")}</p>
-                {result.errors.slice(0, 5).map((e, i) => (
-                  <p key={i} className="text-xs text-red-600 dark:text-red-400">{e}</p>
-                ))}
+
+            {/* Failure List Section & CSV Download */}
+            {result.failures && result.failures.length > 0 && (
+              <div className="w-full max-w-2xl bg-white dark:bg-[#111] border border-red-200 dark:border-red-900/60 rounded-2xl p-5 mb-6 text-left space-y-3 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-red-700 dark:text-red-400 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-red-500" />
+                      Failed Rows ({result.failures.length})
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Review reasons for failed rows or download them to correct and re-import.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDownloadFailures}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-100 hover:bg-red-200 dark:bg-red-950/60 dark:hover:bg-red-900/60 text-red-700 dark:text-red-300 text-xs font-bold transition-all"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download Failures CSV
+                  </button>
+                </div>
+
+                <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0 font-bold text-slate-500">
+                      <tr>
+                        <th className="p-2 border-b border-slate-200 dark:border-slate-800 w-16">Row #</th>
+                        <th className="p-2 border-b border-slate-200 dark:border-slate-800">Reason</th>
+                        <th className="p-2 border-b border-slate-200 dark:border-slate-800">Company</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {result.failures.map((f, i) => (
+                        <tr key={i} className="hover:bg-red-50/50 dark:hover:bg-red-950/20">
+                          <td className="p-2 font-mono text-slate-500">{f.row}</td>
+                          <td className="p-2 text-red-600 dark:text-red-400 font-medium">{f.reason}</td>
+                          <td className="p-2 text-slate-700 dark:text-slate-300">{f.data?.name || f.data?.company_name || f.data?.company || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
             <div className="flex gap-3">

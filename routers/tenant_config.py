@@ -172,6 +172,43 @@ def update_my_settings(body: SettingsUpdate, session: Session = Depends(get_sess
         raise HTTPException(status_code=422, detail=str(e))
 
 
+class WebsiteAutofillRequest(BaseModel):
+    website_url: str
+    save: bool = False
+
+
+@router.post("/tenant/autofill-from-website")
+async def autofill_my_brand(body: WebsiteAutofillRequest, session: Session = Depends(get_session)):
+    user = _user(session)
+    if _role(user) not in _ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="Only an Admin can use autofill")
+    tid = _my_tenant(user)
+    if tid is None:
+        raise HTTPException(status_code=400, detail="Pick a tenant first (X-Tenant-ID)")
+    from modules.brand_autofill import autofill_brand_from_website
+    res = await autofill_brand_from_website(
+        website_url=body.website_url,
+        session=session,
+        tenant_id=tid,
+        save_to_tenant=body.save
+    )
+    return res
+
+
+@router.post("/superadmin/tenants/{tenant_id}/autofill-from-website")
+async def autofill_client_brand(tenant_id: int, body: WebsiteAutofillRequest, session: Session = Depends(get_session)):
+    _super(session)
+    _tenant_or_404(session, tenant_id)
+    from modules.brand_autofill import autofill_brand_from_website
+    res = await autofill_brand_from_website(
+        website_url=body.website_url,
+        session=session,
+        tenant_id=tenant_id,
+        save_to_tenant=body.save
+    )
+    return res
+
+
 # ── SuperAdmin ───────────────────────────────────────────────────────────────
 @router.get("/superadmin/features/catalog")
 def features_catalog(session: Session = Depends(get_session)):

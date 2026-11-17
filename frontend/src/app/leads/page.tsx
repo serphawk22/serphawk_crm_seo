@@ -4,7 +4,7 @@ import LocalizedText from "@/components/LocalizedText";
 import { API_BASE_URL } from "@/config";
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, Filter, MoreVertical, Building2, Globe, Mail, Phone, Upload, Download, X, Loader2, ChevronDown, ArrowUpRight, CheckCircle2, Clock, Zap, Edit2, Trash2, Tag, CalendarClock, UserCheck, Calendar } from "lucide-react";
+import { Search, Plus, Filter, MoreVertical, Building2, Globe, Mail, Phone, MapPin, Sparkles, Upload, Download, X, Loader2, ChevronDown, ArrowUpRight, CheckCircle2, Clock, Zap, Edit2, Trash2, Tag, CalendarClock, UserCheck, Calendar } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ViewSwitcher, ViewType } from "@/components/ViewSwitcher";
@@ -14,6 +14,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import SalesAssignModal from "@/components/SalesAssignModal";
 import AddFollowUpModal, { FollowUpTarget } from "@/components/AddFollowUpModal";
 import InstituteLeadScheduleModal from "@/components/InstituteLeadScheduleModal";
+import ContactSynopsisModal from "@/components/ContactSynopsisModal";
 import { leadStages, scheduleStage, type ScheduleStage } from "@/lib/leadWorkflow";
 
 interface Lead {
@@ -31,6 +32,14 @@ interface Lead {
   email?: string | null;
   phone?: string | null;
   address?: string | null;
+  city?: string | null;
+  country?: string | null;
+  deal_value?: number | null;
+  linkedin_url?: string | null;
+  twitter_url?: string | null;
+  instagram_url?: string | null;
+  facebook_url?: string | null;
+  ai_status?: "done" | "pending" | "not_started";
   source?: string | null;
   status: string;
   is_converted: boolean;
@@ -116,7 +125,10 @@ export default function LeadsPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>('list');
   const [activities, setActivities] = useState<ActivityLogEntry[]>([]);
-  const [sortOption, setSortOption] = useState<"recent" | "name">("recent");
+  const [sortOption, setSortOption] = useState<"recent" | "name" | "place" | "country">("recent");
+  const [contactSynopsisTarget, setContactSynopsisTarget] = useState<{ id: number; name: string } | null>(null);
+  const [isAnalyzingAll, setIsAnalyzingAll] = useState(false);
+  const [analyzeProgress, setAnalyzeProgress] = useState<{ is_running: boolean; total: number; completed: number; pending: number; current_company: string } | null>(null);
   const [noteLead, setNoteLead] = useState<Lead | null>(null);
   const [noteText, setNoteText] = useState("");
   const [noteSaving, setNoteSaving] = useState(false);
@@ -154,6 +166,52 @@ export default function LeadsPage() {
       fetchLeads();
     }
   };
+
+  const handleAutoAnalyzeAll = async () => {
+    setIsAnalyzingAll(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/leads/auto-analyze-all`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message || "Background 360° AI analysis started!");
+        fetchLeads();
+      } else {
+        alert(data.detail || "Failed to start auto-analysis");
+      }
+    } catch (e) {
+      alert("Error starting auto-analyze");
+    } finally {
+      setIsAnalyzingAll(false);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    const checkStatus = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/leads/auto-analyze-status`);
+        if (res.ok) {
+          const d = await res.json();
+          if (active) {
+            if (d.is_running) {
+              setAnalyzeProgress(d);
+            } else {
+              if (analyzeProgress?.is_running) {
+                fetchLeads();
+              }
+              setAnalyzeProgress(null);
+            }
+          }
+        }
+      } catch {}
+    };
+    checkStatus();
+    const interval = setInterval(checkStatus, 4000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const handleAutoAssignLeads = async () => {
     setAutoAssigning(true);
@@ -240,8 +298,12 @@ export default function LeadsPage() {
   };
 
   const handleStatusChange = async (leadId: number, newStatus: string) => {
-    const scheduledStage = scheduleStage(newStatus, institute);
     const lead = leads.find(l => l.id === leadId);
+    if (newStatus === "Contacted" && lead) {
+      setContactSynopsisTarget({ id: leadId, name: lead.company_name });
+      return;
+    }
+    const scheduledStage = scheduleStage(newStatus, institute);
     if (scheduledStage && lead) {
       setSchedule({ lead, stage: scheduledStage });
       return;
@@ -269,6 +331,9 @@ export default function LeadsPage() {
       const matchSearch = !q || (l.company_name || "").toLowerCase().includes(q)
         || (l.email || "").toLowerCase().includes(q)
         || (l.industry || "").toLowerCase().includes(q)
+        || (l.city || "").toLowerCase().includes(q)
+        || (l.country || "").toLowerCase().includes(q)
+        || (l.address || "").toLowerCase().includes(q)
         || (l.source || "").toLowerCase().includes(q);
       const matchStatus = statusFilter === "All"
         || (statusFilter === "Converted" ? l.is_converted : l.status === statusFilter);
@@ -279,6 +344,10 @@ export default function LeadsPage() {
       result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     } else if (sortOption === "name") {
       result.sort((a, b) => (a.company_name || "").localeCompare(b.company_name || ""));
+    } else if (sortOption === "country") {
+      result.sort((a, b) => (a.country || "").localeCompare(b.country || ""));
+    } else if (sortOption === "place") {
+      result.sort((a, b) => (a.city || a.address || "").localeCompare(b.city || b.address || ""));
     }
 
     return result;
@@ -472,6 +541,29 @@ export default function LeadsPage() {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-white/5 transition-colors shadow-xs"
             >
               <Download className="w-3.5 h-3.5" /> <LocalizedText text={"Export CSV"} /></button>
+            <button
+              type="button"
+              onClick={handleAutoAnalyzeAll}
+              disabled={isAnalyzingAll || Boolean(analyzeProgress && analyzeProgress.is_running)}
+              title="Trigger comprehensive 360° AI business profiles and X × Y catalog fit matrices for all leads in the background"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-xs transition-all active:scale-95 disabled:opacity-50"
+            >
+              {isAnalyzingAll || (analyzeProgress && analyzeProgress.is_running) ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-200" />
+                  <span>
+                    {analyzeProgress && analyzeProgress.is_running
+                      ? `Analyzing 360° (${analyzeProgress.completed}/${analyzeProgress.total})...`
+                      : "Starting 360°..."}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Auto-Analyze All Leads (360°)</span>
+                </>
+              )}
+            </button>
             {isAdmin && (
               <button
                 onClick={handleAutoAssignLeads}
@@ -522,6 +614,27 @@ export default function LeadsPage() {
         <DemoLimits type="clients" />
       </div>
 
+      {/* Background 360° Auto-Analyze Progress Banner */}
+      {analyzeProgress && analyzeProgress.is_running && (
+        <div className="mx-4 sm:mx-6 mt-2 flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 text-purple-800 dark:text-purple-300 text-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Loader2 className="w-4 h-4 animate-spin text-purple-600 shrink-0" />
+            <div className="min-w-0">
+              <span className="font-bold">Background 360° AI Analysis in Progress:</span>{" "}
+              <span>Analyzed {analyzeProgress.completed} of {analyzeProgress.total} leads</span>
+              {analyzeProgress.current_company && (
+                <span className="text-purple-600 dark:text-purple-400 font-medium ml-1.5 truncate">
+                  (Currently investigating: {analyzeProgress.current_company})
+                </span>
+              )}
+            </div>
+          </div>
+          <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/60 px-2 py-0.5 rounded-md shrink-0">
+            Runs uninterrupted in background
+          </span>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between px-3 sm:px-6 py-2.5 bg-white dark:bg-black border-b border-slate-200 dark:border-slate-800 flex-wrap gap-2.5">
         <div className="relative w-full sm:w-72">
@@ -546,11 +659,13 @@ export default function LeadsPage() {
 
           <select
             value={sortOption}
-            onChange={e => setSortOption(e.target.value as "recent" | "name")}
+            onChange={e => setSortOption(e.target.value as "recent" | "name" | "place" | "country")}
             className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-white/5 focus:outline-none cursor-pointer"
           >
-            <option value="recent">{t("leads.sort_recent")}</option>
-            <option value="name">{t("leads.sort_name")}</option>
+            <option value="recent">{t("leads.sort_recent") || "Recent"}</option>
+            <option value="name">{t("leads.sort_name") || "Name (A-Z)"}</option>
+            <option value="place">Place / City (A-Z)</option>
+            <option value="country">Country (A-Z)</option>
           </select>
 
           <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
@@ -714,13 +829,20 @@ export default function LeadsPage() {
             </table>
           </div>
         ) : (
-          <div className="w-full p-3 sm:p-4 space-y-2">
+          <div className="w-full p-3 sm:p-4 space-y-2 overflow-x-auto scrollbar-thin">
+            <div className="min-w-[1020px] space-y-2">
             {/* Subtle column headers for desktop */}
-            <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-1 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
-              <div className="col-span-3"><LocalizedText text={institute ? "Student & course" : "Company"} /></div>
+            <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-1 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider items-center min-w-[1020px]">
+              <div className="col-span-3 cursor-pointer hover:text-blue-500" onClick={() => setSortOption(s => s === 'name' ? 'recent' : 'name')}>
+                <LocalizedText text={institute ? "Student & course" : "Company"} /> {sortOption === 'name' ? '↑' : ''}
+              </div>
               <div className="col-span-2"><LocalizedText text={"Contact"} /></div>
-              <div className="col-span-2"><LocalizedText text={"Salesperson"} /></div>
-              <div className="col-span-2"><LocalizedText text={"Source"} /></div>
+              <div className="col-span-2 flex items-center gap-1 cursor-pointer hover:text-blue-500" onClick={() => setSortOption(s => s === 'place' ? 'country' : 'place')}>
+                <MapPin className="w-3 h-3 text-rose-500 shrink-0" />
+                <span>Place & Country</span> {sortOption === 'place' ? '↑ City' : sortOption === 'country' ? '↑ Ctr' : ''}
+              </div>
+              <div className="col-span-1"><LocalizedText text={"Salesperson"} /></div>
+              <div className="col-span-1"><LocalizedText text={"Source"} /></div>
               <div className="col-span-3 text-right"><LocalizedText text={institute ? "Stage & Actions" : "Status & Actions"} /></div>
             </div>
 
@@ -765,6 +887,15 @@ export default function LeadsPage() {
                               {lead.website ? "• " : ""}{institute ? (lead.course_interest_title || courses.find(c => c.id === lead.course_interest_id)?.title || lead.industry) : lead.industry}
                             </span>
                           )}
+                          {lead.ai_status === 'done' ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[9.5px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800 shrink-0" title="360° AI Dossier & Fit Matrix Ready">
+                              <Sparkles className="w-2.5 h-2.5 text-purple-600" /> 360° Ready
+                            </span>
+                          ) : lead.ai_status === 'pending' ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[9.5px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 shrink-0 animate-pulse">
+                              <Loader2 className="w-2.5 h-2.5 animate-spin" /> Analyzing 360°
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -788,13 +919,30 @@ export default function LeadsPage() {
                       )}
                     </div>
 
+                    {/* Place & Country */}
+                    <div className="col-span-1 lg:col-span-2 min-w-0">
+                      {lead.city || lead.country || lead.address ? (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-xs font-semibold text-slate-700 dark:text-zinc-200 truncate flex items-center gap-1" title={lead.city || lead.address || ''}>
+                            <MapPin className="w-3 h-3 text-rose-500 shrink-0" />
+                            <span className="truncate">{lead.city || (lead.address ? lead.address.split(',')[0] : '—')}</span>
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider truncate pl-4">
+                            {lead.country || (lead.address && lead.address.includes(',') ? lead.address.split(',').pop()?.trim() : '—')}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 italic pl-4">—</span>
+                      )}
+                    </div>
+
                     {/* Salesperson */}
-                    <div className="col-span-1 lg:col-span-2 min-w-0" onClick={e => e.stopPropagation()}>
+                    <div className="col-span-1 lg:col-span-1 min-w-0" onClick={e => e.stopPropagation()}>
                       {isAdmin ? (
                         <select
                           value={lead.owner_id || ""}
                           onChange={e => handleAssignSalesperson(lead.id, e.target.value ? Number(e.target.value) : null)}
-                          className="text-xs font-medium bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer max-w-[150px] truncate shadow-xs"
+                          className="text-xs font-medium bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer w-full max-w-[115px] truncate shadow-xs"
                           title="Assign Salesperson"
                         >
                           <option value=""><LocalizedText text={"Unassigned"} /></option>
@@ -809,7 +957,7 @@ export default function LeadsPage() {
                           <div className="w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 flex items-center justify-center text-[10px] font-bold shrink-0">
                             {(lead.salesperson_name || lead.owner_name || 'U').charAt(0).toUpperCase()}
                           </div>
-                          <span className="text-xs font-semibold text-slate-700 dark:text-zinc-300 truncate max-w-[130px]">
+                          <span className="text-xs font-semibold text-slate-700 dark:text-zinc-300 truncate max-w-[100px]">
                             {lead.salesperson_name || lead.owner_name || 'Unassigned'}
                           </span>
                         </div>
@@ -817,32 +965,10 @@ export default function LeadsPage() {
                     </div>
 
                     {/* Source */}
-                    <div className="col-span-1 lg:col-span-2 min-w-0">
-                      {lead.source?.toLowerCase().includes("website") ? (
-                        <div className="flex flex-col gap-0.5">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40 truncate max-w-[150px]">
-                            <Globe className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
-                            <span className="truncate">
-                              {(() => {
-                                try {
-                                  return new URL(String(lead.ai_analysis_results?.website_form?.page_url || lead.website || '')).hostname.replace(/^www\./, '');
-                                } catch {
-                                  return 'Website';
-                                }
-                              })()}
-                            </span>
-                          </span>
-                          {lead.ai_analysis_results?.website_form?.form_name && (
-                            <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-semibold truncate max-w-[140px]" title={lead.ai_analysis_results.website_form.form_name}>
-                              {lead.ai_analysis_results.website_form.form_name}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-200/60 dark:border-white/5 truncate max-w-[130px]">
-                          {lead.source || "Unknown"}
-                        </span>
-                      )}
+                    <div className="col-span-1 lg:col-span-1 min-w-0">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-200/60 dark:border-white/5 truncate max-w-[110px]" title={lead.source || "Unknown"}>
+                        {lead.source || "Unknown"}
+                      </span>
                     </div>
 
                     {/* Status & Actions */}
@@ -923,6 +1049,7 @@ export default function LeadsPage() {
                 </motion.div>
               ))}
             </AnimatePresence>
+            </div>
           </div>
         )}
       </div>
@@ -1060,7 +1187,20 @@ export default function LeadsPage() {
 
       {/* Add Note Modal */}
       <AnimatePresence>
-        {noteLead && (
+        {contactSynopsisTarget && (
+        <ContactSynopsisModal
+          leadId={contactSynopsisTarget.id}
+          companyName={contactSynopsisTarget.name}
+          isOpen={true}
+          onClose={() => setContactSynopsisTarget(null)}
+          onSuccess={() => {
+            fetchLeads();
+            setContactSynopsisTarget(null);
+          }}
+        />
+      )}
+
+      {noteLead && (
           <motion.div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <motion.div

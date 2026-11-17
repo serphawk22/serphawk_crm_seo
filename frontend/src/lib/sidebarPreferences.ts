@@ -29,7 +29,11 @@ export function mergeSidebarSections<T extends { id: string; heading: string | n
     const ordered: T["items"] = [];
     if (Array.isArray(value.items)) for (const item of value.items) {
       const canonical = item && items.get(item.id);
-      if (canonical) { ordered.push(canonical); items.delete(canonical.id); }
+      if (canonical) {
+        const customName = typeof (item as any).name === "string" && (item as any).name.trim() ? (item as any).name.trim().slice(0, 80) : ((item as any).customName || null);
+        ordered.push(customName ? { ...canonical, name: customName, customName } : canonical);
+        items.delete(canonical.id);
+      }
     }
     ordered.push(...items.values());
     result.push({ ...section, heading: section.heading !== null && typeof value.heading === "string" && value.heading.trim() ? value.heading.trim().slice(0, 80) : section.heading, items: ordered });

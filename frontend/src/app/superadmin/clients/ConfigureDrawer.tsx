@@ -2,11 +2,12 @@
 import { useLanguage } from "@/context/LanguageContext";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Crown, ExternalLink, Image as ImageIcon, Loader2, MonitorPlay, Palette, Plus, Puzzle, RotateCcw, Save, Search, Upload } from "lucide-react";
+import { Check, Crown, DollarSign, ExternalLink, Image as ImageIcon, Loader2, MonitorPlay, Palette, Plus, Puzzle, RotateCcw, Save, Search, Sparkles, Upload } from "lucide-react";
 import Drawer from "@/components/Drawer";
 import { dashboardParent } from "@/lib/dashboardEntitlements";
 import SalesAccessSettings from "@/components/SalesAccessSettings";
 import CompanyDomainSettings from "@/components/CompanyDomainSettings";
+import TenantApiUsageTab from "./TenantApiUsageTab";
 import {
   Badge, CatalogFeature, ClientAvatar, CredentialsCard, PRESET_ORDER, Preset, RegionOptions, TenantOverview, call, displayName,
   countModules, ghostBtn, inputCls, labelCls, primaryBtn,
@@ -32,7 +33,7 @@ interface Config {
   settings: Record<string, any>;
 }
 
-type Tab = "modules" | "branding" | "plan";
+type Tab = "modules" | "branding" | "plan" | "api_usage";
 
 const TEXT_FIELDS: { key: string; label: string; placeholder?: string }[] = [
   { key: "brand_name", label: "Brand name", placeholder: "Shown in the menu, top bar and on documents" },
@@ -67,6 +68,7 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
   const [query, setQuery] = useState("");
   const [demos, setDemos] = useState<any[]>([]);
   const [demoCreated, setDemoCreated] = useState<any>(null);
+  const [autofillUrl, setAutofillUrl] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const id = tenant?.id ?? null;
@@ -167,6 +169,40 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
     onChanged();
   });
 
+  const setLanguageInstant = (lang: "en" | "es") => run("language", async () => {
+    const c: Config = await call(`/superadmin/tenants/${id}/settings`, {
+      method: "PUT",
+      body: JSON.stringify({ settings: { locale: lang } }),
+    });
+    setCfg(c);
+    setDraftSettings((s) => ({ ...s, locale: lang }));
+    success("Workspace default language updated", `${name} now defaults to ${lang === "es" ? "Spanish (Español - es)" : "English (en)"}.`);
+    onChanged();
+  });
+
+  const autofillWebsite = (urlToScrape?: string) => run("autofill", async () => {
+    const target = urlToScrape || autofillUrl || draftSettings.website_url;
+    if (!target) {
+      error("Website required", "Please enter a website URL to extract from.");
+      return;
+    }
+    const res = await call(`/superadmin/tenants/${id}/autofill-from-website`, {
+      method: "POST",
+      body: JSON.stringify({ website_url: target, save: true }),
+    });
+    const ext = res.extracted || {};
+    setDraftSettings((s) => ({
+      ...s,
+      ...Object.fromEntries(Object.entries(ext).map(([k, v]) => [k, String(v ?? "")])),
+    }));
+    if (res.logo_saved) {
+      onLogoChanged(id!);
+    }
+    await load(id!);
+    success("Autofill complete", `Extracted brand details${res.logo_saved ? " and logo" : ""} from ${target}.`);
+    onChanged();
+  });
+
   const uploadLogo = (file: File) => run("logo", async () => {
     const form = new FormData();
     form.append("file", file);
@@ -197,7 +233,7 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
 
   const tabs = (
     <div className="-mb-px flex gap-1">
-      {([["modules", "Modules", Puzzle], ["branding", "Branding & defaults", Palette], ["plan", "Plan & demo", Crown]] as const).map(([key, label, Icon]) => (
+      {([["modules", "Modules", Puzzle], ["branding", "Branding & defaults", Palette], ["plan", "Plan & demo", Crown], ["api_usage", "API Costs & Calls", DollarSign]] as const).map(([key, label, Icon]) => (
         <button key={key} onClick={() => setTab(key)}
           className={`inline-flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-semibold transition ${tab === key ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200"}`}>
           <Icon className="w-4 h-4" /> {label}
@@ -297,6 +333,40 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">Workspace Default Language</p>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">Decide whether this client defaults to English or Spanish.</p>
+              </div>
+              <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900">
+                {(
+                  [
+                    { code: "en", label: "🇺🇸 English (en)" },
+                    { code: "es", label: "🇪🇸 Español (es)" },
+                  ] as const
+                ).map((opt) => {
+                  const active = (cfg.settings?.locale || "en") === opt.code;
+                  return (
+                    <button
+                      key={opt.code}
+                      type="button"
+                      disabled={busy === "language"}
+                      onClick={() => setLanguageInstant(opt.code)}
+                      className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
+                        active
+                          ? "bg-indigo-600 text-white shadow-sm"
+                          : "text-slate-600 hover:text-slate-900 dark:text-zinc-300 dark:hover:text-white"
+                      } disabled:opacity-50`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
             <p className="text-sm font-semibold text-slate-900 dark:text-white">{t("Start from a ready-made setup")}</p>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">{t("Replaces the choices below with the modules of a product setup. You can still adjust them afterwards.")}</p>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -310,7 +380,7 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
           </div>
 
           {id && <CompanyDomainSettings tenantId={id} />}
-          {id && <SalesAccessSettings tenantId={id} />}
+
           <div className="relative">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input className={`${inputCls} pl-10`} placeholder={t("Search modules...")} value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -343,9 +413,44 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
               </section>
             );
           })}
+          {id && (
+            <div className="pt-4 border-t border-slate-200 dark:border-zinc-800">
+              <SalesAccessSettings tenantId={id} />
+            </div>
+          )}
         </div>
       ) : tab === "branding" ? (
         <div className="space-y-6">
+          <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50/60 to-blue-50/60 p-4 dark:border-indigo-900/60 dark:bg-indigo-950/20 space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-indigo-600" />
+              <p className="font-semibold text-slate-900 dark:text-white">{t("Auto-fill from Client Website")}</p>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-zinc-400">
+              {t("Scrapes the client's website to automatically retrieve their logo, brand tagline, support email, phone numbers, and AI description.")}
+            </p>
+            <div className="flex gap-2">
+              <input
+                className={`${inputCls} flex-1`}
+                placeholder="https://client-company.com"
+                value={autofillUrl || draftSettings.website_url || ""}
+                onChange={(e) => {
+                  setAutofillUrl(e.target.value);
+                  set("website_url", e.target.value);
+                }}
+              />
+              <button
+                type="button"
+                className={primaryBtn}
+                disabled={busy === "autofill"}
+                onClick={() => autofillWebsite()}
+              >
+                {busy === "autofill" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                {t("Pull from Website")}
+              </button>
+            </div>
+          </div>
+
           <div className="flex items-center gap-4 rounded-2xl border border-slate-200 p-4 dark:border-zinc-800">
             <ClientAvatar tenantId={tenant!.id} name={name} hasLogo={!!cfg.settings.brand_logo_url || tenant!.has_logo} version={logoVersion} size={72} />
             <div className="min-w-0 flex-1">
@@ -401,8 +506,30 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
               </div>
             </div>
             <div>
-              <label className={labelCls}>{t("Language")}</label>
-              <select className={inputCls} value={draftSettings.locale ?? ""} onChange={(e) => set("locale", e.target.value)}>
+              <label className={labelCls}>{t("Default Language")}</label>
+              <div className="flex gap-2">
+                {[
+                  { code: "en", label: "🇺🇸 English (en)" },
+                  { code: "es", label: "🇪🇸 Español (es)" },
+                ].map((opt) => {
+                  const active = (draftSettings.locale || "en") === opt.code;
+                  return (
+                    <button
+                      key={opt.code}
+                      type="button"
+                      onClick={() => set("locale", opt.code)}
+                      className={`flex-1 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                        active
+                          ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
+                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <select className="hidden" value={draftSettings.locale ?? ""} onChange={(e) => set("locale", e.target.value)}>
                 <option value="">{t("Default (English)")}</option><option value="en">{t("English")}</option><option value="es">{t("Spanish")}</option>
               </select>
             </div>
@@ -423,7 +550,7 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
           </div>
           <p className="flex items-start gap-2 text-xs text-slate-500 dark:text-zinc-400"><ImageIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {t("Lead statuses, invoice wording and the company mailbox are managed by the client&apos;s own admin on their Branding &amp; Settings page.")}</p>
         </div>
-      ) : (
+      ) : tab === "plan" ? (
         <div className="space-y-6">
           <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 p-5 dark:border-zinc-800">
             <div>
@@ -468,7 +595,9 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
             </a>
           )}
         </div>
-      )}
+      ) : tab === "api_usage" && id ? (
+        <TenantApiUsageTab tenantId={id} />
+      ) : null}
     </Drawer>
   );
 }

@@ -28,6 +28,11 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
   const [error, setError] = useState<string | null>(null);
   
   const [foundPlace, setFoundPlace] = useState<any>(null);
+  const [availablePlaces, setAvailablePlaces] = useState<any[]>([]);
+  const [targetNiche, setTargetNiche] = useState<string>("");
+  const [suggestedNiches, setSuggestedNiches] = useState<string[]>([]);
+  const [radiusKm, setRadiusKm] = useState<number>(10);
+  const [isScanningCustom, setIsScanningCustom] = useState(false);
   const [radarResult, setRadarResult] = useState<any>(null);
   const [addedPlaceIds, setAddedPlaceIds] = useState<Set<string>>(new Set());
   const [addSuccess, setAddSuccess] = useState<string | null>(null);
@@ -76,25 +81,33 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
           throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
         }
         const searchData = await searchRes.json();
-        setFoundPlace(searchData.place);
+        const primaryPlace = searchData.place;
+        const allPlaces = searchData.places && searchData.places.length > 0 ? searchData.places : [primaryPlace];
+        const categoryToUse = searchData.suggested_category || clientData.industry || "business";
+        const nichesToUse = searchData.suggested_niches || [];
 
-        // Step 2: Scan Radius
+        setFoundPlace(primaryPlace);
+        setAvailablePlaces(allPlaces);
+        setTargetNiche(categoryToUse);
+        setSuggestedNiches(nichesToUse);
+
+        // Step 2: Scan Radius for primary office and niche
         setLoadingStep('scanning_radar');
         const analyzeRes = await fetch(`${API_BASE_URL}/radar/analyze`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            place_id: searchData.place.place_id,
-            target_name: searchData.place.name,
-            target_lat: searchData.place.lat,
-            target_lng: searchData.place.lng,
-            target_address: searchData.place.address,
-            target_phone: searchData.place.phone,
-            target_website: searchData.place.website,
-            target_rating: searchData.place.rating,
-            target_reviews: searchData.place.reviews,
-            target_category: clientData.industry || "Business",
-            radius_km: 10, // Default to 10km scan
+            place_id: primaryPlace.place_id,
+            target_name: primaryPlace.name,
+            target_lat: primaryPlace.lat,
+            target_lng: primaryPlace.lng,
+            target_address: primaryPlace.address,
+            target_phone: primaryPlace.phone,
+            target_website: primaryPlace.website,
+            target_rating: primaryPlace.rating,
+            target_reviews: primaryPlace.reviews,
+            target_category: categoryToUse,
+            radius_km: 10,
             lead_id: parseInt(id),
           }),
         });
@@ -120,6 +133,45 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
       runFullRadarFlow();
     }
   }, [id, client, loadingStep]);
+
+
+  const runScanWithPlaceAndNiche = async (placeToScan: any, nicheToScan: string, rKm: number) => {
+    if (!placeToScan) return;
+    setIsScanningCustom(true);
+    setError(null);
+    try {
+      const analyzeRes = await fetch(`${API_BASE_URL}/radar/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          place_id: placeToScan.place_id,
+          target_name: placeToScan.name,
+          target_lat: placeToScan.lat,
+          target_lng: placeToScan.lng,
+          target_address: placeToScan.address,
+          target_phone: placeToScan.phone,
+          target_website: placeToScan.website,
+          target_rating: placeToScan.rating,
+          target_reviews: placeToScan.reviews,
+          target_category: nicheToScan || "business",
+          radius_km: rKm,
+          lead_id: parseInt(id),
+        }),
+      });
+
+      if (!analyzeRes.ok) {
+        const errData = await analyzeRes.json().catch(() => null);
+        throw new Error(errData?.detail || "Failed to run competitor scan");
+      }
+      const data = await analyzeRes.json();
+      setRadarResult(data);
+      setFoundPlace(placeToScan);
+    } catch (err: any) {
+      setError(err.message || "Failed to scan competitors");
+    } finally {
+      setIsScanningCustom(false);
+    }
+  };
 
   const handleManualSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -305,6 +357,105 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
       {loadingStep === 'complete' && radarResult && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
           
+          {/* Office Location & Niche Settings Bar */}
+          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-5 shadow-sm space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-slate-100 dark:border-zinc-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <MapPin size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                    Primary Office Location & Radar Focus
+                    {availablePlaces.length > 1 && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                        {availablePlaces.length} Branches Found
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-zinc-400">
+                    Choose which specific branch or headquarters to analyze, and select the business niche.
+                  </p>
+                </div>
+              </div>
+
+              {/* Office Selector Dropdown */}
+              {availablePlaces.length > 1 ? (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 whitespace-nowrap">Primary Office:</label>
+                  <select
+                    value={foundPlace?.place_id || ""}
+                    onChange={(e) => {
+                      const p = availablePlaces.find(x => x.place_id === e.target.value);
+                      if (p) {
+                        setFoundPlace(p);
+                        runScanWithPlaceAndNiche(p, targetNiche, radiusKm);
+                      }
+                    }}
+                    className="text-xs font-semibold bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-slate-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 max-w-xs truncate cursor-pointer shadow-2xs"
+                  >
+                    {availablePlaces.map((pl, idx) => (
+                      <option key={pl.place_id || idx} value={pl.place_id}>
+                        {pl.name} — {pl.address ? pl.address.split(',')[0] : 'Branch'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="text-xs font-medium text-slate-600 dark:text-zinc-300 flex items-center gap-1.5">
+                  <Building2 size={13} className="text-slate-400" />
+                  <span className="font-semibold">{foundPlace?.name}</span> ({foundPlace?.address || 'Verified HQ'})
+                </div>
+              )}
+            </div>
+
+            {/* Business Niche Selector & Quick Pills */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-slate-500 dark:text-zinc-400 whitespace-nowrap uppercase tracking-wider text-[10px]">
+                  Target Niche:
+                </span>
+                {suggestedNiches.map((niche) => (
+                  <button
+                    key={niche}
+                    type="button"
+                    onClick={() => {
+                      setTargetNiche(niche);
+                      runScanWithPlaceAndNiche(foundPlace, niche, radiusKm);
+                    }}
+                    className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                      targetNiche.toLowerCase() === niche.toLowerCase()
+                        ? "bg-indigo-600 text-white border-indigo-600 shadow-2xs"
+                        : "bg-slate-50 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border-slate-200 dark:border-zinc-700 hover:border-indigo-400"
+                    }`}
+                  >
+                    {niche}
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom Niche Input + Scan Button */}
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <input
+                  type="text"
+                  value={targetNiche}
+                  onChange={(e) => setTargetNiche(e.target.value)}
+                  placeholder="e.g. used car dealer, freight forwarding"
+                  className="text-xs bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-1.5 text-slate-900 dark:text-zinc-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 flex-1 sm:w-56"
+                />
+                <button
+                  type="button"
+                  disabled={isScanningCustom}
+                  onClick={() => runScanWithPlaceAndNiche(foundPlace, targetNiche, radiusKm)}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition-all shrink-0 shadow-2xs"
+                >
+                  {isScanningCustom ? <Loader2 size={12} className="animate-spin" /> : <Radar size={12} />}
+                  Scan Radar
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Stats Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
