@@ -2,11 +2,12 @@
 import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, Plus, X, Loader2, Briefcase, GraduationCap, Target,
   Ticket, CheckCircle, PlayCircle, Layers, Activity, Search,
-  Eye, EyeOff, Shield
+  Eye, EyeOff, Shield, Archive
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import ResponsiveDialog from "@/components/ResponsiveDialog";
@@ -135,11 +136,12 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
   const admissionsTeam = users.filter(u => u.role === 'Admissions');
 
   const removeMember = async (member: { id: number; name: string }) => {
-    if (!window.confirm(`Remove ${member.name || 'this team member'}? Their access will end and record history will be retained.`)) return;
+    if (!window.confirm(`Remove ${member.name || 'this team member'}? All their assigned leads will be automatically transferred fairly among remaining active salespersons, and their record will be saved in Deleted Records.`)) return;
     try {
       const res = await fetch(`${API_BASE_URL}/users/${member.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Could not remove member");
+      window.alert(data.message || "Team member removed. Leads transferred fairly.");
       setSelectedUser(null);
       await fetchUsers();
     } catch (error) {
@@ -174,13 +176,22 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
           </div>
         </div>
 
-        <button
-          onClick={() => { setCreateError(null); setShowCreateModal(true); }}
-          className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold text-xs transition shadow-xs shrink-0"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>{t("teams.add_member")}</span>
-        </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/deleted-records?record_type=salesperson"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 rounded-lg font-semibold text-xs transition border border-slate-200 dark:border-white/10 shrink-0"
+            >
+              <Archive className="w-3.5 h-3.5 text-amber-500" />
+              <span>Deleted Records</span>
+            </Link>
+            <button
+              onClick={() => { setCreateError(null); setShowCreateModal(true); }}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold text-xs transition shadow-xs shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{t("teams.add_member")}</span>
+            </button>
+          </div>
       </div>
 
       {/* 4-KPI Metric Strip (When not institute) */}

@@ -1,6 +1,7 @@
 'use client';
 import React, { useState } from 'react';
-import { MapPin, TrendingUp, Users, Layers, ExternalLink, Plus, Check, Star, Globe, Info } from 'lucide-react';
+import { MapPin, TrendingUp, Users, Layers, ExternalLink, Plus, Check, Star, Globe, Info, Bookmark, Sparkles, Loader2, ArrowRight } from 'lucide-react';
+import { API_BASE_URL } from '@/config';
 import { useLanguage } from '@/context/LanguageContext';
 
 interface Competitor {
@@ -141,6 +142,31 @@ function CompetitorRow({ c, onAdd, isAdded }: { c: Competitor; onAdd: (c: Compet
 export default function CompetitorTable({ rankings, onAddToClients, addedPlaceIds }: CompetitorTableProps) {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'nearest' | 'largest_market' | 'largest_team' | 'most_similar'>('nearest');
+  const [savingAll, setSavingAll] = useState(false);
+  const [tempMsg, setTempMsg] = useState<string | null>(null);
+
+  const currentList = rankings[activeTab] || [];
+
+  const handleSaveAllToTempLeads = async () => {
+    if (currentList.length === 0) return;
+    setSavingAll(true);
+    setTempMsg(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/temp-leads/bulk-from-radar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ competitors: currentList }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to save to temporary leads');
+      setTempMsg(`Saved ${data.created} businesses to Temporary Leads without creating CRM clutter!`);
+      setTimeout(() => setTempMsg(null), 8000);
+    } catch (e: any) {
+      setTempMsg(e.message || 'Failed to save');
+    } finally {
+      setSavingAll(false);
+    }
+  };
 
   const TABS = [
     { key: 'nearest', label: t('radar.tab_nearest'), icon: MapPin, subtitle: t('radar.tab_nearest_sub') },
@@ -149,11 +175,36 @@ export default function CompetitorTable({ rankings, onAddToClients, addedPlaceId
     { key: 'most_similar', label: t('radar.tab_most_similar'), icon: Layers, subtitle: t('radar.tab_most_similar_sub') },
   ] as const;
 
-  const currentList = rankings[activeTab] || [];
 
   return (
     <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl overflow-hidden shadow-sm">
       {/* Tabs */}
+      <div className="flex border-b border-slate-200 dark:border-zinc-700 overflow-x-auto">
+        <div className="flex-1" />
+        <div className="flex items-center gap-2 p-2 shrink-0">
+          <button
+            type="button"
+            disabled={savingAll || currentList.length === 0}
+            onClick={handleSaveAllToTempLeads}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-xs transition disabled:opacity-50"
+          >
+            {savingAll ? <Loader2 size={13} className="animate-spin" /> : <Bookmark size={13} />}
+            Save All to Temp Leads
+          </button>
+          <a
+            href="/temp-leads"
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-zinc-800 transition"
+          >
+            View Temp Leads <ArrowRight size={12} />
+          </a>
+        </div>
+      </div>
+      {tempMsg && (
+        <div className="px-5 py-2.5 bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 text-xs font-semibold border-b border-violet-100 dark:border-violet-900/40 flex items-center justify-between">
+          <span>{tempMsg}</span>
+          <a href="/temp-leads" className="underline font-bold">Open Temporary Leads &rarr;</a>
+        </div>
+      )}
       <div className="flex border-b border-slate-200 dark:border-zinc-700 overflow-x-auto">
         {TABS.map(tab => {
           const Icon = tab.icon;

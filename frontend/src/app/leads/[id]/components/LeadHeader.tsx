@@ -11,6 +11,9 @@ import { useLanguage } from '@/context/LanguageContext';
 import { API_BASE_URL } from '@/config';
 import { useTenantConfig } from '@/context/TenantConfigContext';
 import InstituteLeadScheduleModal from '@/components/InstituteLeadScheduleModal';
+import EditLeadDetailsModal from './EditLeadDetailsModal';
+import ContactSynopsisModal from '@/components/ContactSynopsisModal';
+import { Pencil, Twitter, Instagram, Facebook } from 'lucide-react';
 import { leadStages, scheduleStage, type ScheduleStage } from '@/lib/leadWorkflow';
 
 interface LeadHeaderProps {
@@ -79,6 +82,8 @@ export default function LeadHeader({
   const { settings, isOn } = useTenantConfig();
   const [schedule, setSchedule] = useState<ScheduleStage | null>(null);
   const [statusError, setStatusError] = useState('');
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isContactedModalOpen, setIsContactedModalOpen] = useState(false);
   const stages = leadStages(settings.lead_statuses, isOn('institute'), LEAD_STAGES, [lead?.status || 'New']);
   const statusCfg = STATUS_CONFIG[lead?.status] || STATUS_CONFIG.Inactive;
   const assignedEmp = employees.find((e: any) => e.id === lead?.owner_id);
@@ -88,13 +93,17 @@ export default function LeadHeader({
 
 
   // Contact info pills for display in header
+  const locationStr = [lead?.city, lead?.country].filter(Boolean).join(', ') || lead?.address || '';
   const contactChips = [
     lead?.email         && { icon: Mail,     value: lead.email,     href: `mailto:${lead.email}` },
-    lead?.phone          && { icon: Phone,    value: lead.phone,     href: `tel:${lead.phone}` },
-    lead?.website     && { icon: Globe,    value: lead.website,    href: lead.website },
-    lead?.linkedin_url   && { icon: Linkedin, value: 'LinkedIn',       href: lead.linkedin_url },
-    lead?.address        && { icon: MapPin,   value: lead.address },
-    assignedEmp            && { icon: Star,     value: `${language === 'es' ? 'Asignado:' : 'Assigned:'} ${assignedEmp.name}`, accent: true },
+    lead?.phone         && { icon: Phone,    value: lead.phone,     href: `tel:${lead.phone}` },
+    lead?.website       && { icon: Globe,    value: lead.website?.replace(/^https?:\/\//, '').replace(/\/$/, ''), href: lead.website },
+    locationStr         && { icon: MapPin,   value: locationStr },
+    lead?.linkedin_url  && { icon: Linkedin, value: 'LinkedIn',    href: lead.linkedin_url },
+    lead?.twitter_url   && { icon: Twitter,  value: 'Twitter/X',   href: lead.twitter_url },
+    lead?.instagram_url && { icon: Instagram,value: 'Instagram',   href: lead.instagram_url },
+    lead?.facebook_url  && { icon: Facebook, value: 'Facebook',    href: lead.facebook_url },
+    assignedEmp         && { icon: Star,     value: `${language === 'es' ? 'Asignado:' : 'Assigned:'} ${assignedEmp.name}`, accent: true },
   ].filter(Boolean) as { icon: any; value: string; href?: string; accent?: boolean }[];
 
   // Brief description from research or tagline
@@ -140,6 +149,10 @@ export default function LeadHeader({
                 value={lead?.is_converted ? "Converted" : (lead?.status || "New")}
                 onChange={async (e) => {
                   const val = e.target.value;
+                  if (val === "Contacted") {
+                    setIsContactedModalOpen(true);
+                    return;
+                  }
                   const stage = scheduleStage(val, isOn('institute'));
                   if (stage) { setSchedule(stage); return; }
                   setStatusError('');
@@ -170,10 +183,23 @@ export default function LeadHeader({
               {schedule && <InstituteLeadScheduleModal lead={lead} stage={schedule} onClose={() => setSchedule(null)}
                 onSuccess={() => onStatusChange ? onStatusChange(schedule) : window.location.reload()} />}
               {lead?.industry && (
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-zinc-800  text-slate-600 dark:text-zinc-300 ">
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300">
                   {lead.industry}
                 </span>
               )}
+              {lead?.city && (
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/40 flex items-center gap-1">
+                  <MapPin size={10} /> {lead.city}{lead.country ? `, ${lead.country}` : ''}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsEditModalOpen(true)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-300 hover:text-indigo-600 dark:hover:text-indigo-400 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors shadow-2xs"
+                title="Edit contact, category, location, and social media handles"
+              >
+                <Pencil size={11} /> Edit Details
+              </button>
             </div>
 
             {/* Company Description */}
@@ -227,6 +253,29 @@ export default function LeadHeader({
         </div>
 
       </div>
+
+      {/* Edit Lead Details Modal */}
+      <EditLeadDetailsModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        lead={lead}
+        onSaved={(updated) => {
+          if (onStatusChange) onStatusChange(updated.status);
+          else window.location.reload();
+        }}
+      />
+
+      {/* Contact Synopsis Modal */}
+      <ContactSynopsisModal
+        isOpen={isContactedModalOpen}
+        onClose={() => setIsContactedModalOpen(false)}
+        leadId={lead?.id}
+        companyName={companyName || 'Lead'}
+        onSuccess={() => {
+          if (onStatusChange) onStatusChange('Contacted');
+          else window.location.reload();
+        }}
+      />
     </div>
   );
 }

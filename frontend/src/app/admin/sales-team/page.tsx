@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL } from '@/config';
 import PageGuide from '@/components/PageGuide';
@@ -16,6 +17,7 @@ import {
   Mail,
   ShieldCheck,
   Smile,
+  Archive,
 } from 'lucide-react';
 
 interface SalesUser {
@@ -107,13 +109,16 @@ export default function SalesTeamPage() {
     }
   };
 
-  const handleDelete = async (userId: number) => {
-    if (!confirm('Remove this salesperson from the Sales Team?')) return;
+  const handleDelete = async (userId: number, userName?: string) => {
+    if (!confirm(`Remove ${userName || 'this salesperson'}? All their assigned leads will be automatically transferred fairly among remaining active salespersons, and their record will be saved in Deleted Records.`)) return;
     try {
       const res = await fetch(`${API_BASE_URL}/users/${userId}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        setToast('Salesperson removed.');
+        setToast(data.message || 'Salesperson removed and leads transferred fairly.');
         fetchSalesTeam();
+      } else {
+        setError(data.detail || 'Unable to remove salesperson.');
       }
     } catch (err) {
       console.error(err);
@@ -162,12 +167,21 @@ export default function SalesTeamPage() {
               <p className="text-slate-500 dark:text-zinc-400 mt-1">{t("sales_team.subtitle")}</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="btn-glow-teal inline-flex items-center gap-2 px-5 py-3 rounded-2xl text-white font-bold"
-          >
-            <Plus className="w-4 h-4" /> {t("sales_team.add_salesperson")}
-          </button>
+          <div className="flex items-center gap-2.5">
+            <Link
+              href="/deleted-records?record_type=salesperson"
+              className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 border border-slate-200 dark:border-zinc-700 transition-all text-xs shadow-xs"
+            >
+              <Archive className="w-4 h-4 text-amber-500" />
+              Deleted Records
+            </Link>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="btn-glow-teal inline-flex items-center gap-2 px-5 py-3 rounded-2xl text-white font-bold"
+            >
+              <Plus className="w-4 h-4" /> {t("sales_team.add_salesperson")}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -287,7 +301,7 @@ export default function SalesTeamPage() {
                           ))}
                         </select>
                         <button
-                          onClick={() => handleDelete(user.id)}
+                          onClick={() => handleDelete(user.id, user.name)}
                           className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100"
                         >
                           <Trash2 className="w-4 h-4" /> {t("sales_team.remove")}

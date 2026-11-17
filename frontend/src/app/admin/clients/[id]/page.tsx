@@ -553,12 +553,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
       </CollapsibleSection>
       )}
 
-      {/* SWOT Section */}
-      <CollapsibleSection title="SWOT Analysis" icon={Radar} accentColor="#f97316" defaultOpen={true}>
-        <div style={{ paddingTop: 16 }}>
-          <AdminClientSwotTab client={client} onRefresh={onRefresh} />
-        </div>
-      </CollapsibleSection>
+
     </div>
   );
 }
