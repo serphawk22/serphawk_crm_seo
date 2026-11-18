@@ -302,8 +302,10 @@ def get_public_proposal(uuid: str, session: Session = Depends(get_session)):
 def public_proposal_pdf(uuid: str, session: Session = Depends(get_session)):
     """The PDF behind a share link. The document is resolved by its secret UUID only."""
     from main import proposal_pdf, quote_pdf
+    from modules.tenant_scope import using_tenant
     kind, doc = _find_by_uuid(session, uuid)
-    return quote_pdf(doc.id, session=session) if kind == "quote" else proposal_pdf(doc.id, session=session)
+    with using_tenant(doc.tenant_id):
+        return quote_pdf(doc.id, session=session) if kind == "quote" else proposal_pdf(doc.id, session=session)
 
 
 def _guard_open(doc) -> None:

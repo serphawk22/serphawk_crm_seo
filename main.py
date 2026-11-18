@@ -10765,7 +10765,15 @@ def _build_proposal_pdf(prop, session):
                             leftMargin=20*mm, rightMargin=20*mm)
     styles = getSampleStyleSheet()
 
-    accent = colors.HexColor("#2563eb")
+    from modules.branding import current_brand, document_style
+    tid = getattr(prop, "tenant_id", None)
+    brand = current_brand(tid) if tid else current_brand()
+    doc_style = document_style(tid) if tid else document_style()
+    accent_hex = doc_style.get("accent") or "#2563eb"
+    try:
+        accent = colors.HexColor(accent_hex)
+    except Exception:
+        accent = colors.HexColor("#2563eb")
     dark = colors.HexColor("#0f172a")
     mid = colors.HexColor("#475569")
     light_bg = colors.HexColor("#f1f5f9")
@@ -10786,10 +10794,11 @@ def _build_proposal_pdf(prop, session):
     els = []
 
     # ── HEADER ────────────────────────────────────────────────────────────────
+    brand_sub = brand.name + (f" · {brand.tagline}" if brand.tagline else "")
     header_data = [
         [Paragraph("QUOTATION", title_s), Paragraph(
             f"# Q-{prop.id:04d}", title_s)],
-        [Paragraph("SERP Hawk", sub_s), Paragraph(
+        [Paragraph(brand_sub, sub_s), Paragraph(
             f"Currency: {currency}", sub_s)],
     ]
     header_tbl = Table(header_data, colWidths=[90*mm, 80*mm])
@@ -10890,7 +10899,8 @@ def _build_proposal_pdf(prop, session):
     els.append(Spacer(1, 20))
     els.append(HRFlowable(width="100%", thickness=0.5, color=mid))
     els.append(Spacer(1, 6))
-    els.append(Paragraph("SERP Hawk — Thank you for your business!", footer_s))
+    footer_note = doc_style.get("footer_note") or f"{brand.name} — Thank you for your business!"
+    els.append(Paragraph(footer_note, footer_s))
 
     doc.build(els)
     buf.seek(0)

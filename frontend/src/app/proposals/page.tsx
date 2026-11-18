@@ -398,9 +398,22 @@ function ProposalsPageContent() {
     setSelected(null);
   }
 
-  function downloadPDF(id: number) {
-    const uid = user?.id ? `?user_id=${user.id}` : "";
-    window.open(`${API_BASE_URL}/proposals/${id}/pdf${uid}`, "_blank");
+  async function downloadPDF(id: number) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/proposals/${id}/pdf`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `quotation-Q${String(id).padStart(4, "0")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      alert("Failed to download PDF.");
+    }
   }
 
   function previewPDF(id: number) {
