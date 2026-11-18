@@ -132,6 +132,7 @@ function ProposalsPageContent() {
   const [showWizard, setShowWizard]     = useState(false);
   const [step, setStep]                 = useState<WizardStep>("recipient");
   const [saving, setSaving]             = useState(false);
+  const [createdProposal, setCreatedProposal] = useState<Proposal | null>(null);
 
   // Recipient step
   const [recipientType, setRecipientType] = useState<"client" | "lead">("client");
@@ -244,6 +245,7 @@ function ProposalsPageContent() {
     setValidUntil("");
     setNotes("");
     setSendStatus("Sent");
+    setCreatedProposal(null);
     setShowWizard(true);
   }
 
@@ -366,8 +368,14 @@ function ProposalsPageContent() {
         return;
       }
 
-      setShowWizard(false);
+      const data = await res.json().catch(() => ({}));
+      const createdProp = data?.proposal || null;
       await fetchProposals();
+      if (createdProp) {
+        setCreatedProposal(createdProp);
+      } else {
+        setShowWizard(false);
+      }
     } catch (err) {
       console.error(err);
       alert("Failed to submit proposal.");
@@ -1035,7 +1043,7 @@ function ProposalsPageContent() {
       {/* PDF PREVIEW MODAL                                                   */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {preview && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
           <div className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-zinc-800">
               <h3 className="font-bold text-slate-900 dark:text-white text-sm">{preview.name} (PDF Preview)</h3>
@@ -1068,6 +1076,7 @@ function ProposalsPageContent() {
             </div>
 
             {/* Stepper */}
+            {!createdProposal && (
             <div className="flex border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111]">
               {[
                 { id: "recipient", num: "1", title: "Select Client" },
@@ -1090,9 +1099,68 @@ function ProposalsPageContent() {
                 );
               })}
             </div>
+            )}
+
+            {createdProposal && (
+              <div className="p-8 text-center space-y-5 overflow-y-auto">
+                <div className="w-14 h-14 rounded-2xl bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
+                  <CheckCircle className="w-7 h-7" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                    Quotation #Q-{String(createdProposal.id).padStart(4, "0")} Ready
+                  </p>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                    {createdProposal.title}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {createdProposal.status === "Sent"
+                      ? "Your proposal has been created and sent to the client."
+                      : "Your proposal has been saved as a draft."}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => previewPDF(createdProposal.id)}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md transition-colors"
+                  >
+                    <Eye className="w-4 h-4" /> View Quotation PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadPDF(createdProposal.id)}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md transition-colors"
+                  >
+                    <Download className="w-4 h-4" /> Download PDF
+                  </button>
+                  {createdProposal.public_uuid && (
+                    <a
+                      href={`/p/${createdProposal.public_uuid}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold transition-colors"
+                    >
+                      <Link2 className="w-4 h-4" /> Open Public View
+                    </a>
+                  )}
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShowWizard(false); setCreatedProposal(null); }}
+                    className="px-5 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* ── STEP 1: RECIPIENT ────────────────────────────────────── */}
-            {step === "recipient" && (
+            {!createdProposal && step === "recipient" && (
               <div className="p-6 flex-1 overflow-y-auto">
                 <div className="flex gap-2 mb-4">
                   <button onClick={() => { setRecipientType("client"); setSelectedLeadId(null); }}
@@ -1178,7 +1246,7 @@ function ProposalsPageContent() {
             )}
 
             {/* ── STEP 2: CART & DUAL CURRENCY AUTO CONVERSION ─────────── */}
-            {step === "cart" && (
+            {!createdProposal && step === "cart" && (
               <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
                 {/* Left: Custom Product Form & Catalog */}
                 <div className="flex-1 overflow-y-auto p-5 border-r border-slate-200 dark:border-slate-800 space-y-5">
@@ -1413,7 +1481,7 @@ function ProposalsPageContent() {
             )}
 
             {/* ── STEP 3: DETAILS & SEND ───────────────────────────────── */}
-            {step === "details" && (
+            {!createdProposal && step === "details" && (
               <div className="flex-1 overflow-y-auto p-6 max-w-xl mx-auto w-full space-y-4">
                 {/* Summary banner */}
                 <div className="bg-blue-50 dark:bg-blue-950/30 rounded-2xl p-4 border border-blue-200 dark:border-blue-900/50">
