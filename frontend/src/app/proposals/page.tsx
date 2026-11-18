@@ -3,7 +3,7 @@ import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus, X, Loader2, FileSignature, CheckCircle, Send, Clock, XCircle, IndianRupee, Trash2, Eye, Edit3, Download, PlayCircle, Search, ShoppingCart, ChevronRight, User2, Building2, Minus, FileText, RefreshCw, FilePlus2, Link2, Sparkles, Check, ArrowRightLeft, LayoutGrid, List, type LucideIcon } from "lucide-react";
+import { Plus, X, Loader2, FileSignature, CheckCircle, Send, Clock, XCircle, IndianRupee, DollarSign, Trash2, Eye, Edit3, Download, PlayCircle, Search, ShoppingCart, ChevronRight, User2, Building2, Minus, FileText, RefreshCw, FilePlus2, Link2, Sparkles, Check, ArrowRightLeft, LayoutGrid, List, type LucideIcon } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
 import { useLanguage } from "@/context/LanguageContext";
@@ -86,6 +86,10 @@ function fmtUsd(val: number): string {
 
 function fmtInr(val: number): string {
   return `₹${val.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtCur(val: number, cur: "USD" | "INR"): string {
+  return cur === "USD" ? fmtUsd(val) : fmtInr(val);
 }
 
 function fmtDualCurrency(amount: number, baseCurr: string = "INR"): { usdText: string; inrText: string } {
@@ -319,9 +323,8 @@ function ProposalsPageContent() {
     setCart(prev => prev.map((li, i) => i === idx ? { ...li, quantity: qty } : li));
   }
 
-  function updateCartPriceInr(idx: number, inrVal: number) {
-    const targetPrice = currency === "INR" ? inrVal : toUsd(inrVal);
-    setCart(prev => prev.map((li, i) => i === idx ? { ...li, unit_price: targetPrice } : li));
+  function updateCartPriceInr(idx: number, val: number) {
+    setCart(prev => prev.map((li, i) => i === idx ? { ...li, unit_price: val } : li));
   }
 
   // When proposal currency base switches
@@ -487,7 +490,7 @@ function ProposalsPageContent() {
                 {proposals.length}
               </span>
               <span className="text-[10px] px-1.5 py-0.2 rounded font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/40">
-                INR (₹) Engine
+                {workspaceCur === "USD" ? "USD ($) Engine" : "INR (₹) Engine"}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 dark:text-zinc-500 leading-none mt-0.5 truncate">
@@ -554,7 +557,7 @@ function ProposalsPageContent() {
         </div>
         <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-lg px-2.5 py-1.5 flex items-center gap-2 shadow-2xs col-span-2 sm:col-span-1">
           <div className="w-6 h-6 rounded-md bg-violet-50 dark:bg-violet-950/40 border border-violet-200/50 dark:border-violet-800/40 flex items-center justify-center text-violet-600 dark:text-violet-400 shrink-0">
-            <IndianRupee className="w-3 h-3" />
+            {workspaceCur === "USD" ? <DollarSign className="w-3 h-3" /> : <IndianRupee className="w-3 h-3" />}
           </div>
           <div className="min-w-0">
             <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Won Revenue</div>
@@ -692,7 +695,7 @@ function ProposalsPageContent() {
                     </div>
 
                     <div className="text-right font-black text-xs text-slate-900 dark:text-white whitespace-nowrap">
-                      {fmtInr(inrVal)}
+                      {fmtCur(inrVal, workspaceCur)}
                     </div>
 
                     <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
@@ -802,7 +805,7 @@ function ProposalsPageContent() {
                   {/* Amount & Row Actions */}
                   <div className="flex items-center justify-between mt-1 pt-2 border-t border-slate-100 dark:border-zinc-800">
                     <div className="text-sm font-black text-slate-900 dark:text-white">
-                      {fmtInr(inrVal)}
+                      {fmtCur(inrVal, workspaceCur)}
                     </div>
                     <div className="flex items-center gap-1">
                       {p.public_uuid && (
@@ -913,14 +916,14 @@ function ProposalsPageContent() {
                         <tr className="bg-slate-50 dark:bg-slate-900 text-left">
                           <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs">Product / Service</th>
                           <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right"><LocalizedText text={"Qty"} /></th>
-                          <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right">Unit (₹)</th>
+                          <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right">Unit ({curSym})</th>
                           <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right">Total</th>
                         </tr>
                       </thead>
                       <tbody>
                         {selected.line_items.map((li, i) => {
-                          const liInr = li.currency === "INR" ? li.unit_price : toInr(li.unit_price);
-                          const totalInr = liInr * li.quantity;
+                          const unitPrice = li.unit_price || 0;
+                          const lineTotal = unitPrice * li.quantity;
 
                           return (
                             <tr key={i} className="border-t border-slate-100 dark:border-slate-800">
@@ -932,10 +935,10 @@ function ProposalsPageContent() {
                                 {li.quantity} {li.unit || "pcs"}
                               </td>
                               <td className="px-3 py-2.5 text-right text-slate-600 dark:text-slate-300 font-mono text-xs">
-                                <div>{fmtInr(liInr)}</div>
+                                <div>{fmtCur(unitPrice, workspaceCur)}</div>
                               </td>
                               <td className="px-3 py-2.5 text-right font-bold text-slate-900 dark:text-white font-mono">
-                                <div>{fmtInr(totalInr)}</div>
+                                <div>{fmtCur(lineTotal, workspaceCur)}</div>
                               </td>
                             </tr>
                           );
@@ -945,7 +948,7 @@ function ProposalsPageContent() {
                             Grand Total:
                           </td>
                           <td className="px-3 py-2.5 text-right font-black text-blue-600 text-base font-mono">
-                            <div>{fmtInr(selected.currency === "INR" ? (selected.total_value || 0) : toInr(selected.total_value || 0))}</div>
+                            <div>{fmtCur(selected.total_value || 0, workspaceCur)}</div>
                           </td>
                         </tr>
                       </tbody>
@@ -968,7 +971,7 @@ function ProposalsPageContent() {
                   { label: "Assigned Sales Rep", value: selected.salesperson_name || selected.creator_name || "Unassigned" },
                   { label: "Deals Pipeline",    value: `Stage: ${selected.deal_stage || "Negotiation"}` },
                   { label: "Valid Until",       value: selected.valid_until || "—" },
-                  { label: "Exchange Rate",     value: "INR (₹)" },
+                  { label: "Currency",          value: workspaceCur === "USD" ? "USD ($)" : "INR (₹)" },
                   { label: "Created Date",      value: new Date(selected.created_at).toLocaleDateString("en-US") },
                   { label: "Created By",        value: selected.creator_name || "Sales Admin" },
                 ].map(m => (
@@ -1068,7 +1071,7 @@ function ProposalsPageContent() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161616]">
               <div>
                 <h2 className="text-base font-bold text-slate-900 dark:text-white">Create Commercial Proposal</h2>
-                <p className="text-xs text-slate-500">Currency: ₹ INR</p>
+                <p className="text-xs text-slate-500">Currency: {curSym} {workspaceCur}</p>
               </div>
               <button onClick={() => setShowWizard(false)} className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400">
                 <X className="w-5 h-5" />
@@ -1080,7 +1083,7 @@ function ProposalsPageContent() {
             <div className="flex border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111]">
               {[
                 { id: "recipient", num: "1", title: "Select Client" },
-                { id: "cart",      num: "2", title: "Products & Pricing (₹)" },
+                { id: "cart",      num: "2", title: `Products & Pricing (${curSym})` },
                 { id: "details",   num: "3", title: "Terms & Send" },
               ].map(s => {
                 const isActive = step === s.id;
@@ -1380,7 +1383,7 @@ function ProposalsPageContent() {
                               <p className="text-[10px] text-slate-400 truncate">{item.category} · {item.unit || "pcs"}</p>
                             </div>
                             <div className="text-right shrink-0">
-                              <div className="font-black text-blue-600 font-mono">{fmtInr(price)}</div>
+                              <div className="font-black text-blue-600 font-mono">{fmtCur(price, currency)}</div>
                             </div>
                             {inCart && (
                               <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
@@ -1412,8 +1415,8 @@ function ProposalsPageContent() {
                         <p className="text-[11px] text-slate-400 mt-1">Add items from the catalog or create a custom service above.</p>
                       </div>
                     ) : cart.map((li, idx) => {
-                      const liInr = li.currency === "INR" ? li.unit_price : toInr(li.unit_price);
-                      const subtotalInr = liInr * li.quantity;
+                      const liPrice = li.unit_price || 0;
+                      const subtotalCur = liPrice * li.quantity;
 
                       return (
                         <div key={idx} className="bg-white dark:bg-[#111] rounded-xl p-3 border border-slate-200 dark:border-slate-800 text-xs">
@@ -1437,18 +1440,18 @@ function ProposalsPageContent() {
                               <span className="text-[10px] text-slate-400">{li.unit}</span>
                             </div>
                             <div className="text-right">
-                              <div className="font-black text-blue-600 font-mono">{fmtInr(subtotalInr)}</div>
+                              <div className="font-black text-blue-600 font-mono">{fmtCur(subtotalCur, currency)}</div>
                             </div>
                           </div>
 
                           {/* Live unit price input */}
                           <div className="pt-1.5 border-t border-slate-100 dark:border-zinc-800">
                             <div>
-                              <span className="text-[9px] font-bold text-blue-600 block">Unit (₹ INR)</span>
+                              <span className="text-[9px] font-bold text-blue-600 block">Unit ({currency === "USD" ? "$ USD" : "₹ INR"})</span>
                               <input
                                 type="number"
                                 step="0.01"
-                                value={liInr}
+                                value={liPrice}
                                 onChange={e => updateCartPriceInr(idx, parseFloat(e.target.value) || 0)}
                                 className="w-full px-1.5 py-0.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-[11px] font-mono text-slate-900 dark:text-white"
                               />
