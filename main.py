@@ -10725,6 +10725,33 @@ def delete_ranking(entry_id: int, session: Session = Depends(get_session)):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+@app.post("/proposals/preview-pdf")
+def preview_proposal_pdf(body: ProposalCreateRequest, session: Session = Depends(get_session)):
+    """Render a quotation PDF preview for an unsaved proposal draft."""
+    from types import SimpleNamespace
+    from fastapi.responses import StreamingResponse
+    import io
+    temp_prop = SimpleNamespace(
+        id=0,
+        title=body.title,
+        client_id=body.client_id,
+        lead_id=body.lead_id,
+        recipient_type=body.recipient_type,
+        content=body.content,
+        status=body.status,
+        valid_until=body.valid_until,
+        total_value=body.total_value,
+        line_items=body.line_items,
+        currency=body.currency,
+        created_at=datetime.now(timezone.utc),
+        tenant_id=current_tenant_id.get(),
+    )
+    pdf_bytes, filename = _build_proposal_pdf(temp_prop, session)
+    return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers={
+        "Content-Disposition": f'inline; filename="{filename}"'
+    })
+
+
 @app.get("/proposals/{proposal_id}/pdf")
 def proposal_pdf(proposal_id: int, session: Session = Depends(get_session)):
     """Generate a professional itemized PDF quotation."""

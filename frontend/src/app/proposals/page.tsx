@@ -427,6 +427,44 @@ function ProposalsPageContent() {
     }
   }
 
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  async function previewDraftPDF() {
+    setPreviewLoading(true);
+    const autoTitle = quoteTitle.trim() ||
+      `Commercial Proposal for ${recipientName()} – ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+    try {
+      const res = await fetch(`${API_BASE_URL}/proposals/preview-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: autoTitle,
+          client_id: recipientType === "client" ? selectedClientId : null,
+          lead_id: recipientType === "lead" ? selectedLeadId : null,
+          recipient_type: recipientType,
+          content: notes || null,
+          status: sendStatus,
+          valid_until: validUntil || null,
+          total_value: cartTotal,
+          line_items: cart,
+          currency,
+          deal_id: selectedDealId || null,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      setPreview({
+        id: 0,
+        name: autoTitle,
+        url: URL.createObjectURL(new Blob([blob], { type: "application/pdf" })),
+      });
+    } catch {
+      alert("Failed to load quotation PDF preview.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
   function previewPDF(id: number) {
     const uid = user?.id ? `?user_id=${user.id}` : "";
     const p = proposals.find(x => x.id === id);
@@ -1604,12 +1642,21 @@ function ProposalsPageContent() {
                   </div>
                 </div>
 
-                <div className="flex gap-3 pt-3">
+                <div className="flex flex-wrap gap-3 pt-3">
                   <button onClick={() => setStep("cart")}
-                    className="px-6 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300">
+                    className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300">
                     <LocalizedText text={"Back"} /> </button>
+                  <button
+                    type="button"
+                    onClick={previewDraftPDF}
+                    disabled={previewLoading || saving}
+                    className="px-4 py-2.5 rounded-xl border border-purple-200 dark:border-purple-800/60 bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 text-xs font-bold hover:bg-purple-100 dark:hover:bg-purple-900/40 disabled:opacity-50 transition-all flex items-center gap-1.5"
+                  >
+                    {previewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+                    Preview Quotation
+                  </button>
                   <button onClick={submitQuote} disabled={saving}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 disabled:opacity-50 transition-all shadow-md active:scale-95">
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 disabled:opacity-50 transition-all shadow-md active:scale-95">
                     {saving ? (
                       <><Loader2 className="w-4 h-4 animate-spin" /> Creating Proposal…</>
                     ) : (
