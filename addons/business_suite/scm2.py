@@ -557,25 +557,38 @@ def delete_cost(cost_id: int, session: Session = Depends(get_session)):
 @router.get("/revenue/summary")
 def revenue_summary(months: int = Query(12, ge=1, le=36), session: Session = Depends(get_session)):
     _require(session, FINANCE_ROLES)
+    from database import Proposal
     month_keys = _month_range(months)
     monthly = {k: {"month": k, "won_revenue": 0.0, "won_deals": 0, "invoiced_paid": 0.0, "costs": 0.0, "salary_costs": 0.0} for k in month_keys}
 
     deals = session.exec(select(Deal)).all()
+    proposals = session.exec(select(Proposal)).all()
     users = {u.id: u for u in session.exec(select(User)).all()}
     clients = {c.id: c for c in session.exec(select(ClientProfile)).all()}
 
+    deal_ids = {d.id for d in deals}
+    unlinked_props = [p for p in proposals if not p.deal_id or p.deal_id not in deal_ids]
     won = [d for d in deals if d.stage == "Closed Won"]
+    won_props = [p for p in unlinked_props if (p.status or "") == "Accepted"]
+    lost_props = [p for p in unlinked_props if (p.status or "") in ("Declined", "Lost", "Rejected")]
+
     by_sp: Dict[Any, Dict[str, Any]] = {}
+    def _record_won(mk: str, amt: float, sp_id: Optional[int]):
+        if mk not in monthly:
+            return
+        monthly[mk]["won_revenue"] += amt
+        monthly[mk]["won_deals"] += 1
+        u = users.get(sp_id)
+        sp = by_sp.setdefault(sp_id or 0, {"user_id": sp_id, "salesperson": u.name if u else "Unassigned", "won_deals": 0, "won_revenue": 0.0})
+        sp["won_deals"] += 1
+        sp["won_revenue"] += amt
+
     for d in won:
-        mk = _deal_won_month(d)
-        amt = _deal_amount(d)
-        if mk in monthly:
-            monthly[mk]["won_revenue"] += amt
-            monthly[mk]["won_deals"] += 1
-            u = users.get(d.assigned_to)
-            sp = by_sp.setdefault(d.assigned_to or 0, {"user_id": d.assigned_to, "salesperson": u.name if u else "Unassigned", "won_deals": 0, "won_revenue": 0.0})
-            sp["won_deals"] += 1
-            sp["won_revenue"] += amt
+        _record_won(_deal_won_month(d), _deal_amount(d), d.assigned_to)
+    for p in won_props:
+        client = clients.get(p.client_id) if p.client_id else None
+        sp_id = client.assignedEmployeeId if client else None
+        _record_won(_month_key(p.signed_at or p.created_at), float(p.total_value or 0), sp_id)
 
     for inv in session.exec(select(Invoice)).all():
         if (inv.status or "").lower() == "paid":
@@ -602,10 +615,36 @@ def revenue_summary(months: int = Query(12, ge=1, le=36), session: Session = Dep
 
     total_rev = sum(m["won_revenue"] for m in series)
     total_cost = sum(m["costs"] for m in series)
-    open_pipeline = sum(float(d.value or 0) for d in deals if d.stage not in ("Closed Won", "Closed Lost"))
+    open_pipeline = (
+        sum(float(d.value or 0) for d in deals if d.stage not in ("Closed Won", "Closed Lost"))
+        + sum(float(p.total_value or 0) for p in unlinked_props if (p.status or "") not in ("Accepted", "Declined", "Lost", "Rejected"))
+    )
     lost = [d for d in deals if d.stage == "Closed Lost"]
+    total_won_count = len(won) + len(won_props)
+    total_lost_count = len(lost) + len(lost_props)
 
-    top_deals = sorted(won, key=_deal_amount, reverse=True)[:8]
+    won_entries = [
+        {
+            "id": d.id, "title": d.title, "amount": _deal_amount(d), "list_value": d.value,
+            "client_name": (clients.get(d.client_id).companyName if clients.get(d.client_id) else None),
+            "salesperson": users.get(d.assigned_to).name if users.get(d.assigned_to) else None,
+            "won_at": _iso(d.won_at or d.updated_at),
+        }
+        for d in won
+    ] + [
+        {
+            "id": p.id, "title": p.title, "amount": float(p.total_value or 0), "list_value": float(p.total_value or 0),
+            "client_name": (clients.get(p.client_id).companyName if p.client_id and clients.get(p.client_id) else None),
+            "salesperson": (
+                users.get(clients[p.client_id].assignedEmployeeId).name
+                if p.client_id and p.client_id in clients and clients[p.client_id].assignedEmployeeId in users
+                else None
+            ),
+            "won_at": _iso(p.signed_at or p.created_at),
+        }
+        for p in won_props
+    ]
+    top_deals = sorted(won_entries, key=lambda item: item["amount"], reverse=True)[:8]
     return {
         "months": series,
         "totals": {
@@ -616,7 +655,7 @@ def revenue_summary(months: int = Query(12, ge=1, le=36), session: Session = Dep
             "won_deals": sum(m["won_deals"] for m in series),
             "avg_deal_size": round(total_rev / max(1, sum(m["won_deals"] for m in series)), 2),
             "open_pipeline": round(open_pipeline, 2),
-            "win_rate": round(len(won) / (len(won) + len(lost)) * 100, 1) if (won or lost) else None,
+            "win_rate": round(total_won_count / (total_won_count + total_lost_count) * 100, 1) if (total_won_count or total_lost_count) else None,
             "invoiced_paid": round(sum(m["invoiced_paid"] for m in series), 2),
         },
         "by_salesperson": sorted(
@@ -624,12 +663,7 @@ def revenue_summary(months: int = Query(12, ge=1, le=36), session: Session = Dep
             key=lambda r: -r["won_revenue"],
         ),
         "cost_by_category": [{"category": k, "amount": round(v, 2)} for k, v in sorted(cost_by_cat.items(), key=lambda x: -x[1])],
-        "top_deals": [{
-            "id": d.id, "title": d.title, "amount": _deal_amount(d), "list_value": d.value,
-            "client_name": (clients.get(d.client_id).companyName if clients.get(d.client_id) else None),
-            "salesperson": users.get(d.assigned_to).name if users.get(d.assigned_to) else None,
-            "won_at": _iso(d.won_at or d.updated_at),
-        } for d in top_deals],
+        "top_deals": top_deals,
     }
 
 

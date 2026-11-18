@@ -141,7 +141,7 @@ def admin_summary(session, tenant_id, enabled):
     from datetime import timedelta
     from sqlalchemy import func, case, extract
     from database import (ClientProfile, ActivityLog, CallLog, AICall, SentEmail, MarketplaceService,
-                          Invoice, CRMQuote, SalesOrder, PurchaseOrder, ServiceRequest, Proposal)
+                          Invoice, CRMQuote, SalesOrder, PurchaseOrder, ServiceRequest, Proposal, Deal)
     def count(model, *conditions):
         return session.exec(select(func.count(model.id)).where(model.tenant_id == tenant_id, *conditions)).one()
     def by_status(model):
@@ -188,8 +188,34 @@ def admin_summary(session, tenant_id, enabled):
     q, so, po, inv = (billing[k] for k in ("quotes", "sales", "purchase", "invoices"))
     pipeline = session.exec(select(func.coalesce(func.sum(Proposal.total_value), 0)).where(
         Proposal.tenant_id == tenant_id, (Proposal.status.notin_(("Accepted", "Declined")) | Proposal.status.is_(None)))).one()
+    won_proposals = session.exec(select(Proposal).where(
+        Proposal.tenant_id == tenant_id, Proposal.status == "Accepted")).all()
+    won_deals = session.exec(select(Deal).where(
+        Deal.tenant_id == tenant_id, Deal.stage == "Closed Won")).all()
+    linked_deal_ids = {p.deal_id for p in won_proposals if p.deal_id}
+    unlinked_won_deals = [d for d in won_deals if d.id not in linked_deal_ids]
+    won_revenue = (
+        sum(float(p.total_value or 0) for p in won_proposals)
+        + sum(float(getattr(d, "final_value", None) or d.value or 0) for d in unlinked_won_deals)
+    )
+    won_count = len(won_proposals) + len(unlinked_won_deals)
+    monthly["won"] = {}
+    for p in won_proposals:
+        dt = p.signed_at or p.created_at
+        if dt:
+            dt_cmp = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+            if dt_cmp >= first_month:
+                k = (dt_cmp.year, dt_cmp.month)
+                monthly["won"][k] = monthly["won"].get(k, 0.0) + float(p.total_value or 0)
+    for d in unlinked_won_deals:
+        dt = getattr(d, "won_at", None) or d.updated_at or d.created_at
+        if dt:
+            dt_cmp = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+            if dt_cmp >= first_month:
+                k = (dt_cmp.year, dt_cmp.month)
+                monthly["won"][k] = monthly["won"].get(k, 0.0) + float(getattr(d, "final_value", None) or d.value or 0)
     recent = session.exec(select(ActivityLog).where(ActivityLog.tenant_id == tenant_id).order_by(ActivityLog.createdAt.desc()).limit(10)).all()
-    result = {"operations": operations(session, tenant_id, enabled), "revenue": inv[3], "pipelineValue": pipeline,
+    result = {"operations": operations(session, tenant_id, enabled), "revenue": inv[3], "wonRevenue": round(won_revenue, 2), "wonCount": won_count, "pipelineValue": pipeline,
         "totalQuotesValue": q[1], "acceptedQuotesValue": q[2], "totalQuotesCount": q[0], "acceptedQuotesCount": q[7],
         "totalSalesOrdersValue": so[1], "fulfilledSalesOrdersValue": so[9], "totalSalesOrdersCount": so[0], "fulfilledSalesOrdersCount": so[10],
         "totalPurchaseOrdersValue": po[1], "receivedPurchaseOrdersValue": po[11], "totalPurchaseOrdersCount": po[0], "receivedPurchaseOrdersCount": po[12],
@@ -214,5 +240,5 @@ def admin_summary(session, tenant_id, enabled):
     for index in range(first_index, first_index + 6):
         key = index // 12, index % 12 + 1
         result["revenueData"].append({"name": calendar.month_abbr[key[1]],
-            "revenue": sum(monthly[k].get(key, 0) for k in ("quotes", "sales", "invoices")), "expenses": monthly["purchase"].get(key, 0)})
+            "revenue": sum(monthly[k].get(key, 0) for k in ("quotes", "sales", "invoices", "won")), "expenses": monthly["purchase"].get(key, 0)})
     return result
