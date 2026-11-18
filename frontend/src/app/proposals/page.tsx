@@ -77,7 +77,7 @@ export function toUsd(inr: number): number {
 
 const CURRENCIES = [
   { code: "INR", label: "INR (₹)", symbol: "₹", icon: IndianRupee },
-  { code: "USD", label: "USD ($)", symbol: "$", icon: IndianRupee },
+  { code: "USD", label: "USD ($)", symbol: "$", icon: DollarSign },
 ];
 
 function fmtUsd(val: number): string {
@@ -1466,7 +1466,7 @@ function ProposalsPageContent() {
                   <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111]">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-xs text-slate-500 font-semibold">Total:</span>
-                      <span className="text-base font-black text-blue-600 font-mono">{dualTotal.inrText}</span>
+                      <span className="text-base font-black text-blue-600 font-mono">{fmtCur(cartTotal, currency)}</span>
                     </div>
 
                     <div className="flex gap-2">
@@ -1494,7 +1494,7 @@ function ProposalsPageContent() {
                   </div>
                   <div className="flex items-center gap-3 mt-2">
                     <div className="text-xl font-black text-blue-700 dark:text-blue-400 font-mono">
-                      {dualTotal.inrText}
+                      {fmtCur(cartTotal, currency)}
                     </div>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">{cart.length} line item{cart.length !== 1 ? "s" : ""} included.</p>
