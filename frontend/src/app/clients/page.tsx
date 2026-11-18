@@ -170,6 +170,19 @@ export default function ClientsPage() {
   // Quick Actions State
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
   const [actionLoading, setActionLoading] = useState<Record<number, string>>({});
+  const [analyzingClientId, setAnalyzingClientId] = useState<number | null>(null);
+
+  const handleManualAnalyzeClient = async (clientId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setAnalyzingClientId(clientId);
+    try {
+      await fetch(`${API_BASE_URL}/clients/${clientId}/auto-research`, { method: "POST" });
+    } catch (err) {
+      console.error("Failed to start client 360 analysis", err);
+    } finally {
+      setTimeout(() => setAnalyzingClientId(null), 1500);
+    }
+  };
 
   // Pitch Modal State
   const [pitchModal, setPitchModal] = useState<{isOpen: boolean, pitch: string, clientName: string}>({ isOpen: false, pitch: "", clientName: "" });
@@ -1205,6 +1218,18 @@ export default function ClientsPage() {
                           className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 transition-colors"
                         >
                           <ChevronRight className={cn("w-3.5 h-3.5 transition-transform", expandedRowId === client.id && "rotate-90")} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => handleManualAnalyzeClient(client.id, e)}
+                          title="Run 360° AI Analysis"
+                          className="p-1 rounded-md hover:bg-purple-50 dark:hover:bg-purple-900/30 text-slate-400 hover:text-purple-600 transition-colors"
+                        >
+                          {analyzingClientId === client.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                          ) : (
+                            <Sparkles className="w-3.5 h-3.5" />
+                          )}
                         </button>
                         <Link
                           href={`/proposals?new=true&client_id=${client.id}`}

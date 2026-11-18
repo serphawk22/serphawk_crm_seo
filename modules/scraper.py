@@ -119,11 +119,31 @@ async def scrape_website(url):
     found_youtube = set()
     scraped_texts = []
 
+    def clean_email(email_str):
+        if not email_str:
+            return None
+        e = email_str.lower().strip()
+        bad = [
+            "tucorreo", "mail.com", "example.com", "test.com", "placeholder",
+            "yourname", "domain.com", "sentry.io", "wixpress", "user@",
+            "first.last@", "you@example", "name@domain", "info@domain",
+            "mhtml.blink", "mhtml", "noreply", "no-reply",
+            ".png", ".jpg", ".jpeg", ".svg", ".webp", ".gif"
+        ]
+        if any(b in e for b in bad):
+            return None
+        return e
+
     def clean_phone(phone_str):
         # Remove common false positives like version numbers, CSS parameters, or very short strings
         cleaned = re.sub(r'[^\d+]', '', phone_str)
         # Phone numbers should have between 7 and 15 digits
         if len(cleaned) >= 7 and len(cleaned) <= 15:
+            digits = re.sub(r'\D', '', cleaned)
+            if any(fake in phone_str for fake in ["555-0199", "1234 5678", "12345678", "000-0000", "0000000", "1111111"]):
+                return None
+            if "123456" in digits or "5550199" in digits or "000000" in digits:
+                return None
             # Avoid matching standard dates/versions (e.g. 2026-05-30 or 1.2.3.4)
             if not re.match(r'^\d{4}-\d{2}-\d{2}$', phone_str.strip()):
                 return phone_str.strip()
@@ -132,7 +152,9 @@ async def scrape_website(url):
     def extract_from_html(html_content, page_url):
         # 1. Regex search on raw HTML (before parsing) to catch mailto/tel and plain text matches
         for email in email_pattern.findall(html_content):
-            found_emails.add(email)
+            c_email = clean_email(email)
+            if c_email:
+                found_emails.add(c_email)
         
         # Priority: Look for professional contact emails (contact@, sales@, hello@, etc.)
         priority_email_patterns = [
@@ -142,11 +164,11 @@ async def scrape_website(url):
         ]
         for pattern in priority_email_patterns:
             for match in re.finditer(pattern, html_content, re.IGNORECASE):
-                # Extract the email from group 1 if it exists, otherwise use the full match
                 email = match.group(1) if match.lastindex else match.group(0)
                 email = re.sub(r'["\'\s:]+', '', email).lower()
-                if email_pattern.match(email):
-                    found_emails.add(email)
+                c_email = clean_email(email)
+                if c_email and email_pattern.match(c_email):
+                    found_emails.add(c_email)
             
         # Extract from href="mailto:..." and href="tel:..."
         temp_soup = BeautifulSoup(html_content, 'html.parser')
@@ -154,8 +176,9 @@ async def scrape_website(url):
             href = a['href'].strip()
             if href.lower().startswith('mailto:'):
                 email = href[7:].split('?')[0].strip()
-                if email_pattern.match(email):
-                    found_emails.add(email)
+                c_email = clean_email(email)
+                if c_email and email_pattern.match(c_email):
+                    found_emails.add(c_email)
             elif href.lower().startswith('tel:'):
                 phone = href[4:].split('?')[0].strip()
                 # Clean and add

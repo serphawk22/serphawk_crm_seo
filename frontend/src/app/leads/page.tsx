@@ -93,7 +93,7 @@ import { useRole } from "@/context/RoleContext";
 import { useTenantConfig } from "@/context/TenantConfigContext";
 
 export default function LeadsPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { role, user } = useRole();
   const { settings: tenantSettings, isOn } = useTenantConfig();
   const sourcesOn = isOn('lead_sources');
@@ -127,8 +127,7 @@ export default function LeadsPage() {
   const [activities, setActivities] = useState<ActivityLogEntry[]>([]);
   const [sortOption, setSortOption] = useState<"recent" | "name" | "place" | "country">("recent");
   const [contactSynopsisTarget, setContactSynopsisTarget] = useState<{ id: number; name: string } | null>(null);
-  const [isAnalyzingAll, setIsAnalyzingAll] = useState(false);
-  const [analyzeProgress, setAnalyzeProgress] = useState<{ is_running: boolean; total: number; completed: number; pending: number; current_company: string } | null>(null);
+  const [analyzingLeadId, setAnalyzingLeadId] = useState<number | null>(null);
   const [noteLead, setNoteLead] = useState<Lead | null>(null);
   const [noteText, setNoteText] = useState("");
   const [noteSaving, setNoteSaving] = useState(false);
@@ -138,6 +137,55 @@ export default function LeadsPage() {
   const [followUpTarget, setFollowUpTarget] = useState<FollowUpTarget | null>(null);
   const [employees, setEmployees] = useState<{ id: number; name: string }[]>([]);
   const [autoAssigning, setAutoAssigning] = useState(false);
+  const [autofillUrl, setAutofillUrl] = useState("");
+  const [autofilling, setAutofilling] = useState(false);
+  const [autofillSuccess, setAutofillSuccess] = useState(false);
+
+  const handleAutofillFromWebsite = async (targetUrl?: string) => {
+    const rawUrl = (targetUrl || autofillUrl || form.website || "").trim();
+    if (!rawUrl) return;
+    setAutofilling(true);
+    setAutofillSuccess(false);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const res = await fetch(`${API_BASE_URL}/leads/auto-fill`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ website: rawUrl })
+      });
+      if (res.ok) {
+        const resp = await res.json();
+        if (resp.ok && resp.data) {
+          const d = resp.data;
+          setForm(f => ({
+            ...f,
+            company_name: d.company_name || f.company_name,
+            email: d.email || f.email,
+            phone: d.phone || f.phone,
+            website: d.website || f.website || rawUrl,
+            industry: d.industry && INDUSTRIES.includes(d.industry) ? d.industry : (f.industry || "Other"),
+            address: d.address || f.address,
+            notes: d.notes || f.notes,
+          }));
+          setAutofillUrl(d.website || rawUrl);
+          setAutofillSuccess(true);
+          setTimeout(() => setAutofillSuccess(false), 4000);
+        } else {
+          alert(resp.error || (language === 'es' ? "No se pudieron extraer los detalles del sitio web." : "Could not extract details from this website."));
+        }
+      } else {
+        alert(language === 'es' ? "Error al consultar el servicio de autocompletado." : "Autofill service request failed. Please check the URL.");
+      }
+    } catch (err) {
+      console.error("Autofill error:", err);
+      alert(language === 'es' ? "Error al conectar con el servicio de autocompletado." : "Error connecting to website autofill service.");
+    } finally {
+      setAutofilling(false);
+    }
+  };
 
   const fetchEmployees = async () => {
     try {
@@ -167,63 +215,20 @@ export default function LeadsPage() {
     }
   };
 
-  const handleAutoAnalyzeAll = async () => {
-    setIsAnalyzingAll(true);
+  const handleManualAnalyze = async (leadId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setAnalyzingLeadId(leadId);
     try {
-      const res = await fetch(`${API_BASE_URL}/leads/auto-analyze-all`, { method: "POST" });
-      const data = await res.json();
+      const res = await fetch(`${API_BASE_URL}/leads/${leadId}/auto-research`, { method: "POST" });
       if (res.ok) {
-        alert(data.message || "Background 360° AI analysis started!");
-        fetchLeads();
-      } else {
-        alert(data.detail || "Failed to start auto-analysis");
+        setLeads(prev => prev.map(l => l.id === leadId ? { ...l, ai_status: 'pending' as const } : l));
       }
-    } catch (e) {
-      alert("Error starting auto-analyze");
+    } catch (err) {
+      console.error("Failed to trigger 360 AI analysis", err);
     } finally {
-      setIsAnalyzingAll(false);
+      setTimeout(() => setAnalyzingLeadId(null), 1500);
     }
   };
-
-  const handleStopAutoAnalyze = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/leads/auto-analyze-stop`, { method: "POST" });
-      if (res.ok) {
-        setAnalyzeProgress(null);
-        fetchLeads();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  useEffect(() => {
-    let active = true;
-    const checkStatus = async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/leads/auto-analyze-status`);
-        if (res.ok) {
-          const d = await res.json();
-          if (active) {
-            if (d.is_running) {
-              setAnalyzeProgress(d);
-            } else {
-              if (analyzeProgress?.is_running) {
-                fetchLeads();
-              }
-              setAnalyzeProgress(null);
-            }
-          }
-        }
-      } catch {}
-    };
-    checkStatus();
-    const interval = setInterval(checkStatus, 4000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, []);
 
   const handleAutoAssignLeads = async () => {
     setAutoAssigning(true);
@@ -368,12 +373,16 @@ export default function LeadsPage() {
   const openCreate = () => {
     setEditLead(null);
     setForm({ ...emptyForm });
+    setAutofillUrl("");
+    setAutofillSuccess(false);
     setShowModal(true);
   };
 
   const openEdit = (lead: Lead, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditLead(lead);
+    setAutofillUrl(lead.website || "");
+    setAutofillSuccess(false);
     setForm({
       company_name: lead.company_name,
       website: lead.website || "",
@@ -553,29 +562,6 @@ export default function LeadsPage() {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-white/5 transition-colors shadow-xs"
             >
               <Download className="w-3.5 h-3.5" /> <LocalizedText text={"Export CSV"} /></button>
-            <button
-              type="button"
-              onClick={handleAutoAnalyzeAll}
-              disabled={isAnalyzingAll || Boolean(analyzeProgress && analyzeProgress.is_running)}
-              title="Trigger comprehensive 360° AI business profiles and X × Y catalog fit matrices for all leads in the background"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-xs transition-all active:scale-95 disabled:opacity-50"
-            >
-              {isAnalyzingAll || (analyzeProgress && analyzeProgress.is_running) ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-200" />
-                  <span>
-                    {analyzeProgress && analyzeProgress.is_running
-                      ? `Analyzing 360° (${analyzeProgress.completed}/${analyzeProgress.total})...`
-                      : "Starting 360°..."}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                  <span>Auto-Analyze All Leads (360°)</span>
-                </>
-              )}
-            </button>
             {isAdmin && (
               <button
                 onClick={handleAutoAssignLeads}
@@ -625,35 +611,6 @@ export default function LeadsPage() {
       <div className="px-4 sm:px-6 pt-2">
         <DemoLimits type="clients" />
       </div>
-
-      {/* Background 360° Auto-Analyze Progress Banner */}
-      {analyzeProgress && analyzeProgress.is_running && (
-        <div className="mx-4 sm:mx-6 mt-2 flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 text-purple-800 dark:text-purple-300 text-xs">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <Loader2 className="w-4 h-4 animate-spin text-purple-600 shrink-0" />
-            <div className="min-w-0">
-              <span className="font-bold">Background 360° AI Analysis in Progress:</span>{" "}
-              <span>Analyzed {analyzeProgress.completed} of {analyzeProgress.total} leads</span>
-              {analyzeProgress.current_company && (
-                <span className="text-purple-600 dark:text-purple-400 font-medium ml-1.5 truncate">
-                  (Currently investigating: {analyzeProgress.current_company})
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/60 px-2 py-0.5 rounded-md">
-              Running
-            </span>
-            <button
-              onClick={handleStopAutoAnalyze}
-              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800 transition shadow-xs"
-            >
-              Stop Bulk AI
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Toolbar */}
       <div className="flex items-center justify-between px-3 sm:px-6 py-2.5 bg-white dark:bg-black border-b border-slate-200 dark:border-slate-800 flex-wrap gap-2.5">
@@ -1007,6 +964,24 @@ export default function LeadsPage() {
                       </select>
 
                       <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={e => handleManualAnalyze(lead.id, e)}
+                          title={lead.ai_status === 'done' ? "360° AI Ready — Click to Re-analyze" : "Run 360° AI Analysis"}
+                          className={`p-1.5 rounded-lg border transition-colors shadow-xs ${
+                            lead.ai_status === 'done'
+                              ? "border-purple-300 bg-purple-50 text-purple-600 dark:border-purple-700/60 dark:bg-purple-950/40 dark:text-purple-300"
+                              : analyzingLeadId === lead.id
+                              ? "border-indigo-300 bg-indigo-50 text-indigo-600 dark:border-indigo-700 dark:bg-indigo-950/40"
+                              : "border-slate-200/80 dark:border-white/10 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-300 dark:hover:bg-purple-900/30 text-slate-400"
+                          }`}
+                        >
+                          {analyzingLeadId === lead.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                          ) : (
+                            <Sparkles className="w-3.5 h-3.5" />
+                          )}
+                        </button>
                         <Link
                           href={`/meetings?new=true&lead_id=${lead.id}&title=${encodeURIComponent(`Meeting with ${lead.company_name}`)}`}
                           title="Schedule Meeting"
@@ -1108,6 +1083,67 @@ export default function LeadsPage() {
 
               {/* Form */}
               <div className="px-6 py-5 space-y-4">
+                {/* ── Autofill with Website ── */}
+                <div className="p-4 bg-gradient-to-r from-blue-50 dark:from-blue-950/40 via-indigo-50 dark:via-indigo-950/30 to-violet-50 dark:to-violet-950/40 border border-blue-200/80 dark:border-blue-800/40 rounded-2xl shadow-xs">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                        <Sparkles className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                        {language === "es" ? "Autocompletar con Sitio Web" : "Autofill with Website"}
+                      </span>
+                    </div>
+                    {autofillSuccess && (
+                      <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100/70 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                        <CheckCircle2 className="w-3 h-3" />
+                        {language === "es" ? "¡Datos completados!" : "Details filled!"}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400 mb-2.5">
+                    {language === "es"
+                      ? "Pega la URL de la empresa para extraer automáticamente nombre real, correo verificado, teléfono, sector y resumen."
+                      : "Paste the company's website URL to automatically extract real business name, verified email, phone, industry, and summary."}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Globe className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={autofillUrl}
+                        onChange={e => setAutofillUrl(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleAutofillFromWebsite();
+                          }
+                        }}
+                        placeholder="https://company.com"
+                        className="w-full pl-8 pr-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleAutofillFromWebsite()}
+                      disabled={autofilling || !autofillUrl.trim()}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 text-white font-bold text-xs shadow-sm transition-all shrink-0 cursor-pointer"
+                    >
+                      {autofilling ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>{language === "es" ? "Extrayendo..." : "Extracting..."}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-3.5 h-3.5" />
+                          <span>{language === "es" ? "Autocompletar" : "Autofill Details"}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
                 {/* Company Name — required */}
                 <div>
                   <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5 block">
@@ -1125,7 +1161,7 @@ export default function LeadsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.email")}</label>
-                    <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="contact@company.com"
+                    <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="info@company.com"
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
                   </div>
                   {institute && <div className="col-span-full grid gap-4 sm:grid-cols-2">
@@ -1136,7 +1172,7 @@ export default function LeadsPage() {
                   </div>}
                   <div>
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.phone")}</label>
-                    <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+1 555 000 0000"
+                    <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+52 55 8000 8000"
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
                   </div>
                 </div>
@@ -1161,8 +1197,24 @@ export default function LeadsPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   {!institute && <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.website")}</label>
-                    <input value={form.website} onChange={e => setForm(f => ({ ...f, website: e.target.value }))} placeholder="https://example.com"
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest block">{t("leads.website")}</label>
+                      <button
+                        type="button"
+                        onClick={() => handleAutofillFromWebsite(form.website)}
+                        disabled={autofilling || !form.website?.trim()}
+                        className="flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 disabled:opacity-40 dark:text-blue-400 transition-colors cursor-pointer"
+                        title="Autofill details from website"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>{language === "es" ? "Autocompletar" : "Autofill"}</span>
+                      </button>
+                    </div>
+                    <input value={form.website} onChange={e => {
+                      const val = e.target.value;
+                      setForm(f => ({ ...f, website: val }));
+                      if (!autofillUrl) setAutofillUrl(val);
+                    }} placeholder="https://example.com"
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
                   </div>}
                   <div>

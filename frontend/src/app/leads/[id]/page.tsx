@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity, MessageSquare, StickyNote, CheckSquare, Building2, ChevronDown,
   Target, FolderOpen, HeartPulse, LayoutDashboard, Users,
-  TrendingUp, TrendingDown, Lightbulb, ShieldAlert, IndianRupee, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone, X, FileText, Send, Search, Filter, Check, Smartphone, Calendar, AlertCircle, ArrowUpRight, Copy, Brain, Loader2, Radar, CalendarClock
+  TrendingUp, TrendingDown, Lightbulb, ShieldAlert, IndianRupee, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone, X, FileText, Send, Search, Filter, Check, Smartphone, Calendar, AlertCircle, ArrowUpRight, Copy, Brain, Loader2, Radar, CalendarClock, Sparkles
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -32,10 +32,14 @@ import FilesTab from './components/tabs/FilesTab';
 import AiDataTab from '@/app/admin/clients/[id]/components/tabs/AiDataTab';
 import RecordEmailTab from '@/components/email/RecordEmailTab';
 import RecordFollowUpsTab from '@/components/followups/RecordFollowUpsTab';
+import LinkedContacts from '@/components/LinkedContacts';
+import LeadServicesTab from './components/tabs/LeadServicesTab';
 
 // ─── Tab definitions ───────────────────────────────────────────────────────────
 const TABS = [
   { key: 'overview',       label: 'Overview',       icon: LayoutDashboard },
+  { key: 'contacts',       label: 'Contacts',        icon: Users           },
+  { key: 'services',       label: 'Services',        icon: Sparkles        },
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
   { key: 'ai_data',        label: 'AI DATA',         icon: Brain           },
   { key: 'email',          label: 'EMAIL',           icon: Mail            },
@@ -570,11 +574,12 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
 
 
 
+      {/* Linked Contacts */}
+      <LinkedContacts leadId={String(leadId)} />
+
     </div>
   );
 }
-
-// ─── SWOT TAB ────────────────────────────────────────────────────────────────
 function LeadSwotTab({ lead, onRefresh }: { lead: any, onRefresh: () => void }) {
   const [isSwotLoading, setIsSwotLoading] = useState(false);
 
@@ -802,10 +807,6 @@ export default function LeadDetailsPage() {
       if (researchRes.status === 'fulfilled') {
         const rData = researchRes.value.research || null;
         setResearch(rData);
-        // Automatic AI Profile Preparation on lead opening if research not started
-        if (!rData || !rData.email_agent_data) {
-          fetch(`${API_BASE_URL}/leads/${id}/auto-research`, { method: 'POST' }).catch(() => {});
-        }
       }
     } catch (e) { console.error(e); }
     finally { setPageLoading(false); }
@@ -1045,6 +1046,18 @@ export default function LeadDetailsPage() {
                     isGeneratingResearch={isGeneratingResearch}
                     onRefresh={fetchAll}
                     onActivitySelect={setSelectedActivity}
+                  />
+                )}
+                {activeTab === 'contacts' && (
+                  <div className="mt-1">
+                    <LinkedContacts leadId={String(id)} />
+                  </div>
+                )}
+                {activeTab === 'services' && (
+                  <LeadServicesTab
+                    leadId={id}
+                    lead={lead}
+                    onRefresh={fetchAll}
                   />
                 )}
                 {activeTab === 'timeline' && (

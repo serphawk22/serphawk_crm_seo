@@ -294,10 +294,10 @@ CRITICAL RULES:
         return {
             "api_warning": str(e),
             "contact_details": {
-                "primary_email": f"contact@{domain}",
-                "primary_phone": "+1 555-0199",
-                "contact_person": "Managing Director",
-                "physical_address": f"Corporate HQ, {domain}"
+                "primary_email": None,
+                "primary_phone": None,
+                "contact_person": None,
+                "physical_address": None
             },
             "summary_metrics": {
                 "overall_fit_score": 8,
