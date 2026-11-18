@@ -10783,8 +10783,12 @@ def _build_proposal_pdf(prop, session):
     if _email:
         recipient_email = _email
 
-    currency = getattr(prop, 'currency', 'MXN')
-    curr_symbol = "₹" if currency == "INR" else "$"
+    from modules import tenant_settings
+    from modules.branding import current_brand, document_style
+    tid = getattr(prop, "tenant_id", None)
+    tenant_cur = tenant_settings.get_setting(tid, "default_currency", None) if tid else None
+    currency = tenant_cur or getattr(prop, 'currency', 'MXN')
+    curr_symbol = "₹" if (currency or "").upper() == "INR" else "$"
     line_items = getattr(prop, 'line_items', None) or []
 
     buf = io.BytesIO()
@@ -10792,8 +10796,6 @@ def _build_proposal_pdf(prop, session):
                             leftMargin=20*mm, rightMargin=20*mm)
     styles = getSampleStyleSheet()
 
-    from modules.branding import current_brand, document_style
-    tid = getattr(prop, "tenant_id", None)
     brand = current_brand(tid) if tid else current_brand()
     doc_style = document_style(tid) if tid else document_style()
     accent_hex = doc_style.get("accent") or "#2563eb"
