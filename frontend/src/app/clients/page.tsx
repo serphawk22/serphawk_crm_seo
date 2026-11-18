@@ -1,5 +1,6 @@
 "use client";
 import LocalizedText from "@/components/LocalizedText";
+import OCRScannerModal, { OCRResult } from "@/components/OCRScannerModal";
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -251,42 +252,17 @@ export default function ClientsPage() {
     };
   }, []);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    const file = e.target.files[0];
-    setOcrLoading(true);
-
-    const formDataUpload = new FormData();
-    formDataUpload.append('file', file);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/documents/ocr`, {
-        method: 'POST',
-        body: formDataUpload,
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        // Pre-fill form from OCR result
-        setFormData(prev => ({
-          ...prev,
-          companyName: result.company_name || prev.companyName,
-          email: result.email || prev.email,
-          websiteUrl: result.website || prev.websiteUrl,
-        }));
-        setIsOCRModalOpen(false);
-        setIsModalOpen(true); // Open standard Add Client modal with prefilled data
-      } else {
-        alert(language === 'es' ? "Fallo al extraer datos de la imagen." : "Failed to extract data from image.");
-      }
-    } catch (error) {
-      console.error(error);
-      alert(language === 'es' ? "Ocurrió un error durante la extracción OCR." : "An error occurred during OCR extraction.");
-    } finally {
-      setOcrLoading(false);
-      // Reset input
-      e.target.value = '';
-    }
+  const handleOCRExtracted = (result: OCRResult) => {
+    setFormData(prev => ({
+      ...prev,
+      companyName: result.company_name || prev.companyName,
+      email: result.email || prev.email,
+      websiteUrl: result.website || prev.websiteUrl,
+      projectName: prev.projectName || (result.company_name ? `${result.company_name} SEO` : ""),
+      tagline: result.designation ? `${result.designation} - ${result.name}` : prev.tagline,
+    }));
+    setIsOCRModalOpen(false);
+    setIsModalOpen(true);
   };
 
   const [isAutofilling, setIsAutofilling] = useState(false);
@@ -1415,71 +1391,31 @@ export default function ClientsPage() {
           )}
         </div>
       </div>
-      {/* Modals remain structurally similar, but updated with glassmorphism */}
-      <AnimatePresence>
-        {isOCRModalOpen && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-50 p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-              className="bg-white dark:bg-zinc-900/80 backdrop-blur-2xl border border-white rounded-[2rem] shadow-2xl w-full max-w-lg p-8 text-center relative overflow-hidden"
-            >
-               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-zinc-500 to-slate-500"></div>
-               <div className="flex justify-between items-center mb-8">
-                 <h2 className="text-2xl font-black flex items-center gap-3 text-slate-800 dark:text-zinc-100">
-                    <div className="p-2 bg-zinc-50 rounded-xl text-zinc-600"><FileScan className="w-6 h-6" /></div>
-                    {language === 'es' ? 'Escaneo Inteligente' : 'Smart Scan'}
-                 </h2>
-                 <button onClick={() => setIsOCRModalOpen(false)} className="w-10 h-10 bg-white dark:bg-zinc-900 shadow-sm rounded-full flex items-center justify-center text-slate-400 hover:text-slate-800 dark:text-zinc-100 transition-colors">&times;</button>
-               </div>
-
-               <div className="border-2 border-dashed border-zinc-200/50 rounded-3xl p-12 flex flex-col items-center justify-center bg-white dark:bg-zinc-900/50 relative hover:bg-white dark:bg-zinc-900/80 hover:border-zinc-400 transition-all group">
-                   <input
-                     type="file"
-                     accept="image/*"
-                     onChange={handleFileUpload}
-                     disabled={ocrLoading}
-                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10"
-                   />
-
-                   {ocrLoading ? (
-                     <div className="flex flex-col items-center justify-center text-zinc-600">
-                       <Loader2 className="w-12 h-12 animate-spin mb-4" />
-                       <p className="font-bold text-lg">{language === 'es' ? 'Extrayendo Datos...' : 'Extracting Data...'}</p>
-                       <p className="text-xs text-zinc-400 mt-1 font-medium">{language === 'es' ? 'El motor neuronal está procesando la imagen' : 'Neural engine is processing the image'}</p>
-                     </div>
-                   ) : (
-                     <div className="flex flex-col items-center justify-center text-slate-500 dark:text-zinc-400 group-hover:text-zinc-600 transition-colors">
-                       <UploadCloud className="w-12 h-12 mb-4" />
-                       <p className="font-bold text-lg text-slate-700 dark:text-zinc-200">{language === 'es' ? 'Suelte la Tarjeta de Visita Aquí' : 'Drop Visiting Card Here'}</p>
-                       <p className="text-xs mt-2 font-medium">{language === 'es' ? 'Extrae Nombre, Email, Sitio Web automáticamente' : 'Auto-extracts Name, Email, Website'}</p>
-                     </div>
-                   )}
-               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* OCR Scanner with Live Camera & Photo Upload */}
+      <OCRScannerModal
+        isOpen={isOCRModalOpen}
+        onClose={() => setIsOCRModalOpen(false)}
+        onExtracted={handleOCRExtracted}
+        targetEntity="client"
+      />
 
       <AnimatePresence>
         {isModalOpen && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-50 p-3 sm:p-4"
           >
             <motion.div
                initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-               className="bg-white dark:bg-zinc-900/90 backdrop-blur-2xl rounded-[2rem] border border-white shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
+               className="bg-white dark:bg-zinc-900/90 backdrop-blur-2xl rounded-3xl border border-white/20 dark:border-white/10 shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col"
             >
-              <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-white dark:bg-zinc-900/50">
-                <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 tracking-tight">{language === 'es' ? 'Agregar Nuevo Cliente' : 'Add New Client'}</h2>
-                <button onClick={() => setIsModalOpen(false)} className="w-10 h-10 bg-white dark:bg-zinc-900 shadow-sm rounded-full flex items-center justify-center text-slate-400 hover:text-slate-800 dark:text-zinc-100 transition-colors">&times;</button>
+              <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-white dark:bg-zinc-900/50">
+                <h2 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-zinc-100 tracking-tight">{language === 'es' ? 'Agregar Nuevo Cliente' : 'Add New Client'}</h2>
+                <button onClick={() => setIsModalOpen(false)} className="w-9 h-9 sm:w-10 sm:h-10 bg-white dark:bg-zinc-900 shadow-sm rounded-full flex items-center justify-center text-slate-400 hover:text-slate-800 dark:text-zinc-100 transition-colors">&times;</button>
               </div>
-              <div className="overflow-y-auto p-8 custom-scrollbar">
-                <form onSubmit={handleAddClient} className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="overflow-y-auto p-4 sm:p-8 custom-scrollbar">
+                <form onSubmit={handleAddClient} className="space-y-4 sm:space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-700 dark:text-zinc-200 uppercase tracking-widest pl-1">{language === 'es' ? 'Nombre de Empresa' : 'Company Name'}</label>
                       <input required className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500 transition-all shadow-sm font-medium" value={formData.companyName} onChange={e => setFormData({...formData, companyName: e.target.value})} />
@@ -1519,9 +1455,9 @@ export default function ClientsPage() {
                     <textarea className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500 transition-all shadow-sm font-medium min-h-[100px]" value={formData.targetKeywords} onChange={e => setFormData({...formData, targetKeywords: e.target.value})} />
                   </div>
 
-                  <div className="pt-6 flex justify-end gap-3 border-t border-slate-100 dark:border-zinc-800">
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:bg-zinc-950 transition-colors shadow-sm">{language === 'es' ? 'Cancelar' : 'Cancel'}</button>
-                    <button type="submit" className="px-8 py-3 bg-gradient-to-r from-zinc-600 to-slate-600 text-white rounded-xl font-bold hover:shadow-[0_8px_30px_rgba(79,70,229,0.3)] shadow-[0_4px_15px_rgba(79,70,229,0.2)] hover:-translate-y-0.5 transition-all">{language === 'es' ? 'Crear Cliente' : 'Create Client'}</button>
+                  <div className="pt-4 sm:pt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5 sm:gap-3 border-t border-slate-100 dark:border-zinc-800">
+                    <button type="button" onClick={() => setIsModalOpen(false)} className="w-full sm:w-auto px-6 py-2.5 sm:py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:bg-zinc-950 transition-colors shadow-sm">{language === 'es' ? 'Cancelar' : 'Cancel'}</button>
+                    <button type="submit" className="w-full sm:w-auto px-8 py-2.5 sm:py-3 bg-gradient-to-r from-zinc-600 to-slate-600 text-white rounded-xl font-bold hover:shadow-[0_8px_30px_rgba(79,70,229,0.3)] shadow-[0_4px_15px_rgba(79,70,229,0.2)] hover:-translate-y-0.5 transition-all">{language === 'es' ? 'Crear Cliente' : 'Create Client'}</button>
                   </div>
                 </form>
               </div>

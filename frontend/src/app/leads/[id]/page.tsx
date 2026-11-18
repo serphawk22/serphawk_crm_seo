@@ -27,7 +27,7 @@ import AiCopilotPanelLead from './components/AiCopilotPanelLead';
 import TimelineTab from './components/tabs/TimelineTab';
 import ConversationsTab from './components/tabs/ConversationsTab';
 import NotesTab from './components/tabs/NotesTab';
-import TasksTab from './components/tabs/TasksTab';
+import EntityTasksTab from '@/components/EntityTasksTab';
 import FilesTab from './components/tabs/FilesTab';
 import AiDataTab from '@/app/admin/clients/[id]/components/tabs/AiDataTab';
 import RecordEmailTab from '@/components/email/RecordEmailTab';
@@ -40,6 +40,7 @@ const TABS = [
   { key: 'overview',       label: 'Overview',       icon: LayoutDashboard },
   { key: 'contacts',       label: 'Contacts',        icon: Users           },
   { key: 'services',       label: 'Services',        icon: Sparkles        },
+  { key: 'tasks',          label: 'Tasks',           icon: CheckSquare     },
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
   { key: 'ai_data',        label: 'AI DATA',         icon: Brain           },
   { key: 'email',          label: 'EMAIL',           icon: Mail            },
@@ -798,7 +799,7 @@ export default function LeadDetailsPage() {
       if (convRes.status === 'fulfilled') setConversations(convRes.value.conversations || []);
       if (taskRes.status === 'fulfilled') {
         const tVal = Array.isArray(taskRes.value?.tasks) ? taskRes.value.tasks : (Array.isArray(taskRes.value) ? taskRes.value : []);
-        setTasks(tVal.filter((t: any) => String(t.client_id) === String(id)));
+        setTasks(tVal);
       }
       if (filesRes.status === 'fulfilled') {
         const fVal = Array.isArray(filesRes.value?.files) ? filesRes.value.files : (Array.isArray(filesRes.value) ? filesRes.value : []);
@@ -1058,6 +1059,15 @@ export default function LeadDetailsPage() {
                     leadId={id}
                     lead={lead}
                     onRefresh={fetchAll}
+                  />
+                )}
+                {activeTab === 'tasks' && (
+                  <EntityTasksTab
+                    leadId={id}
+                    entityName={lead?.company_name}
+                    tasks={tasks}
+                    employees={employees}
+                    onRefresh={() => fetch(`${API_BASE_URL}/tasks?lead_id=${id}`).then(r => r.json()).then(d => setTasks(d.tasks || []))}
                   />
                 )}
                 {activeTab === 'timeline' && (

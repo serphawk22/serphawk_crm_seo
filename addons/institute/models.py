@@ -124,7 +124,7 @@ class LeadTransferHistory(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     lead_id: int = Field(foreign_key="leads.id", index=True)
-    from_user_id: int = Field(foreign_key="users.id")
+    from_user_id: Optional[int] = Field(default=None, foreign_key="users.id")
     to_user_id: int = Field(foreign_key="users.id")
     transferred_by: int = Field(foreign_key="users.id")
     lead_stage: str = Field(default="New")

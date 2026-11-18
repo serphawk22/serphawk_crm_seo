@@ -90,6 +90,8 @@ def transaction_ended(session, transaction):
 
 
 def validate(session):
+    if session.info.get("skip_duplicate_validation"):
+        return
     from database import Lead, ClientProfile, MarketplaceService, TenantSettings, User
     from modules.tenant_scope import current_tenant_id
     tid = current_tenant_id.get()

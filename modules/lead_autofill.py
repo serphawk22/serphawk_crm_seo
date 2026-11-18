@@ -98,6 +98,8 @@ CRITICAL RULES FOR CONTACT DETAILS:
 4. For "address", extract the city, state, and country of the headquarters or primary office (e.g. "Ciudad de México, Mexico"). If not found, return null.
 5. For "company_name", return the proper official business name (e.g. "IZA Business Centers").
 6. For "notes", write a 2-3 sentence executive summary of what services this business provides and who they serve.
+7. For "contact_person", extract the real name of a key executive, founder, director, or contact person if mentioned in the website text (else null).
+8. For "contact_role", their title/heading/designation (e.g. "CEO", "Founder & Managing Director", "Commercial Director", else null).
 
 Return ONLY a valid JSON object matching this schema:
 {{
@@ -107,7 +109,9 @@ Return ONLY a valid JSON object matching this schema:
   "website": "{url}",
   "industry": "Industry from list",
   "address": "City, Country or null",
-  "notes": "Concise 2-3 sentence overview of business"
+  "notes": "Concise 2-3 sentence overview of business",
+  "contact_person": "Full name or null",
+  "contact_role": "Role heading or null"
 }}
 """
     try:
@@ -151,7 +155,9 @@ Return ONLY a valid JSON object matching this schema:
                 "website": url,
                 "industry": industry_val,
                 "address": data.get("address") or "",
-                "notes": data.get("notes") or ""
+                "notes": data.get("notes") or "",
+                "contact_name": data.get("contact_person") or "",
+                "contact_designation": data.get("contact_role") or "Key Decision Maker"
             }
         }
     except Exception as e:
