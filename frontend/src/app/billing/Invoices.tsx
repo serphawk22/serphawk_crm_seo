@@ -58,9 +58,11 @@ function currSymbol(c: string) {
   if (up === "GBP") return "£";
   return "₹";
 }
-function fmtMoney(v: number, c: string) {
+function fmtMoney(v: number | null | undefined, c: string) {
+  const num = Number(v ?? 0);
+  const safe = Number.isFinite(num) ? num : 0;
   const loc = (c || "").toUpperCase() === "INR" ? "en-IN" : "en-US";
-  return `${currSymbol(c)}${v.toLocaleString(loc, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${currSymbol(c)}${safe.toLocaleString(loc, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export interface InvoicesHandle {
@@ -592,13 +594,16 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
                     <div className="grid grid-cols-[2fr_1fr_1fr] gap-2 px-4 py-2 bg-slate-50 dark:bg-zinc-800/50 text-[10px] font-black uppercase tracking-widest text-slate-400">
                       <span><LocalizedText text={"Description"} /></span><span className="text-right"><LocalizedText text={"Provider"} /></span><span className="text-right"><LocalizedText text={"Amount"} /></span>
                     </div>
-                    {(previewInv.line_items || []).map((li, idx) => (
-                      <div key={idx} className="grid grid-cols-[2fr_1fr_1fr] gap-2 px-4 py-2.5 border-t border-slate-100 dark:border-zinc-800 text-sm">
-                        <span className="text-slate-700 dark:text-zinc-200">{li.description}</span>
-                        <span className="text-right text-slate-500">{li.provider || "—"}</span>
-                        <span className="text-right font-semibold">{fmtMoney(li.amount, previewInv.currency || "MXN")}</span>
-                      </div>
-                    ))}
+                    {(previewInv.line_items || []).map((li: any, idx) => {
+                      const lineAmt = li.amount ?? (Number(li.quantity || 1) * Number(li.unit_price || 0));
+                      return (
+                        <div key={idx} className="grid grid-cols-[2fr_1fr_1fr] gap-2 px-4 py-2.5 border-t border-slate-100 dark:border-zinc-800 text-sm">
+                          <span className="text-slate-700 dark:text-zinc-200">{li.description || li.product_name || "Item"}</span>
+                          <span className="text-right text-slate-500">{li.provider || "—"}</span>
+                          <span className="text-right font-semibold">{fmtMoney(lineAmt, previewInv.currency || "USD")}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
