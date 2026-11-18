@@ -71,6 +71,8 @@ from database import (
     CompetitorAnalysis,
     CompetitorRelationship,
     Contact,
+    ContactClientLink,
+    ContactLeadLink,
     ConversationLog,
     ConversationReply,
     Deal,
@@ -264,6 +266,8 @@ from database import (
     CompetitorAnalysis,
     CompetitorRelationship,
     Contact,
+    ContactClientLink,
+    ContactLeadLink,
     ConversationLog,
     ConversationReply,
     Deal,
@@ -11602,6 +11606,13 @@ async def auto_fill_client(request: AutoFillRequest):
         return {"ok": False, "error": str(e)}
 
 
+@app.post("/leads/auto-fill")
+@app.post("/api/leads/auto-fill")
+async def auto_fill_lead(request: AutoFillRequest):
+    from modules.lead_autofill import autofill_lead_from_website
+    return await autofill_lead_from_website(request.website)
+
+
 @app.get("/chatbot/history/{session_id}")
 def get_chatbot_history(session_id: str, session: Session = Depends(get_session)):
     from database import ChatbotMessage
@@ -13209,6 +13220,10 @@ class ContactCreateRequest(BaseModel):
     owner_id: Optional[int] = None
     create_new_lead: Optional[bool] = False
     parent_contact_id: Optional[int] = None
+    lead_ids: Optional[List[int]] = None
+    client_ids: Optional[List[int]] = None
+    role_at_company: Optional[str] = None
+    is_primary: Optional[bool] = False
 
 # ---- LEADS API ----
 
@@ -13511,16 +13526,66 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
     except Exception as e:
         print("WhatsApp Error:", e)
 
-    # ── AUTO-RESEARCH ──
+    # ── ULTRA CHEAP LOW-COST PROMPT ON LEAD ADD (gpt-4o-mini, max 120 tokens, < $0.00003) ──
     try:
-        _trigger_background_research(
-            entity_id=lead.id,
-            entity_type="lead",
+        def _run_ultra_cheap_lead_init(lead_id: int, company_name: str, website: str, industry_val: Optional[str], tenant_id_val: Optional[int]):
+            def _worker():
+                try:
+                    from modules.llm_engine import get_openai_client
+                    import json as _json
+                    from sqlmodel import Session as _S, select as _sel
+                    from database import ClientResearch, Lead as _L, engine as _eng
+                    
+                    client_ai = get_openai_client()
+                    prompt = (
+                        f"Company: '{company_name}' | Website: '{website or 'N/A'}' | Industry: '{industry_val or 'N/A'}'. "
+                        "Return ONLY valid JSON: {\"company_overview\": \"Concise 1-sentence summary of what they do.\", \"industry\": \"Primary industry name\"}"
+                    )
+                    resp = client_ai.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{"role": "user", "content": prompt}],
+                        response_format={"type": "json_object"},
+                        max_tokens=120,
+                        temperature=0.3,
+                    )
+                    raw = resp.choices[0].message.content.strip()
+                    data = _json.loads(raw)
+                    overview = data.get("company_overview") or f"{company_name} is a business in {industry_val or 'commercial services'}."
+                    detected_industry = data.get("industry") or industry_val
+                    
+                    with _S(_eng) as s:
+                        cr = s.exec(_sel(ClientResearch).where(ClientResearch.lead_id == lead_id).execution_options(skip_tenant=True)).first()
+                        if not cr:
+                            cr = ClientResearch(lead_id=lead_id, tenant_id=tenant_id_val)
+                        cr.company_overview = overview
+                        cr.email_agent_data = _json.dumps({
+                            "company_overview": overview,
+                            "industry": detected_industry,
+                            "__report_status": "done"
+                        })
+                        s.add(cr)
+                        
+                        lead_obj = s.get(_L, lead_id)
+                        if lead_obj and detected_industry and not lead_obj.industry:
+                            lead_obj.industry = detected_industry
+                            s.add(lead_obj)
+                        s.commit()
+                    print(f"[CheapLeadInit] Finished minimal prompt for lead {lead_id} ({company_name})")
+                except Exception as e:
+                    print(f"[CheapLeadInit] Warning: {e}")
+
+            import threading
+            threading.Thread(target=_worker, daemon=True).start()
+
+        _run_ultra_cheap_lead_init(
+            lead_id=lead.id,
             company_name=lead.company_name or "",
-            website=lead.website or ""
+            website=lead.website or "",
+            industry_val=lead.industry or "",
+            tenant_id_val=current_tenant_id.get(),
         )
     except Exception as e:
-        print(f"AutoResearch trigger error for lead {lead.id}: {e}")
+        print(f"CheapLeadInit trigger error for lead {lead.id}: {e}")
 
     return lead
 
@@ -13530,21 +13595,6 @@ def get_lead(lead_id: int, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-
-    # Auto AI Profile Preparation on lead opening if research is not started or empty
-    if lead.id and (lead.website or lead.company_name):
-        try:
-            from database import ClientResearch
-            cr = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead.id).execution_options(skip_tenant=True)).first()
-            if not cr or not cr.email_agent_data:
-                _trigger_background_research(
-                    entity_id=lead.id,
-                    entity_type="lead",
-                    company_name=lead.company_name or "",
-                    website=lead.website or ""
-                )
-        except Exception as _ar_err:
-            print(f"[LeadOpenAutoResearch] Warning: {_ar_err}")
 
     from modules.lead_calls import latest_call_info
     return {**lead.model_dump(), **latest_call_info(session, [lead_id]).get(lead_id, {})}
@@ -13789,6 +13839,283 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
         "scrape_method": scrape_method,
         "message": f"Extracted {len(services)} services via {method_label}. Added {added} to Marketplace.",
     }
+
+
+class ProposalDraftRequest(BaseModel):
+    selected_offered_services: Optional[List[str]] = None
+    client_services: Optional[List[str]] = None
+    proposal_goal: Optional[str] = "Client Acquisition & Revenue Growth"
+    tone: Optional[str] = "consultative"
+    recipient_email: Optional[str] = None
+    recipient_name: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SaveLeadProposalRequest(BaseModel):
+    title: str
+    amount: Optional[float] = 0.0
+    notes: Optional[str] = None
+    line_items: Optional[List[dict]] = None
+    recipient_email: Optional[str] = None
+
+
+@app.get("/leads/{lead_id}/services")
+def get_lead_services_overview(lead_id: int, session: Session = Depends(get_session)):
+    """
+    Returns:
+    1. Their Services (extracted from website, added to Marketplace)
+    2. Our Services (workspace catalog / standard B2B services we can offer them with pitch angles)
+    3. Primary lead contact info for proposals
+    """
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    import json as _json
+    from database import MarketplaceService
+    from modules.investigation_360 import get_x_workspace_profile
+
+    # 1. Client/Lead Services (what they sell)
+    client_services = []
+    if lead.ai_analysis_results:
+        try:
+            ar = _json.loads(lead.ai_analysis_results) if isinstance(lead.ai_analysis_results, str) else dict(lead.ai_analysis_results)
+            client_services = ar.get("services_offered") or ar.get("product_portfolio") or []
+        except Exception:
+            client_services = []
+
+    # If not yet in ai_analysis_results, check MarketplaceService by provider_name
+    if not client_services and lead.company_name:
+        mp_items = session.exec(select(MarketplaceService).where(
+            MarketplaceService.provider_name == lead.company_name,
+            MarketplaceService.is_active == True
+        )).all()
+        client_services = [
+            {
+                "name": m.service_name,
+                "category": m.category or "General",
+                "brief": m.description or "",
+                "approx_cost": m.estimated_cost or 0,
+                "in_marketplace": True
+            }
+            for m in mp_items
+        ]
+    else:
+        for cs in client_services:
+            cs["in_marketplace"] = True
+
+    # 2. Our Catalog Services (what we can offer them)
+    x_profile = get_x_workspace_profile(session, tenant_id=lead.tenant_id)
+    raw_catalog = x_profile.get("x_catalog") or x_profile.get("catalog") or []
+    our_services = []
+
+    for idx, item in enumerate(raw_catalog):
+        name = item.get("name", "")
+        cat = item.get("category", "Growth Strategy")
+        price = item.get("unit_price") or item.get("cost") or 950
+        desc = item.get("description", "")
+
+        # Strategic synergy angle for this lead
+        pitch_angle = f"Helps {lead.company_name} scale organic client acquisition and boost bookings."
+        if any(w in name for w in ["SEO", "Search", "Domination", "Local"]):
+            pitch_angle = f"Ensures {lead.company_name} captures top Google rank when local clients search for their services."
+        elif any(w in name for w in ["Web", "CRO", "Redesign"]):
+            pitch_angle = f"Converts higher percentages of website traffic into paying clients for their core offerings."
+        elif any(w in name for w in ["AI", "Automation", "Intake"]):
+            pitch_angle = f"Instant 24/7 client intake & smart follow-up sequences so no business inquiries slip away."
+        elif any(w in name for w in ["Content", "Authority"]):
+            pitch_angle = f"Builds organic domain authority and ranks high-intent keyword clusters above competitors."
+        elif any(w in name for w in ["Ads", "Paid", "Retargeting"]):
+            pitch_angle = f"Fast customer acquisition targeting active buyers in their target commercial regions."
+
+        our_services.append({
+            "id": idx + 1,
+            "name": name,
+            "category": cat,
+            "price": price,
+            "currency": item.get("currency", "USD"),
+            "description": desc,
+            "pitch_angle": pitch_angle,
+            "recommended": idx < 3
+        })
+
+    # 3. Primary contact email
+    recipient_email = lead.email or ""
+    recipient_name = lead.company_name or "Business Partner"
+    from database import Contact
+    c = session.exec(select(Contact).where(Contact.lead_id == lead_id)).first()
+    if c:
+        if c.email and not recipient_email:
+            recipient_email = c.email
+        if c.full_name:
+            recipient_name = c.full_name
+
+    # 4. Check for any existing draft proposal
+    latest_draft = None
+    from database import SentEmail
+    draft_record = session.exec(select(SentEmail).where(
+        SentEmail.lead_id == lead_id,
+        SentEmail.status == "Draft"
+    ).order_by(SentEmail.sent_at.desc())).first()
+    if draft_record:
+        latest_draft = {
+            "subject": draft_record.subject,
+            "english_body": draft_record.english_body,
+            "spanish_body": draft_record.spanish_body,
+            "created_at": draft_record.sent_at.isoformat() if draft_record.sent_at else None
+        }
+
+    return {
+        "lead": {
+            "id": lead.id,
+            "company_name": lead.company_name,
+            "website": lead.website,
+            "email": recipient_email,
+            "recipient_name": recipient_name,
+            "phone": lead.phone,
+            "industry": lead.industry,
+            "address": lead.address,
+        },
+        "client_services": client_services,
+        "our_services": our_services,
+        "total_client_services": len(client_services),
+        "total_our_services": len(our_services),
+        "latest_draft": latest_draft,
+    }
+
+
+@app.post("/leads/{lead_id}/generate-proposal-draft")
+def generate_lead_proposal_draft_endpoint(lead_id: int, body: ProposalDraftRequest, session: Session = Depends(get_session)):
+    """
+    Generates a personalized, high-converting B2B proposal email draft
+    connecting the lead's extracted website services with our offered services.
+    """
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    from modules.llm_engine import get_openai_client
+    import json as _json
+    client_ai = get_openai_client()
+
+    # Gather their services
+    their_services_list = body.client_services or []
+    if not their_services_list and lead.ai_analysis_results:
+        try:
+            ar = _json.loads(lead.ai_analysis_results) if isinstance(lead.ai_analysis_results, str) else dict(lead.ai_analysis_results)
+            svcs = ar.get("services_offered") or ar.get("product_portfolio") or []
+            their_services_list = [s.get("name") for s in svcs if s.get("name")]
+        except Exception:
+            pass
+
+    their_services_text = ", ".join(their_services_list) if their_services_list else (lead.industry or "their industry offerings")
+
+    # Gather our offered services
+    offered_services_list = body.selected_offered_services or [
+        "Technical SEO & Local Google Maps Domination",
+        "High-Converting Web Redesign & CRO Sprint",
+        "AI Lead Intake & Smart Follow-Up Automation"
+    ]
+    offered_services_text = "\n".join([f"- {s}" for s in offered_services_list])
+
+    recipient = body.recipient_name or lead.company_name
+    to_email = body.recipient_email or lead.email or ""
+
+    prompt = f"""
+You are a senior B2B partnership & growth director writing a personalized business proposal email.
+
+Prospect Company: {lead.company_name}
+Prospect Website: {lead.website or 'N/A'}
+Industry: {lead.industry or 'Business Services'}
+Their Core Offerings Extracted from Website: {their_services_text}
+
+Our Growth Services We Are Pitching to Them:
+{offered_services_text}
+
+Objective: {body.proposal_goal}
+Tone: {body.tone} (consultative, professional, value-driven, direct)
+
+Structure Requirements:
+1. Executive Greeting addressing {recipient}.
+2. Immediate Credibility: Acknowledge and commend their exact business offerings ({their_services_text}).
+3. Strategic Synergy: Explicitly explain how our proposed services create growth and drive more high-value inquiries specifically for their services.
+4. Scope of Deliverables: Clear bullet points outlining what we provide.
+5. Low-friction Call-to-Action proposing a brief 15-minute alignment call.
+
+Return JSON ONLY with this exact schema:
+{{
+    "subject": "Proposal: Scaling [Lead Company]'s [Key Offering] with [Our Primary Solution]",
+    "english_body": "Formatted email body in English",
+    "spanish_body": "Formatted email body in natural professional Spanish",
+    "key_deliverables": ["Deliverable 1", "Deliverable 2", "Deliverable 3"],
+    "summary_pitch": "1-sentence executive overview of the proposal"
+}}
+"""
+    try:
+        resp = client_ai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.35,
+            max_tokens=950,
+        )
+        data = _json.loads(resp.choices[0].message.content.strip())
+
+        # Store as draft in SentEmail
+        from database import SentEmail
+        draft = SentEmail(
+            tenant_id=lead.tenant_id,
+            lead_id=lead_id,
+            to_email=to_email or "prospect@client.com",
+            subject=data.get("subject", f"Growth Proposal for {lead.company_name}"),
+            english_body=data.get("english_body", ""),
+            spanish_body=data.get("spanish_body", ""),
+            draft_json=_json.dumps(data),
+            manual=True,
+            status="Draft",
+            sent_at=datetime.now(timezone.utc)
+        )
+        session.add(draft)
+        session.commit()
+
+        return {
+            "ok": True,
+            "to_email": to_email,
+            "subject": data.get("subject"),
+            "english_body": data.get("english_body"),
+            "spanish_body": data.get("spanish_body"),
+            "key_deliverables": data.get("key_deliverables", []),
+            "summary_pitch": data.get("summary_pitch", ""),
+            "selected_services": offered_services_list,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate proposal draft: {str(e)}")
+
+
+@app.post("/leads/{lead_id}/save-proposal")
+def save_lead_official_proposal_endpoint(lead_id: int, body: SaveLeadProposalRequest, session: Session = Depends(get_session)):
+    """Creates a formal Proposal record in the proposals table."""
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    from database import Proposal
+    import uuid
+    prop = Proposal(
+        title=body.title,
+        lead_id=lead_id,
+        recipient_type="lead",
+        status="Sent",
+        amount=body.amount or 0.0,
+        notes=body.notes or "",
+        tenant_id=lead.tenant_id or current_tenant_id.get(),
+        public_uuid=str(uuid.uuid4())[:16],
+        created_at=datetime.now(timezone.utc),
+    )
+    session.add(prop)
+    session.commit()
+    session.refresh(prop)
+    return {"ok": True, "proposal_id": prop.id, "public_uuid": prop.public_uuid, "message": "Official proposal created successfully"}
 
 
 @app.put("/leads/{lead_id}")
@@ -14371,69 +14698,272 @@ def delete_account(account_id: int, session: Session = Depends(get_session)):
 # ---- CONTACTS API ----
 
 
+# Helper to enrich contacts with hierarchy count, linked leads, and linked clients in batches (no N+1 queries)
+def _enrich_contacts(contacts: List[Contact], session: Session) -> List[dict]:
+    if not contacts:
+        return []
+
+    contact_ids = [c.id for c in contacts if c.id is not None]
+    if not contact_ids:
+        return [c.dict() for c in contacts]
+
+    # 1. Batch children counts in a single fast aggregate query
+    counts_query = (
+        select(Contact.parent_contact_id, func.count(Contact.id))
+        .where(Contact.parent_contact_id.in_(contact_ids))
+        .group_by(Contact.parent_contact_id)
+    )
+    children_count_map = {row[0]: row[1] for row in session.exec(counts_query).all()}
+
+    # 2. Batch fetch lead links + direct lead_id
+    lead_links = session.exec(
+        select(ContactLeadLink.contact_id, ContactLeadLink.lead_id, ContactLeadLink.role_at_company, ContactLeadLink.is_primary, ContactLeadLink.id)
+        .where(ContactLeadLink.contact_id.in_(contact_ids))
+    ).all()
+
+    lead_ids_needed = {link[1] for link in lead_links}
+    for c in contacts:
+        if c.lead_id:
+            lead_ids_needed.add(c.lead_id)
+
+    lead_map = {}
+    if lead_ids_needed:
+        # Only query id and company_name (ultra-fast, avoid loading massive lead fields)
+        lead_rows = session.exec(
+            select(Lead.id, Lead.company_name).where(Lead.id.in_(list(lead_ids_needed)))
+        ).all()
+        lead_map = {r[0]: (r[1] or f"Lead #{r[0]}") for r in lead_rows}
+
+    # 3. Batch fetch client links + direct client_id
+    client_links = session.exec(
+        select(ContactClientLink.contact_id, ContactClientLink.client_id, ContactClientLink.role_at_company, ContactClientLink.is_primary, ContactClientLink.id)
+        .where(ContactClientLink.contact_id.in_(contact_ids))
+    ).all()
+
+    client_ids_needed = {link[1] for link in client_links}
+    for c in contacts:
+        if c.client_id:
+            client_ids_needed.add(c.client_id)
+
+    client_map = {}
+    if client_ids_needed:
+        # Only query id, companyName, projectName (ultra-fast)
+        client_rows = session.exec(
+            select(ClientProfile.id, ClientProfile.companyName, ClientProfile.projectName).where(ClientProfile.id.in_(list(client_ids_needed)))
+        ).all()
+        client_map = {r[0]: (r[1] or r[2] or f"Client #{r[0]}") for r in client_rows}
+
+    # Group links by contact_id
+    c_lead_links = {}
+    for link in lead_links:
+        # link is (contact_id, lead_id, role_at_company, is_primary, id)
+        c_lead_links.setdefault(link[0], []).append({
+            "lead_id": link[1],
+            "role": link[2],
+            "is_primary": link[3],
+            "id": link[4]
+        })
+
+    c_client_links = {}
+    for link in client_links:
+        # link is (contact_id, client_id, role_at_company, is_primary, id)
+        c_client_links.setdefault(link[0], []).append({
+            "client_id": link[1],
+            "role": link[2],
+            "is_primary": link[3],
+            "id": link[4]
+        })
+
+    enriched = []
+    for c in contacts:
+        c_dict = c.dict()
+        c_dict["children_count"] = children_count_map.get(c.id, 0)
+
+        # Linked leads
+        linked_leads = []
+        seen_lead_ids = set()
+        for link in c_lead_links.get(c.id, []):
+            seen_lead_ids.add(link["lead_id"])
+            lead_name = lead_map.get(link["lead_id"]) or f"Lead #{link['lead_id']}"
+            linked_leads.append({
+                "id": link["lead_id"],
+                "name": lead_name,
+                "role": link["role"] or c.designation,
+                "is_primary": link["is_primary"],
+                "link_id": link["id"]
+            })
+
+        if c.lead_id and c.lead_id not in seen_lead_ids:
+            lead_name = lead_map.get(c.lead_id) or f"Lead #{c.lead_id}"
+            linked_leads.append({
+                "id": c.lead_id,
+                "name": lead_name,
+                "role": c.designation,
+                "is_primary": False,
+                "link_id": None
+            })
+
+        # Linked clients
+        linked_clients = []
+        seen_client_ids = set()
+        for link in c_client_links.get(c.id, []):
+            seen_client_ids.add(link["client_id"])
+            client_name = client_map.get(link["client_id"]) or f"Client #{link['client_id']}"
+            linked_clients.append({
+                "id": link["client_id"],
+                "name": client_name,
+                "role": link["role"] or c.designation,
+                "is_primary": link["is_primary"],
+                "link_id": link["id"]
+            })
+
+        if c.client_id and c.client_id not in seen_client_ids:
+            client_name = client_map.get(c.client_id) or f"Client #{c.client_id}"
+            linked_clients.append({
+                "id": c.client_id,
+                "name": client_name,
+                "role": c.designation,
+                "is_primary": False,
+                "link_id": None
+            })
+
+        c_dict["linked_leads"] = linked_leads
+        c_dict["linked_clients"] = linked_clients
+        c_dict["company_names"] = [l["name"] for l in linked_leads] + [cl["name"] for cl in linked_clients]
+        c_dict["company_name"] = c_dict["company_names"][0] if c_dict["company_names"] else None
+
+        enriched.append(c_dict)
+
+    return enriched
+
+
 @app.get("/contacts")
-def get_contacts(search: Optional[str] = Query(None), session: Session = Depends(get_session)):
+def get_contacts(
+    search: Optional[str] = Query(None),
+    flat: bool = Query(False),
+    lead_id: Optional[int] = Query(None),
+    client_id: Optional[int] = Query(None),
+    session: Session = Depends(get_session)
+):
     query = select(Contact)
-    if search:
-        query = query.where(
+
+    if lead_id:
+        linked_contact_ids = select(ContactLeadLink.contact_id).where(ContactLeadLink.lead_id == lead_id)
+        query = query.where(or_(Contact.lead_id == lead_id, Contact.id.in_(linked_contact_ids)))
+    elif client_id:
+        linked_contact_ids = select(ContactClientLink.contact_id).where(ContactClientLink.client_id == client_id)
+        query = query.where(or_(Contact.client_id == client_id, Contact.id.in_(linked_contact_ids)))
+    elif search and search.strip():
+        s = search.strip()
+        # Find matching leads & clients
+        matching_lead_ids = select(Lead.id).where(Lead.company_name.ilike(f"%{s}%"))
+        matching_lead_contact_ids = select(ContactLeadLink.contact_id).where(
+            ContactLeadLink.lead_id.in_(matching_lead_ids)
+        )
+
+        matching_client_ids = select(ClientProfile.id).where(
             or_(
-                Contact.full_name.ilike(f"%{search}%"),
-                Contact.email.ilike(f"%{search}%"),
-                Contact.first_name.ilike(f"%{search}%"),
-                Contact.last_name.ilike(f"%{search}%")
+                ClientProfile.companyName.ilike(f"%{s}%"),
+                ClientProfile.projectName.ilike(f"%{s}%")
             )
         )
-    else:
+        matching_client_contact_ids = select(ContactClientLink.contact_id).where(
+            ContactClientLink.client_id.in_(matching_client_ids)
+        )
+
+        query = query.where(
+            or_(
+                Contact.full_name.ilike(f"%{s}%"),
+                Contact.first_name.ilike(f"%{s}%"),
+                Contact.last_name.ilike(f"%{s}%"),
+                Contact.email.ilike(f"%{s}%"),
+                Contact.mobile_number.ilike(f"%{s}%"),
+                Contact.alternate_number.ilike(f"%{s}%"),
+                Contact.designation.ilike(f"%{s}%"),
+                Contact.department.ilike(f"%{s}%"),
+                Contact.lead_id.in_(matching_lead_ids),
+                Contact.client_id.in_(matching_client_ids),
+                Contact.id.in_(matching_lead_contact_ids),
+                Contact.id.in_(matching_client_contact_ids),
+            )
+        )
+    elif not flat:
         query = query.where(Contact.parent_contact_id == None)
 
     query = query.order_by(Contact.created_at.desc())
     contacts = session.exec(query).all()
 
-    result = []
-    for c in contacts:
-        children_count = session.exec(select(func.count(Contact.id)).where(
-            Contact.parent_contact_id == c.id)).one()
-        c_dict = c.dict()
-        c_dict["children_count"] = children_count
+    enriched = _enrich_contacts(contacts, session)
 
-        if search:
+    if search and search.strip():
+        all_parents = {}
+        parent_ids_to_fetch = {c.parent_contact_id for c in contacts if c.parent_contact_id}
+        while parent_ids_to_fetch:
+            parents = session.exec(select(Contact).where(Contact.id.in_(list(parent_ids_to_fetch)))).all()
+            next_parents = set()
+            for p in parents:
+                all_parents[p.id] = p
+                if p.parent_contact_id and p.parent_contact_id not in all_parents:
+                    next_parents.add(p.parent_contact_id)
+            parent_ids_to_fetch = next_parents
+
+        for item in enriched:
             path = []
-            curr = c
-            while curr.parent_contact_id:
-                parent = session.get(Contact, curr.parent_contact_id)
-                if not parent:
-                    break
-                path.insert(0, parent.full_name or "Unknown")
-                curr = parent
-            c_dict["hierarchy_path"] = " → ".join(path) if path else ""
+            pid = item.get("parent_contact_id")
+            while pid and pid in all_parents:
+                parent = all_parents[pid]
+                path.insert(0, parent.full_name or f"Contact #{parent.id}")
+                pid = parent.parent_contact_id
+            item["hierarchy_path"] = " → ".join(path) if path else ""
 
-        result.append(c_dict)
+    # Fast summary stats for header KPI tiles
+    try:
+        total_count = session.exec(select(func.count(Contact.id))).one()
+        root_count = session.exec(select(func.count(Contact.id)).where(Contact.parent_contact_id == None)).one()
+        with_email_count = session.exec(select(func.count(Contact.id)).where(Contact.email != None, Contact.email != '')).one()
+        with_phone_count = session.exec(select(func.count(Contact.id)).where(
+            or_(Contact.mobile_number != None, Contact.alternate_number != None)
+        )).one()
+        stats = {
+            "total": total_count,
+            "root": root_count,
+            "with_email": with_email_count,
+            "with_phone": with_phone_count
+        }
+    except Exception:
+        stats = {
+            "total": len(enriched),
+            "root": len([c for c in enriched if not c.get("parent_contact_id")]),
+            "with_email": len([c for c in enriched if c.get("email")]),
+            "with_phone": len([c for c in enriched if c.get("mobile_number") or c.get("alternate_number")])
+        }
 
-    return {"contacts": result}
+    return {"contacts": enriched, "stats": stats}
 
 
 @app.get("/contacts/{contact_id}/children")
 def get_contact_children(contact_id: int, session: Session = Depends(get_session)):
     children = session.exec(select(Contact).where(
         Contact.parent_contact_id == contact_id).order_by(Contact.created_at.desc())).all()
-    result = []
-    for c in children:
-        c_count = session.exec(select(func.count(Contact.id)).where(
-            Contact.parent_contact_id == c.id)).one()
-        c_dict = c.dict()
-        c_dict["children_count"] = c_count
-        result.append(c_dict)
-    return {"children": result}
+    return {"children": _enrich_contacts(children, session)}
 
 
 @app.post("/contacts")
 def create_contact(body: ContactCreateRequest, session: Session = Depends(get_session)):
-    contact_data = body.dict(exclude={"create_new_lead"})
+    contact_data = body.dict(exclude={"create_new_lead", "lead_ids", "client_ids", "role_at_company", "is_primary"})
     contact = Contact(**contact_data)
     if contact.first_name and contact.last_name:
         contact.full_name = f"{contact.first_name} {contact.last_name}"
     elif contact.first_name:
         contact.full_name = contact.first_name
+
+    lead_ids = list(body.lead_ids or [])
+    if body.lead_id and body.lead_id not in lead_ids:
+        lead_ids.append(body.lead_id)
+
+    client_ids = list(body.client_ids or [])
+    if body.client_id and body.client_id not in client_ids:
+        client_ids.append(body.client_id)
 
     if body.create_new_lead:
         lead = Lead(
@@ -14445,7 +14975,13 @@ def create_contact(body: ContactCreateRequest, session: Session = Depends(get_se
         )
         session.add(lead)
         session.flush()
-        contact.lead_id = lead.id
+        if lead.id not in lead_ids:
+            lead_ids.append(lead.id)
+
+    if lead_ids:
+        contact.lead_id = lead_ids[0]
+    if client_ids:
+        contact.client_id = client_ids[0]
 
     if body.parent_contact_id:
         parent = session.get(Contact, body.parent_contact_id)
@@ -14454,9 +14990,30 @@ def create_contact(body: ContactCreateRequest, session: Session = Depends(get_se
                 status_code=400, detail="Invalid parent contact.")
 
     session.add(contact)
+    session.flush()
+
+    for idx, lid in enumerate(lead_ids):
+        link = ContactLeadLink(
+            contact_id=contact.id,
+            lead_id=lid,
+            role_at_company=body.role_at_company or contact.designation,
+            is_primary=bool(body.is_primary and idx == 0)
+        )
+        session.add(link)
+
+    for idx, cid in enumerate(client_ids):
+        link = ContactClientLink(
+            contact_id=contact.id,
+            client_id=cid,
+            role_at_company=body.role_at_company or contact.designation,
+            is_primary=bool(body.is_primary and idx == 0)
+        )
+        session.add(link)
+
     session.commit()
     session.refresh(contact)
-    return contact
+    enriched = _enrich_contacts([contact], session)
+    return enriched[0] if enriched else contact
 
 
 @app.get("/contacts/{contact_id}")
@@ -14464,7 +15021,8 @@ def get_contact(contact_id: int, session: Session = Depends(get_session)):
     contact = session.get(Contact, contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
-    return contact
+    enriched = _enrich_contacts([contact], session)
+    return enriched[0] if enriched else contact
 
 
 @app.put("/contacts/{contact_id}")
@@ -14489,16 +15047,46 @@ def update_contact(contact_id: int, body: ContactCreateRequest, session: Session
                     status_code=400, detail="Invalid parent contact.")
             curr_parent_id = parent_contact.parent_contact_id
 
-    for key, value in body.dict().items():
+    exclude_fields = {"create_new_lead", "lead_ids", "client_ids", "role_at_company", "is_primary"}
+    for key, value in body.dict(exclude=exclude_fields).items():
         setattr(contact, key, value)
 
     if contact.first_name and contact.last_name:
         contact.full_name = f"{contact.first_name} {contact.last_name}"
 
+    lead_ids = body.lead_ids
+    if lead_ids is not None:
+        if body.lead_id and body.lead_id not in lead_ids:
+            lead_ids.append(body.lead_id)
+        existing_links = session.exec(select(ContactLeadLink).where(ContactLeadLink.contact_id == contact.id)).all()
+        existing_lead_ids = {l.lead_id: l for l in existing_links}
+        for lid in lead_ids:
+            if lid not in existing_lead_ids:
+                session.add(ContactLeadLink(contact_id=contact.id, lead_id=lid, role_at_company=body.role_at_company or contact.designation, is_primary=bool(body.is_primary and lid == lead_ids[0])))
+        for lid, link in existing_lead_ids.items():
+            if lid not in lead_ids:
+                session.delete(link)
+        contact.lead_id = lead_ids[0] if lead_ids else None
+
+    client_ids = body.client_ids
+    if client_ids is not None:
+        if body.client_id and body.client_id not in client_ids:
+            client_ids.append(body.client_id)
+        existing_c_links = session.exec(select(ContactClientLink).where(ContactClientLink.contact_id == contact.id)).all()
+        existing_client_ids = {l.client_id: l for l in existing_c_links}
+        for cid in client_ids:
+            if cid not in existing_client_ids:
+                session.add(ContactClientLink(contact_id=contact.id, client_id=cid, role_at_company=body.role_at_company or contact.designation, is_primary=bool(body.is_primary and cid == client_ids[0])))
+        for cid, link in existing_client_ids.items():
+            if cid not in client_ids:
+                session.delete(link)
+        contact.client_id = client_ids[0] if client_ids else None
+
     session.add(contact)
     session.commit()
     session.refresh(contact)
-    return contact
+    enriched = _enrich_contacts([contact], session)
+    return enriched[0] if enriched else contact
 
 
 @app.delete("/contacts/{contact_id}")
@@ -14510,10 +15098,17 @@ def delete_contact(contact_id: int, action: Optional[str] = Query("cascade"), se
     children = session.exec(select(Contact).where(
         Contact.parent_contact_id == contact.id)).all()
 
+    def remove_links(c_id):
+        for lk in session.exec(select(ContactLeadLink).where(ContactLeadLink.contact_id == c_id)).all():
+            session.delete(lk)
+        for cl in session.exec(select(ContactClientLink).where(ContactClientLink.contact_id == c_id)).all():
+            session.delete(cl)
+
     if action == "move_to_parent":
         for child in children:
             child.parent_contact_id = contact.parent_contact_id
             session.add(child)
+        remove_links(contact.id)
         session.delete(contact)
     else:  # cascade
         def delete_recursively(c_id):
@@ -14523,9 +15118,11 @@ def delete_contact(contact_id: int, action: Optional[str] = Query("cascade"), se
                 delete_recursively(child.id)
             c = session.get(Contact, c_id)
             if c:
+                remove_links(c.id)
                 session.delete(c)
         for child in children:
             delete_recursively(child.id)
+        remove_links(contact.id)
         session.delete(contact)
 
     session.commit()
@@ -19536,26 +20133,44 @@ class ContactLinkRequest(BaseModel):
 
 @app.post("/clients/{client_id}/contacts")
 def link_contact_to_client(client_id: int, body: ContactLinkRequest, session: Session = Depends(get_session)):
-    link = ContactClientLink(
-        client_id=client_id,
-        contact_id=body.contact_id,
-        role_at_company=body.role_at_company,
-        is_primary=body.is_primary
-    )
-    session.add(link)
+    link = session.exec(select(ContactClientLink).where(
+        ContactClientLink.client_id == client_id,
+        ContactClientLink.contact_id == body.contact_id
+    )).first()
+    if not link:
+        link = ContactClientLink(
+            client_id=client_id,
+            contact_id=body.contact_id,
+            role_at_company=body.role_at_company,
+            is_primary=body.is_primary
+        )
+        session.add(link)
+    else:
+        link.role_at_company = body.role_at_company
+        link.is_primary = body.is_primary
+        session.add(link)
     session.commit()
     return {"status": "success"}
 
 
 @app.post("/leads/{lead_id}/contacts")
 def link_contact_to_lead(lead_id: int, body: ContactLinkRequest, session: Session = Depends(get_session)):
-    link = ContactLeadLink(
-        lead_id=lead_id,
-        contact_id=body.contact_id,
-        role_at_company=body.role_at_company,
-        is_primary=body.is_primary
-    )
-    session.add(link)
+    link = session.exec(select(ContactLeadLink).where(
+        ContactLeadLink.lead_id == lead_id,
+        ContactLeadLink.contact_id == body.contact_id
+    )).first()
+    if not link:
+        link = ContactLeadLink(
+            lead_id=lead_id,
+            contact_id=body.contact_id,
+            role_at_company=body.role_at_company,
+            is_primary=body.is_primary
+        )
+        session.add(link)
+    else:
+        link.role_at_company = body.role_at_company
+        link.is_primary = body.is_primary
+        session.add(link)
     session.commit()
     return {"status": "success"}
 
@@ -19564,12 +20179,42 @@ def link_contact_to_lead(lead_id: int, body: ContactLinkRequest, session: Sessio
 def get_client_contacts(client_id: int, session: Session = Depends(get_session)):
     links = session.exec(select(ContactClientLink).where(
         ContactClientLink.client_id == client_id)).all()
+    linked_contact_ids = {l.contact_id for l in links}
+
+    # Auto-heal legacy direct client_id connections
+    direct_contacts = session.exec(select(Contact).where(
+        Contact.client_id == client_id)).all()
+    links_added = False
+    for dc in direct_contacts:
+        if dc.id not in linked_contact_ids:
+            new_link = ContactClientLink(
+                client_id=client_id,
+                contact_id=dc.id,
+                role_at_company=dc.designation,
+                is_primary=False
+            )
+            session.add(new_link)
+            links.append(new_link)
+            linked_contact_ids.add(dc.id)
+            links_added = True
+    if links_added:
+        session.commit()
+
+    contact_ids = [l.contact_id for l in links]
+    contacts = session.exec(select(Contact).where(Contact.id.in_(contact_ids))).all() if contact_ids else []
+    enriched_list = _enrich_contacts(contacts, session)
+    enriched_map = {c["id"]: c for c in enriched_list}
+
     results = []
     for link in links:
-        c = session.get(Contact, link.contact_id)
-        if c:
-            results.append({"link_id": link.id, "contact": c,
-                           "role": link.role_at_company, "is_primary": link.is_primary})
+        c_data = enriched_map.get(link.contact_id)
+        if c_data:
+            results.append({
+                "link_id": link.id,
+                "contact": c_data,
+                "role": link.role_at_company or c_data.get("designation"),
+                "is_primary": link.is_primary
+            })
     return results
 
 
@@ -19577,13 +20222,75 @@ def get_client_contacts(client_id: int, session: Session = Depends(get_session))
 def get_lead_contacts(lead_id: int, session: Session = Depends(get_session)):
     links = session.exec(select(ContactLeadLink).where(
         ContactLeadLink.lead_id == lead_id)).all()
+    linked_contact_ids = {l.contact_id for l in links}
+
+    # Auto-heal legacy direct lead_id connections
+    direct_contacts = session.exec(select(Contact).where(
+        Contact.lead_id == lead_id)).all()
+    links_added = False
+    for dc in direct_contacts:
+        if dc.id not in linked_contact_ids:
+            new_link = ContactLeadLink(
+                lead_id=lead_id,
+                contact_id=dc.id,
+                role_at_company=dc.designation,
+                is_primary=False
+            )
+            session.add(new_link)
+            links.append(new_link)
+            linked_contact_ids.add(dc.id)
+            links_added = True
+    if links_added:
+        session.commit()
+
+    contact_ids = [l.contact_id for l in links]
+    contacts = session.exec(select(Contact).where(Contact.id.in_(contact_ids))).all() if contact_ids else []
+    enriched_list = _enrich_contacts(contacts, session)
+    enriched_map = {c["id"]: c for c in enriched_list}
+
     results = []
     for link in links:
-        c = session.get(Contact, link.contact_id)
-        if c:
-            results.append({"link_id": link.id, "contact": c,
-                           "role": link.role_at_company, "is_primary": link.is_primary})
+        c_data = enriched_map.get(link.contact_id)
+        if c_data:
+            results.append({
+                "link_id": link.id,
+                "contact": c_data,
+                "role": link.role_at_company or c_data.get("designation"),
+                "is_primary": link.is_primary
+            })
     return results
+
+
+@app.delete("/clients/{client_id}/contacts/{contact_id}")
+def unlink_contact_from_client(client_id: int, contact_id: int, session: Session = Depends(get_session)):
+    links = session.exec(select(ContactClientLink).where(
+        ContactClientLink.client_id == client_id,
+        ContactClientLink.contact_id == contact_id
+    )).all()
+    for l in links:
+        session.delete(l)
+    contact = session.get(Contact, contact_id)
+    if contact and contact.client_id == client_id:
+        contact.client_id = None
+        session.add(contact)
+    session.commit()
+    return {"status": "success"}
+
+
+@app.delete("/leads/{lead_id}/contacts/{contact_id}")
+def unlink_contact_from_lead(lead_id: int, contact_id: int, session: Session = Depends(get_session)):
+    links = session.exec(select(ContactLeadLink).where(
+        ContactLeadLink.lead_id == lead_id,
+        ContactLeadLink.contact_id == contact_id
+    )).all()
+    for l in links:
+        session.delete(l)
+    contact = session.get(Contact, contact_id)
+    if contact and contact.lead_id == lead_id:
+        contact.lead_id = None
+        session.add(contact)
+    session.commit()
+    return {"status": "success"}
 
 
 @app.get("/telemetry/audit-logs")

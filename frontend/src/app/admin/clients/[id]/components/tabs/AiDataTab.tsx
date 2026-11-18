@@ -25,6 +25,14 @@ const errorMessage = (error: unknown, fallback: string) => (
   error instanceof Error && error.message ? error.message : fallback
 );
 
+const getAuthHeaders = (extra: Record<string, string> = {}) => {
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  return {
+    ...extra,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+};
+
 export default function AiDataTab({ clientId, websiteUrl, onClientRefresh, resourceType = "clients" }: AiDataTabProps) {
   const [status, setStatus] = useState<AnalysisStatus>("idle");
   const [report, setReport] = useState<string | null>(null);
@@ -53,7 +61,10 @@ export default function AiDataTab({ clientId, websiteUrl, onClientRefresh, resou
   }, []);
 
   const readAnalysis = useCallback(async () => {
-    const response = await fetch(resourceType === "clients" ? `${resourcePath}/full-analysis` : `${resourcePath}/research`);
+    const response = await fetch(
+      resourceType === "clients" ? `${resourcePath}/full-analysis` : `${resourcePath}/research`,
+      { headers: getAuthHeaders() }
+    );
     if (!response.ok) return null;
     const data = await response.json();
     if (resourceType === "clients") {
@@ -132,7 +143,7 @@ export default function AiDataTab({ clientId, websiteUrl, onClientRefresh, resou
     try {
       const response = await fetch(
         resourceType === "clients" ? `${resourcePath}/full-analysis` : `${resourcePath}/auto-research`,
-        { method: "POST" }
+        { method: "POST", headers: getAuthHeaders() }
       );
       if (!response.ok) throw new Error("Could not start AI 360 data extraction.");
       startPolling();
@@ -366,12 +377,22 @@ export default function AiDataTab({ clientId, websiteUrl, onClientRefresh, resou
         )}
 
         {status === "error" && (
-          <div className="flex items-start gap-3 bg-red-50 dark:bg-red-950/40 px-5 py-4 text-red-700 dark:text-red-400">
-            <AlertCircle size={18} className="mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-bold">AI data extraction failed</p>
-              <p className="text-xs">{error}</p>
+          <div className="flex items-center justify-between gap-3 bg-red-50 dark:bg-red-950/40 px-5 py-4 text-red-700 dark:text-red-400 border-b border-red-200/50 dark:border-red-900/30">
+            <div className="flex items-start gap-3">
+              <AlertCircle size={18} className="mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-bold">AI data extraction failed</p>
+                <p className="text-xs">{error}</p>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={runAnalysis}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition-colors shrink-0 cursor-pointer"
+            >
+              <RefreshCw size={12} />
+              <span>Retry Analysis</span>
+            </button>
           </div>
         )}
 

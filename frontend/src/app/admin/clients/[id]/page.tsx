@@ -28,10 +28,12 @@ import HealthTab from './components/tabs/HealthTab';
 import AiDataTab from './components/tabs/AiDataTab';
 import RecordEmailTab from '@/components/email/RecordEmailTab';
 import RecordFollowUpsTab from '@/components/followups/RecordFollowUpsTab';
+import LinkedContacts from '@/components/LinkedContacts';
 
 // ─── Tab definitions ───────────────────────────────────────────────────────────
 const TABS = [
   { key: 'overview',       label: 'Overview',       icon: LayoutDashboard },
+  { key: 'contacts',       label: 'Contacts',        icon: Users           },
   { key: 'ai_data',        label: 'AI DATA',         icon: Brain           },
   { key: 'email',          label: 'EMAIL',           icon: Mail            },
   { key: 'followups',      label: 'Follow-ups',      icon: CalendarClock   },
@@ -553,6 +555,8 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
       </CollapsibleSection>
       )}
 
+      {/* Linked Contacts */}
+      <LinkedContacts clientId={String(clientId)} />
 
     </div>
   );
@@ -979,6 +983,11 @@ export default function AdminClientDetailPage() {
                     onActivitySelect={setSelectedActivity}
                     onRefresh={fetchClient}
                   />
+                )}
+                {activeTab === 'contacts' && (
+                  <div className="mt-1">
+                    <LinkedContacts clientId={String(id)} />
+                  </div>
                 )}
                 {activeTab === 'ai_data' && (
                   <AiDataTab
