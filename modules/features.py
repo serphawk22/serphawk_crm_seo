@@ -123,7 +123,7 @@ _FEATURES: List[Feature] = [
        "Courses, instructors, batches, students, enrollments and fees, attendance, class sessions, learning resources, "
        "student and instructor portals, admissions tracking (demo / walk-in / webinar / follow-up) and analytics.",
        default_on=False,
-       path_prefixes=("/leads/transfer", "/courses", "/instructors", "/batches", "/students", "/student-files", "/enrollments", "/payments",
+       path_prefixes=("/courses", "/instructors", "/batches", "/students", "/student-files", "/enrollments", "/payments",
                       "/admissions", "/attendance", "/institute", "/institute-sessions", "/institute-resources", "/student-portal",
                       "/instructor-portal", "/lead-demo-sessions", "/lead-follow-ups", "/lead-walk-ins", "/lead-webinars",
                       "/schedule/upcoming", "/leads/intake", "/leads/sources/analytics"),

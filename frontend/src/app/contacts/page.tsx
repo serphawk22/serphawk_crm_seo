@@ -526,9 +526,9 @@ export default function ContactsPage() {
       <div className="px-4 py-2.5 bg-white dark:bg-zinc-900 border-b border-slate-200/90 dark:border-white/10 flex items-center gap-3 shrink-0">
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder={language === 'es' ? "Buscar por nombre, empresa, teléfono o correo..." : "Search by name, company, phone number, or email..."} 
+          <input
+            type="text"
+            placeholder={language === 'es' ? "Buscar por nombre, empresa, teléfono o correo..." : "Search by name, company, phone number, or email..."}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200/90 dark:border-white/10 bg-slate-50 dark:bg-zinc-800/60 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-zinc-200"
@@ -572,9 +572,9 @@ export default function ContactsPage() {
         ) : (
           <div className="space-y-1.5">
             {contacts.map((contact) => (
-              <ContactRow 
-                key={contact.id} 
-                contact={contact} 
+              <ContactRow
+                key={contact.id}
+                contact={contact}
                 onAddSubContact={handleAddSubContact}
                 onEdit={handleEdit}
                 onDelete={handleDeletePrompt}
@@ -635,17 +635,17 @@ export default function ContactsPage() {
                   {form.id ? t("contacts.edit_contact") : t("contacts.add_new_contact")}
                 </h2>
                 <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
-                  <UsersIcon className="w-4 h-4"/>
+                  <UsersIcon className="w-4 h-4" />
                 </button>
               </div>
               <div className="p-5 space-y-4">
-                
+
                 {/* Parent Contact Dropdown for Hierarchy */}
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 block">{t("contacts.parent_contact")}</label>
-                  <select 
-                    value={form.parent_contact_id || ""} 
-                    onChange={e => setForm({...form, parent_contact_id: e.target.value ? parseInt(e.target.value) : null})} 
+                  <select
+                    value={form.parent_contact_id || ""}
+                    onChange={e => setForm({ ...form, parent_contact_id: e.target.value ? parseInt(e.target.value) : null })}
                     className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white"
                   >
                     <option value="">{t("contacts.none_root")}</option>
@@ -659,38 +659,38 @@ export default function ContactsPage() {
                 </div>
 
                 {/* Name */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">{t("contacts.first_name")} *</label>
-                    <input value={form.first_name} onChange={e => setForm({...form, first_name: e.target.value})} className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" placeholder="First name" required />
+                    <input value={form.first_name} onChange={e => setForm({ ...form, first_name: e.target.value })} className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" placeholder="First name" required />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">{t("contacts.last_name")}</label>
-                    <input value={form.last_name} onChange={e => setForm({...form, last_name: e.target.value})} className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" placeholder="Last name" />
+                    <input value={form.last_name} onChange={e => setForm({ ...form, last_name: e.target.value })} className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" placeholder="Last name" />
                   </div>
                 </div>
 
                 {/* Email and Phone */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">{t("contacts.email")}</label>
-                    <input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" placeholder="email@company.com" />
+                    <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" placeholder="email@company.com" />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">{t("contacts.mobile_number")}</label>
-                    <input value={form.mobile_number} onChange={e => setForm({...form, mobile_number: e.target.value})} className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" placeholder="+1 555-0199" />
+                    <input value={form.mobile_number} onChange={e => setForm({ ...form, mobile_number: e.target.value })} className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" placeholder="+1 555-0199" />
                   </div>
                 </div>
 
                 {/* Designation and Department */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">{t("contacts.designation")}</label>
-                    <input value={form.designation} onChange={e => setForm({...form, designation: e.target.value})} placeholder="e.g. CEO / Director" className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" />
+                    <input value={form.designation} onChange={e => setForm({ ...form, designation: e.target.value })} placeholder="e.g. CEO / Director" className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">{t("contacts.department")}</label>
-                    <input value={form.department} onChange={e => setForm({...form, department: e.target.value})} placeholder="e.g. Executive, Sales" className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" />
+                    <input value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} placeholder="e.g. Executive, Sales" className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" />
                   </div>
                 </div>
 
@@ -711,11 +711,10 @@ export default function ContactsPage() {
                           <div
                             key={ld.id}
                             onClick={() => toggleLeadSelection(ld.id)}
-                            className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
-                              isSelected
+                            className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${isSelected
                                 ? "bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 font-bold"
                                 : "hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300"
-                            }`}
+                              }`}
                           >
                             <span className="truncate">{label}</span>
                             {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
@@ -743,11 +742,10 @@ export default function ContactsPage() {
                           <div
                             key={cl.id}
                             onClick={() => toggleClientSelection(cl.id)}
-                            className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
-                              isSelected
+                            className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${isSelected
                                 ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 font-bold"
                                 : "hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300"
-                            }`}
+                              }`}
                           >
                             <span className="truncate">{label}</span>
                             {isSelected && <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
@@ -775,14 +773,14 @@ export default function ContactsPage() {
                 )}
 
                 {/* Social links */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">{t("contacts.linkedin_url")}</label>
-                    <input type="text" value={form.linkedin_url || ""} onChange={e => setForm({...form, linkedin_url: e.target.value})} className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" placeholder="https://linkedin.com/in/..." />
+                    <input type="text" value={form.linkedin_url || ""} onChange={e => setForm({ ...form, linkedin_url: e.target.value })} className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" placeholder="https://linkedin.com/in/..." />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">{t("contacts.twitter_url")}</label>
-                    <input type="text" value={form.twitter_url || ""} onChange={e => setForm({...form, twitter_url: e.target.value})} className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" placeholder="https://twitter.com/..." />
+                    <input type="text" value={form.twitter_url || ""} onChange={e => setForm({ ...form, twitter_url: e.target.value })} className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" placeholder="https://twitter.com/..." />
                   </div>
                 </div>
 
@@ -791,9 +789,9 @@ export default function ContactsPage() {
                 <button onClick={() => setShowModal(false)} className="px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 font-bold text-xs hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors">
                   {t("contacts.cancel")}
                 </button>
-                <button 
-                  onClick={handleSaveContact} 
-                  disabled={saving || !form.first_name.trim()} 
+                <button
+                  onClick={handleSaveContact}
+                  disabled={saving || !form.first_name.trim()}
                   className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs disabled:opacity-50 transition-colors shadow-sm"
                 >
                   {saving ? t("contacts.saving") : t("contacts.save_contact")}

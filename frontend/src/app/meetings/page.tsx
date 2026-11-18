@@ -529,14 +529,14 @@ export default function MeetingsPage() {
       <AnimatePresence>
         {showModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-zinc-700">
+              className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto">
+              <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-200 dark:border-zinc-700">
                 <h2 className="text-lg font-black text-slate-800 dark:text-zinc-100">{editMeeting ? t("meetings.edit_meeting") : t("meetings.schedule_meeting")}</h2>
-                <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800"><X className="w-4 h-4" /></button>
+                <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 cursor-pointer"><X className="w-4 h-4" /></button>
               </div>
-              <div className="p-6 space-y-4">
+              <div className="p-4 sm:p-6 space-y-4">
                 <div>
                   <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">{t("meetings.title_label")} *</label>
                   <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder={t("meetings.title_placeholder")}
@@ -653,10 +653,10 @@ export default function MeetingsPage() {
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none" />
                 </div>
               </div>
-              <div className="flex gap-3 p-6 pt-0">
-                <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 font-bold text-sm hover:bg-slate-200 transition-all">{t("meetings.cancel")}</button>
+              <div className="flex flex-col-reverse sm:flex-row gap-2.5 sm:gap-3 p-4 sm:p-6 pt-0">
+                <button onClick={() => setShowModal(false)} className="w-full sm:flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 font-bold text-sm hover:bg-slate-200 transition-all cursor-pointer">{t("meetings.cancel")}</button>
                 <button onClick={handleSave} disabled={saving || !form.title.trim()}
-                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+                  className="w-full sm:flex-1 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm">
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />}
                   {editMeeting ? t("meetings.update") : t("meetings.schedule")}
                 </button>
