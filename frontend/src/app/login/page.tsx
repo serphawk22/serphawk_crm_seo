@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import LanguageSelector from "@/components/LanguageSelector";
 import AuthThemeToggle from "@/components/AuthThemeToggle";
 import { useCompanyBrand } from "@/components/CompanyBoundary";
+import { loginError, platformLogin, platformOrigin } from "@/lib/authRoutes";
 
 export default function LoginPage() {
   const brand = useCompanyBrand();
@@ -20,8 +21,18 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { login } = useRole();
+  const redirectToPlatform = (message: string) => {
+    setError(t(message));
+    setRedirecting(true);
+  };
+  useEffect(() => {
+    if (!redirecting) return;
+    const id = window.setTimeout(() => window.location.replace(platformLogin), 2500);
+    return () => window.clearTimeout(id);
+  }, [redirecting]);
 
   useEffect(() => {
     setMounted(true);
@@ -38,7 +49,11 @@ export default function LoginPage() {
           body: JSON.stringify({ access_token: tokenResponse.access_token }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Google login failed");
+        if (!res.ok) {
+          const failure = loginError(data.detail, "Google login failed");
+          if (failure.wrongCompany) { redirectToPlatform(failure.message); return; }
+          throw new Error(failure.message);
+        }
         if (!data.user || !data.user.email) {
           throw new Error("No email found in Google account. Please verify your email.");
         }
@@ -46,11 +61,7 @@ export default function LoginPage() {
         localStorage.setItem("crm_user", JSON.stringify(data.user));
         if (data.token) localStorage.setItem("crm_token", data.token);
         
-        if (data.is_new_user) {
-          window.location.href = "/onboarding";
-        } else {
-          window.location.href = "/";
-        }
+        window.location.replace(data.is_new_user ? "/onboarding" : "/");
       } catch (err: any) {
         setError(err.message || "An error occurred with Google Login.");
       } finally {
@@ -70,13 +81,9 @@ export default function LoginPage() {
     try {
       const result = await login(email, password);
       
-      if (result.success) {
-        if (result.is_new_user) {
-          window.location.href = "/onboarding";
-        } else {
-          window.location.href = "/";
-        }
-      } else {
+      if (result.wrongCompany && result.message) {
+        redirectToPlatform(result.message);
+      } else if (!result.success) {
         setError(result.message || "Login failed");
       }
     } catch (err: any) {
@@ -182,7 +189,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || redirecting}
               className="w-full mt-2 py-3 bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 rounded-xl text-sm font-bold tracking-wide transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 disabled:opacity-70 disabled:scale-100 active:scale-[0.98]"
             >
               {isSubmitting ? (
@@ -203,7 +210,7 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => googleLogin()}
-              disabled={googleSubmitting}
+              disabled={googleSubmitting || redirecting}
               className="w-full py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800 rounded-xl text-sm text-slate-700 dark:text-zinc-300 font-semibold transition-all shadow-sm flex items-center justify-center gap-2.5 disabled:opacity-70 active:scale-[0.98]"
             >
               {googleSubmitting ? (
@@ -222,12 +229,12 @@ export default function LoginPage() {
           <div className="mt-8 pt-6 border-t border-slate-100 dark:border-zinc-800/60 flex flex-col items-center gap-3">
             <p className="text-center text-sm text-slate-500 dark:text-zinc-500">
               {brand.company ? brand.brand_name : t("New to SERP Hawk?")}{" "}
-              <Link href="/signup" className="text-slate-900 dark:text-zinc-200 font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+              <Link href={brand.company ? `${platformOrigin}/signup` : "/signup"} className="text-slate-900 dark:text-zinc-200 font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
                 {t("Create a demo workspace")}{" "}</Link>
             </p>
             <p className="text-center text-sm text-slate-500 dark:text-zinc-500">
               {t("Setting up your company?")}{" "}
-              <Link href="/register" className="text-slate-900 dark:text-zinc-200 font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+              <Link href={brand.company ? `${platformOrigin}/register` : "/register"} className="text-slate-900 dark:text-zinc-200 font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
                 {t("Register your company")}{" "}</Link>
             </p>
           </div>

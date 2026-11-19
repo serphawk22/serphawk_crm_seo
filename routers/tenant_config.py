@@ -156,6 +156,27 @@ def set_sales_access(body: Dict[str, bool], tenant_id: Optional[int] = None, ses
     return get_sales_access(tenant_id, session)
 
 
+@router.get("/superadmin/tenants/{tenant_id}/admissions-access")
+def get_admissions_access(tenant_id: int, session: Session = Depends(get_session)):
+    _super(session)
+    _tenant_or_404(session, tenant_id)
+    from modules.sales_access import effective_modules
+    return {"catalog": features.catalog(), "entitlements": features.effective_features(tenant_id),
+            "access": effective_modules(tenant_id, "Admissions"),
+            "overrides": tenant_settings.get_setting(tenant_id, "admissions_module_access", {}) or {}}
+
+
+@router.put("/superadmin/tenants/{tenant_id}/admissions-access")
+def set_admissions_access(tenant_id: int, body: Dict[str, bool], session: Session = Depends(get_session)):
+    _super(session)
+    _tenant_or_404(session, tenant_id)
+    try:
+        tenant_settings.update_settings(session, tenant_id, {"admissions_module_access": body})
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    return get_admissions_access(tenant_id, session)
+
+
 @router.put("/tenant/settings")
 def update_my_settings(body: SettingsUpdate, session: Session = Depends(get_session)):
     if "lead_form_published" in body.settings:
@@ -163,6 +184,8 @@ def update_my_settings(body: SettingsUpdate, session: Session = Depends(get_sess
     user = _user(session)
     if _role(user) not in _ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="Only an Admin can change settings")
+    if "admissions_module_access" in body.settings:
+        raise HTTPException(status_code=403, detail="Only SuperAdmin can configure Admissions access")
     tid = _my_tenant(user)
     if tid is None:
         raise HTTPException(status_code=400, detail="Pick a tenant first (X-Tenant-ID)")

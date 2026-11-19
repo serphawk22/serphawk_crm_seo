@@ -218,14 +218,11 @@ export default function HomePage() {
   const router = useRouter();
   const { loaded, features } = useTenantConfig();
   const pathname = usePathname();
-  const home = pathname === "/legacy-command-center" ? "dashboard" : role === "Admissions" ? "admissions" : homeModule(role, features);
+  const home = role === "Admissions" ? (features.institute === false ? "none" : "admissions")
+    : pathname === "/legacy-command-center" ? "dashboard" : homeModule(role, features);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!isAuthenticated) {
-      router.replace("/showcase");
-      return;
-    }
+    if (authLoading || !isAuthenticated) return;
     if (home === "platform") router.replace("/superadmin/clients");
     if (loaded && home === "command_center") router.replace("/command-center");
     if (loaded && home === "dashboard_b2c") router.replace("/dashboard-b2c");
@@ -238,7 +235,7 @@ export default function HomePage() {
   }
 
   if (home === "platform" || !loaded || home === "command_center" || home === "dashboard_b2c" || home === "admissions") return null;
-  if (home === "none") return <FeatureAccessNotice kind="module" feature="Dashboard" />;
+  if (home === "none") return <FeatureAccessNotice kind="module" feature={role === "Admissions" ? "Admissions" : "Dashboard"} />;
   // Mount only the enabled overview, so a disabled dashboard never fetches data.
   return <Dashboard />;
 }

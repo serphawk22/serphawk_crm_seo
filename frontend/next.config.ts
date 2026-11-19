@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [{ source: "/showcase/index.html", destination: "/showcase", permanent: true }];
+  },
+  async rewrites() {
+    return [{ source: "/showcase", destination: "/showcase/index.html" }];
+  },
   typescript: {
     ignoreBuildErrors: true,
   },

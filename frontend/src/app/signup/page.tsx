@@ -4,7 +4,7 @@ import LocalizedText from "@/components/LocalizedText";
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useGoogleLogin } from "@react-oauth/google";
-import { useRole } from "@/context/RoleContext";
+import { loginError } from "@/lib/authRoutes";
 import { API_BASE_URL } from "@/config";
 import { Lock, Mail, Loader2, Eye, EyeOff, ArrowRight, Globe, ChevronDown, Check, Sparkles, ShieldCheck, User as UserIcon } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -120,13 +120,14 @@ export default function SignupPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [model, setModel] = useState<"b2b" | "b2c">("b2b");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
-  const { login } = useRole();
+  const { t } = useLanguage();
 
   useEffect(() => {
     setMounted(true);
@@ -164,19 +165,15 @@ export default function SignupPage() {
         const res = await fetch(`${API_BASE_URL}/auth/google`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ access_token: tokenResponse.access_token }),
+          body: JSON.stringify({ access_token: tokenResponse.access_token, model }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Google login failed");
+        if (!res.ok) throw new Error(loginError(data.detail, "Google login failed").message);
         
         localStorage.setItem("crm_user", JSON.stringify(data.user));
         if (data.token) localStorage.setItem("crm_token", data.token);
         
-        if (data.is_new_user) {
-          window.location.href = "/onboarding";
-        } else {
-          window.location.href = "/";
-        }
+        window.location.replace(data.is_new_user ? "/onboarding" : "/");
       } catch (err: any) {
         setError(err.message || "An error occurred with Google Login.");
       } finally {
@@ -207,14 +204,14 @@ export default function SignupPage() {
       const res = await fetch(`${API_BASE_URL}/demo/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), password })
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), password, model })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Failed to create account");
 
-      const result = await login(email.trim(), password);
-      if (!result.success) throw new Error(result.message || "Your workspace was created, but signing in failed. Please sign in.");
-      window.location.href = "/onboarding";
+      localStorage.setItem("crm_user", JSON.stringify(data.user));
+      localStorage.setItem("crm_token", data.token);
+      window.location.replace("/onboarding");
     } catch (err: any) {
       setError(err.message || "An error occurred.");
       setVerifyingOtp(false);
@@ -283,6 +280,15 @@ export default function SignupPage() {
                         placeholder="John Doe"
                       />
                     </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="demo-model" className="text-xs font-semibold text-slate-600 dark:text-zinc-300"><LocalizedText text="Demo model" /></label>
+                    <select id="demo-model" value={model} onChange={event => setModel(event.target.value === "b2c" ? "b2c" : "b2b")}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950">
+                      <option value="b2b">{t("B2B — Business CRM")}</option>
+                      <option value="b2c">{t("B2C — Admissions and institute CRM")}</option>
+                    </select>
                   </div>
 
                   {/* Email */}

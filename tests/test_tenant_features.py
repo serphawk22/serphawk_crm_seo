@@ -109,6 +109,29 @@ class FeatureApi(TenantIsolationBase):
         self.assertEqual(self.client.get("/superadmin/tenants/3/config", headers=self.as_tenant(2)).status_code, 403)
         self.assertEqual(self.client.get("/superadmin/features/catalog", headers=self.as_tenant(2)).status_code, 403)
 
+    def test_admissions_access_is_operator_managed_and_role_specific(self):
+        with Session(S.ENGINE) as session:
+            features.set_features(session, 2, {"institute": True})
+            admissions = User(tenant_id=2, role="Admissions", name="Admissions", email="admissions@t2.test", password="x")
+            session.add(admissions)
+            session.commit()
+            headers = {"X-User-ID": str(admissions.id)}
+        path = "/superadmin/tenants/2/admissions-access"
+        self.assertEqual(self.client.get("/admissions/students", headers=headers).status_code, 200)
+        self.assertEqual(self.client.put(path, json={"institute": False}, headers=self.as_tenant(2)).status_code, 403)
+        self.assertEqual(self.client.put("/tenant/settings", json={"settings": {"admissions_module_access": {}}},
+                                        headers=self.as_tenant(2)).status_code, 403)
+        response = self.client.put(path, json={"institute": False}, headers=self.sa())
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertFalse(self.client.get("/me/features", headers=headers).json()["features"]["institute"])
+        self.assertEqual(self.client.get("/admissions/students", headers=headers).status_code, 403)
+        self.assertEqual(self.client.get("/admissions/students", headers=self.as_tenant(2)).status_code, 200)
+        self.assertEqual(self.client.put(path, json={}, headers=self.sa()).status_code, 200)
+        self.assertEqual(self.client.get("/admissions/students", headers=headers).status_code, 200)
+        with Session(S.ENGINE) as session:
+            features.set_features(session, 2, {"institute": False})
+        self.assertFalse(self.client.put(path, json={"institute": True}, headers=self.sa()).json()["access"]["institute"])
+
     def test_tenant_admin_edits_own_settings_only(self):
         r = self.client.put("/tenant/settings", json={"settings": {"brand_name": "Alpha Co", "locale": "es"}},
                             headers=self.as_tenant(2))
