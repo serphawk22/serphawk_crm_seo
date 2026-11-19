@@ -119,7 +119,7 @@ from sqlmodel import Session, select, SQLModel
 from sqlalchemy import func, or_
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Depends, FastAPI, HTTPException, Query, Form, UploadFile, File, Body
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 from datetime import datetime, timedelta, date, timezone
 import re
 
@@ -3626,9 +3626,9 @@ def login(body: LoginRequest, session: Session = Depends(get_session)):
     if not _verify_password(body.password, user):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     from modules.company_domains import check_user
-    check_user(user)
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account has been switched off. Contact your administrator.")
+    check_user(user, login=True)
     result = _user_dict(user)
     if user.role == "Client":
         cp = session.exec(select(ClientProfile).where(
@@ -3725,6 +3725,7 @@ def reset_password(body: ResetPasswordRequest, session: Session = Depends(get_se
 
 class GoogleAuthRequest(BaseModel):
     access_token: str
+    model: Literal["b2b", "b2c"] = "b2b"
 
 
 @app.post("/auth/google")
@@ -3749,17 +3750,17 @@ def auth_google(body: GoogleAuthRequest, session: Session = Depends(get_session)
     if request_company.get() and not user:
         raise HTTPException(403, detail="Ask this company's administrator for an account")
     if user:
-        check_user(user)
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="This account has been switched off. Contact your administrator.")
+        check_user(user, login=True)
 
     if not user:
         # a new Google user gets the same self-service demo workspace as /signup (managed in Demo Account Data)
         from modules import demo_accounts
         is_new_user = True
         out = demo_accounts.create_self_service_demo(session, name=name or email, email=email,
-                                                     password_hash=_hash_password(os.urandom(16).hex()))
+                                                     password_hash=_hash_password(os.urandom(16).hex()), model=body.model)
         user = session.exec(select(User).where(User.id == out["admin_user_id"]).execution_options(skip_tenant=True)).first()
-    elif not user.is_active:
-        raise HTTPException(status_code=403, detail="This account has been switched off. Contact your administrator.")
 
     result = _user_dict(user)
     if user.role == "Client":

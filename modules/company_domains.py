@@ -111,7 +111,10 @@ async def resolve_request(request):
     request_company.set({"tenant_id": tid, "host": host})
 
 
-def check_user(user):
+def check_user(user, *, login=False):
     company = request_company.get()
     if company and (str(user.role).lower() == "superadmin" or user.tenant_id != company["tenant_id"]):
-        raise HTTPException(403, "Sign in with an account belonging to this company")
+        message = "Sign in with an account belonging to this company"
+        if login:
+            raise HTTPException(403, {"code": "wrong_company", "message": message})
+        raise HTTPException(403, message)

@@ -149,13 +149,18 @@ def _role_policy(v):
     return v
 
 
-def _sales_modules(v):
+def _module_overrides(v):
     from modules.features import FEATURES
     if v is None:
         return None
     if not isinstance(v, dict) or any(k not in FEATURES or not isinstance(value, bool) for k, value in v.items()):
         raise ValueError("must map known module keys to true or false")
-    if v.get("teams"):
+    return v
+
+
+def _sales_modules(v):
+    v = _module_overrides(v)
+    if v and v.get("teams"):
         raise ValueError("Team Directory is available to Admins only")
     return v
 
@@ -191,6 +196,7 @@ SCHEMA: Dict[str, tuple] = {
     "lead_form_draft": (_lead_form, None),
     "lead_form_published": (_published_lead_form, None),
     "sales_module_access": (_sales_modules, None),
+    "admissions_module_access": (_module_overrides, None),
     "brand_name": (_str(120), None),
     "brand_logo_url": (_str(500), None),
     "brand_tagline": (_str(120), None),
