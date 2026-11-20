@@ -57,6 +57,29 @@ def signature(method, target, host, timestamp, body, ip=""):
     return hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()
 
 
+def is_local_dev_request(request) -> bool:
+    """Strictly identifies genuine local development requests.
+
+    Requires explicit local development configuration and never bypasses
+    verification in deployment environments or across arbitrary private IPs.
+    """
+    from modules.runtime_env import is_deployment
+    if is_deployment():
+        return False
+
+    if os.getenv("COMPANY_LOCAL_DEVELOPMENT", "").strip().lower() not in ("1", "true", "yes"):
+        return False
+
+    loopback_hosts = {"localhost", "127.0.0.1", "::1", "[::1]"}
+    req_host = (request.url.hostname or "").lower()
+    client_host = (request.client.host if request.client else "").lower()
+
+    is_client_loopback = not client_host or client_host in loopback_hosts
+    is_target_loopback = req_host in loopback_hosts or req_host.endswith(".localhost")
+
+    return is_client_loopback and is_target_loopback
+
+
 async def resolve_request(request):
     request_company.set(None)
     host = request.headers.get("x-company-host")
@@ -64,27 +87,27 @@ async def resolve_request(request):
     # Provider webhooks retain their independently authenticated contracts.
     exempt = request.url.path.startswith(("/webhook/", "/voice-agent/twilio/", "/static/")) or request.url.path in {
         "/health", "/leads/webhook", "/api/leads/webhook", "/leads/intake"}
+    local_development = is_local_dev_request(request)
     if not host:
-        local_development = (
-            os.getenv("COMPANY_LOCAL_DEVELOPMENT") == "1"
-            and request.url.hostname in {"localhost", "127.0.0.1", "::1"}
-        )
         if required and not exempt and not local_development:
             raise HTTPException(403, "Verified company host context is required")
         return
     stamp = request.headers.get("x-company-time", "")
+    sig = request.headers.get("x-company-signature", "")
     try:
         if abs(time.time() - int(stamp)) > 60:
-            raise ValueError()
+            if not (local_development and not stamp):
+                raise ValueError()
     except ValueError:
         raise HTTPException(403, "Expired host context")
     if host != host.lower() or not re.fullmatch(r"[a-z0-9.-]+", host):
         raise HTTPException(403, "Invalid company host")
     body = await request.body()
     target = request.scope.get("raw_path", request.url.path.encode()).decode("ascii") + ("?" + request.url.query if request.url.query else "")
-    expected = signature(request.method, target, host, stamp, body, request.headers.get("x-company-ip", ""))
-    if not hmac.compare_digest(expected, request.headers.get("x-company-signature", "")):
-        raise HTTPException(403, "Invalid host signature")
+    if not (local_development and not sig):
+        expected = signature(request.method, target, host, stamp, body, request.headers.get("x-company-ip", ""))
+        if not hmac.compare_digest(expected, sig):
+            raise HTTPException(403, "Invalid host signature")
     if host == base_domain() or host in {f"{sub}.{base_domain()}" for sub in ("www", "crm", "crm-seo", "app")}:
         return
     suffix = "." + base_domain()

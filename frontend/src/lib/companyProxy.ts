@@ -11,7 +11,7 @@ export async function companyFetch(request: NextRequest, target: string, body?: 
   if (destination.origin !== origin.origin || /[\\]/.test(target) || destination.pathname + destination.search !== target) throw new Error("Invalid proxy target");
   const host = request.headers.get("host")?.split(":")[0].toLowerCase() || "";
   const base = COMPANY_BASE_DOMAIN;
-  const isLocalHost = host === "localhost" || host === "127.0.0.1" || host.endsWith(".localhost") || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+  const isLocalHost = host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]" || host.endsWith(".localhost");
   const local = process.env.NODE_ENV !== "production" && isLocalHost;
   if (!local && host !== base && !host.endsWith("." + base)) return new Response("Company unavailable", { status: 404 });
   const signedHost = local ? (host.endsWith(".localhost") ? host.replace(/\.localhost$/, "." + base) : base) : host;
@@ -31,6 +31,8 @@ export async function companyFetch(request: NextRequest, target: string, body?: 
     headers.set("x-company-time", stamp);
     headers.set("x-company-ip", ip);
     headers.set("x-company-signature", createHmac("sha256", secret).update(canonical).digest("hex"));
+  } else if (local) {
+    headers.set("x-company-host", signedHost);
   }
   const response = await fetch(destination, { method: request.method, headers,
     body: ["GET", "HEAD"].includes(request.method) ? undefined : new Uint8Array(payload), cache: "no-store", redirect: "manual" });
