@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useGoogleLogin } from "@react-oauth/google";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
-import { Loader2, ArrowRight, ShieldCheck, Mail, Lock } from "lucide-react";
+import { Loader2, ArrowRight, ShieldCheck, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import LanguageSelector from "@/components/LanguageSelector";
 import AuthThemeToggle from "@/components/AuthThemeToggle";
@@ -18,6 +18,7 @@ export default function LoginPage() {
   const { t } = useLanguage();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
@@ -160,13 +161,29 @@ export default function LoginPage() {
                     <Lock className="h-4 w-4 text-slate-400 dark:text-zinc-500 group-focus-within:text-indigo-500 transition-colors" />
                   </div>
                   <input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-zinc-950/50 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all shadow-sm"
                     placeholder="••••••••••••"
                   />
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    aria-label={showPassword ? t("Hide password") : t("Show password")}
+                    title={showPassword ? t("Hide password") : t("Show password")}
+                    aria-pressed={showPassword}
+                    className="min-w-[44px] min-h-[44px] w-11 h-11 flex items-center justify-center text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-900"
+                  >
+                    {showPassword ? (
+                      <Eye className="w-4 h-4" aria-hidden="true" />
+                    ) : (
+                      <EyeOff className="w-4 h-4" aria-hidden="true" />
+                    )}
+                  </button>
                 </div>
               </div>
             </div>

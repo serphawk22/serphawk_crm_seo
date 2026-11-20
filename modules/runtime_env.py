@@ -77,4 +77,8 @@ def load_local_env() -> bool:
     except ImportError:  # pragma: no cover - python-dotenv is a hard requirement
         return False
     # override=False: values already present in the environment (the platform's) win.
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env_file = os.path.join(base_dir, ".env")
+    if os.path.isfile(env_file):
+        return bool(load_dotenv(env_file, override=False))
     return bool(load_dotenv(override=False))
