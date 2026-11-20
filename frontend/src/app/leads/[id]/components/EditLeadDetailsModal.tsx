@@ -33,6 +33,17 @@ export default function EditLeadDetailsModal({
   const [instagramUrl, setInstagramUrl] = useState(lead?.instagram_url || "");
   const [facebookUrl, setFacebookUrl] = useState(lead?.facebook_url || "");
 
+  const initialCustomFields = () => {
+    const cf = lead?.custom_fields || lead?.customFields || {};
+    if (typeof cf === "object" && cf !== null && !Array.isArray(cf)) {
+      return Object.entries(cf)
+        .filter(([k]) => k !== "sheet_data")
+        .map(([k, v]) => ({ key: k, value: String(v) }));
+    }
+    return [];
+  };
+  const [customFields, setCustomFields] = useState<{ key: string; value: string }[]>(initialCustomFields);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -59,6 +70,10 @@ export default function EditLeadDetailsModal({
         instagram_url: instagramUrl.trim() || null,
         facebook_url: facebookUrl.trim() || null,
         status: lead.status || "New",
+        custom_fields: customFields.reduce((acc, curr) => {
+          if (curr.key.trim()) acc[curr.key.trim()] = curr.value.trim();
+          return acc;
+        }, {} as Record<string, string>),
       };
 
       const res = await fetch(`${API_BASE_URL}/leads/${lead.id}`, {
@@ -298,6 +313,63 @@ export default function EditLeadDetailsModal({
                   className="w-full text-xs bg-slate-50 dark:bg-zinc-800/80 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-slate-900 dark:text-zinc-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
+            </div>
+
+            {/* Custom / Additional Fields */}
+            <div className="border border-slate-200 dark:border-zinc-700 rounded-2xl p-3 sm:p-4 bg-slate-50/50 dark:bg-zinc-800/40 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                    Custom / Additional Fields
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                    Extra attributes displayed prominently in the lead header
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCustomFields(prev => [...prev, { key: "", value: "" }])}
+                  className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 transition flex items-center gap-1 cursor-pointer"
+                >
+                  <Tag size={11} /> + Add Field
+                </button>
+              </div>
+
+              {customFields.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  {customFields.map((cf, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Field Name (e.g. Budget, Priority)"
+                        value={cf.key}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCustomFields(prev => prev.map((item, i) => i === idx ? { ...item, key: val } : item));
+                        }}
+                        className="w-1/2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Value"
+                        value={cf.value}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCustomFields(prev => prev.map((item, i) => i === idx ? { ...item, value: val } : item));
+                        }}
+                        className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCustomFields(prev => prev.filter((_, i) => i !== idx))}
+                        className="p-1.5 text-slate-400 hover:text-red-500 transition rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

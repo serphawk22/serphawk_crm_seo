@@ -58,6 +58,8 @@ DEFAULT_SOURCES = [
     ("Conference", "Event", "conference", "#8B5CF6"),
     ("Website", "Direct", "website", "#14B8A6"),
     ("Cold Email", "Outbound", "email", "#64748B"),
+    ("Radar Scan", "Outbound", "radar", "#8B5CF6"),
+    ("Import", "Direct", "import", "#0284C7"),
     ("Other", "Other", None, "#94A3B8"),
 ]
 
@@ -168,23 +170,29 @@ def _source_dict(s: LeadSource) -> dict:
 
 
 def _ensure_default_sources(session: Session) -> List[LeadSource]:
-    rows = session.exec(select(LeadSource).order_by(LeadSource.id)).all()
-    if rows or not _tid():
-        return list(rows)
+    tid = _tid()
+    rows = list(session.exec(select(LeadSource).order_by(LeadSource.id)).all())
+    existing_names = {s.name.lower() for s in rows}
     from modules import demo_usage
     defaults = DEFAULT_SOURCES[:demo_usage.RECORD_LIMIT] if demo_usage.restricted_tenant(session) else DEFAULT_SOURCES
+    added = False
     for name, channel, utm, color in defaults:
-        session.add(LeadSource(name=name, channel=channel, utm_key=utm, color=color, tenant_id=_tid()))
-    session.commit()
-    return list(session.exec(select(LeadSource).order_by(LeadSource.id)).all())
+        if name.lower() not in existing_names:
+            session.add(LeadSource(name=name, channel=channel, utm_key=utm, color=color, tenant_id=tid))
+            added = True
+    if added:
+        session.commit()
+        rows = list(session.exec(select(LeadSource).order_by(LeadSource.id)).all())
+    return rows
 
 
-def resolve_lead_source(session: Session, value: Optional[str]) -> Optional[LeadSource]:
+def resolve_lead_source(session: Session, value: Optional[str], sources: Optional[List[LeadSource]] = None) -> Optional[LeadSource]:
     """Match a utm_source / free-text source to a configured LeadSource (case-insensitive)."""
     if not value:
         return None
     v = value.strip().lower()
-    sources = _ensure_default_sources(session)
+    if sources is None:
+        sources = _ensure_default_sources(session)
     for s in sources:
         if (s.utm_key and s.utm_key.lower() == v) or s.name.lower() == v:
             return s
@@ -192,9 +200,15 @@ def resolve_lead_source(session: Session, value: Optional[str]) -> Optional[Lead
         key = (s.utm_key or s.name).lower()
         if key and (key in v or v in key):
             return s
-    aliases = {"fb": "facebook", "ig": "instagram", "lnkd": "linkedin", "li": "linkedin", "gads": "google", "adwords": "google"}
-    if v in aliases:
-        return resolve_lead_source(session, aliases[v])
+    aliases = {
+        "fb": "facebook", "ig": "instagram", "lnkd": "linkedin", "li": "linkedin",
+        "gads": "google ads", "adwords": "google ads", "google": "google ads",
+        "radar": "radar scan", "radar scan": "radar scan", "radar analysis": "radar scan", "radar scanner": "radar scan",
+        "csv import": "import", "sheet": "import", "bulk import": "import", "csv": "import",
+        "manual": "website", "direct": "website", "walkin": "website", "organic": "google organic",
+    }
+    if v in aliases and aliases[v] != v:
+        return resolve_lead_source(session, aliases[v], sources=sources)
     return None
 
 
@@ -346,7 +360,7 @@ def lead_source_analytics(
         if source_id and source_id in by_id:
             return by_id[source_id]
         if text_value:
-            return by_name.get(text_value.strip().lower()) or resolve_lead_source(session, text_value)
+            return by_name.get(text_value.strip().lower()) or resolve_lead_source(session, text_value, sources=sources)
         return None
 
     def in_range(dt: Optional[datetime]) -> bool:
@@ -391,7 +405,58 @@ def lead_source_analytics(
             client_source[c.id] = direct
 
     for l in leads:
-        b = bucket(match(l.lead_source_id, l.source))
+        matched = match(l.lead_source_id, l.source)
+        if matched and matched.name.lower() not in ("unassigned", "other"):
+            b = bucket(matched)
+        else:
+            # Resolve custom source or intelligent fallback (Radar Scan vs Import vs Website)
+            src_text = (l.source or "").strip()
+            if src_text and src_text.lower() not in ("unassigned", "none", "null", ""):
+                resolved = resolve_lead_source(session, src_text, sources=sources)
+                if resolved and resolved.name.lower() != "unassigned":
+                    b = bucket(resolved)
+                else:
+                    norm_name = src_text.title()
+                    if "radar" in src_text.lower():
+                        norm_name = "Radar Scan"
+                    elif "import" in src_text.lower() or "csv" in src_text.lower():
+                        norm_name = "Import"
+                    elif "site" in src_text.lower() or "web" in src_text.lower():
+                        norm_name = "Website"
+                    existing_src = next((s for s in sources if s.name.lower() == norm_name.lower()), None)
+                    if existing_src:
+                        b = bucket(existing_src)
+                    else:
+                        if norm_name not in stats:
+                            stats[norm_name] = {
+                                "source_id": None,
+                                "source": norm_name,
+                                "channel": "Outbound" if "Radar" in norm_name else ("Direct" if "Import" in norm_name else "Other"),
+                                "color": "#8B5CF6" if "Radar" in norm_name else ("#0284C7" if "Import" in norm_name else "#94A3B8"),
+                                "monthly_cost": 0.0,
+                                "leads": 0, "converted": 0, "clients": 0,
+                                "won_deals": 0, "won_revenue": 0.0, "pipeline_value": 0.0,
+                            }
+                        b = stats[norm_name]
+            else:
+                # Intelligently categorize leads with missing source
+                is_radar = bool(l.ai_analysis_results or l.swot_analysis or (l.website and not l.phone))
+                fallback_name = "Radar Scan" if is_radar else "Import"
+                existing_src = next((s for s in sources if s.name.lower() == fallback_name.lower()), None)
+                if existing_src:
+                    b = bucket(existing_src)
+                else:
+                    if fallback_name not in stats:
+                        stats[fallback_name] = {
+                            "source_id": None,
+                            "source": fallback_name,
+                            "channel": "Outbound" if is_radar else "Direct",
+                            "color": "#8B5CF6" if is_radar else "#0284C7",
+                            "monthly_cost": 0.0,
+                            "leads": 0, "converted": 0, "clients": 0,
+                            "won_deals": 0, "won_revenue": 0.0, "pipeline_value": 0.0,
+                        }
+                    b = stats[fallback_name]
         b["leads"] += 1
         if l.is_converted or (l.status or "").lower() in ("converted", "won"):
             b["converted"] += 1
@@ -419,6 +484,9 @@ def lead_source_analytics(
     else:
         months = 1
 
+    if 0 in stats and stats[0]["leads"] == 0 and stats[0]["won_deals"] == 0:
+        del stats[0]
+
     rows = []
     for b in stats.values():
         cost = b["monthly_cost"] * months
@@ -438,7 +506,12 @@ def lead_source_analytics(
         mk = _month_key(l.created_at)
         if mk in trend:
             src = match(l.lead_source_id, l.source)
-            trend[mk][src.name if src else "Unassigned"] += 1
+            if src and src.name.lower() not in ("unassigned", "other"):
+                src_label = src.name
+            else:
+                is_radar = bool(l.ai_analysis_results or l.swot_analysis or (l.website and not l.phone))
+                src_label = "Radar Scan" if is_radar else "Import"
+            trend[mk][src_label] += 1
 
     total_leads = sum(r["leads"] for r in rows)
     total_conv = sum(r["converted"] for r in rows)

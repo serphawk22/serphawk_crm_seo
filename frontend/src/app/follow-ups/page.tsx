@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, X, Clock, CheckCircle2, AlertTriangle, CalendarClock, Search, Loader2, Mail, Phone, Video,
   MessageCircle, Bell, BellOff, Pencil, Trash2, Sparkles, Send, RotateCcw, Hourglass, User, Building2,
-  RefreshCw, ChevronRight, Flag, LayoutGrid, Table, Check, ExternalLink, Calendar, ChevronDown, UserCheck, Presentation,
+  RefreshCw, ChevronRight, Flag, LayoutGrid, Table, Check, ExternalLink, Calendar, ChevronDown, UserCheck, Presentation, Lock, CalendarDays, ChevronLeft,
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
@@ -202,7 +202,129 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
   const [search, setSearch] = useState("");
   const [channelFilter, setChannelFilter] = useState<string>("All");
   const [priorityFilter, setPriorityFilter] = useState<string>("All");
-  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
+  const [viewMode, setViewMode] = useState<"cards" | "table" | "calendar">("cards");
+  const [calendarDate, setCalendarDate] = useState<Date>(new Date());
+  const [blockedSlots, setBlockedSlots] = useState<any[]>([]);
+  const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
+  const [availabilityHours, setAvailabilityHours] = useState({
+    start_time: "09:00",
+    end_time: "18:00",
+    work_days: [1, 2, 3, 4, 5],
+  });
+  const [blockForm, setBlockForm] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    start_time: "",
+    end_time: "",
+    reason: "Blocked slot",
+  });
+  const [savingBlock, setSavingBlock] = useState(false);
+
+  const fetchBlockedSlots = async () => {
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(`${API_BASE_URL}/calendar/blocked-slots`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setBlockedSlots(d.blocked_slots || []);
+      }
+    } catch (e) {
+      console.error("Failed to load blocked slots", e);
+    }
+  };
+
+  const fetchAvailability = async () => {
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(`${API_BASE_URL}/calendar/availability`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.availability) {
+          setAvailabilityHours({
+            start_time: d.availability.start_time || "09:00",
+            end_time: d.availability.end_time || "18:00",
+            work_days: d.availability.work_days || [1, 2, 3, 4, 5],
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load availability", e);
+    }
+  };
+
+  const handleCreateBlockedSlot = async () => {
+    if (!blockForm.date) return;
+    setSavingBlock(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(`${API_BASE_URL}/calendar/blocked-slots`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(blockForm),
+      });
+      if (res.ok) {
+        showToast("Date/Time slot blocked successfully");
+        setBlockForm({
+          date: new Date().toISOString().slice(0, 10),
+          start_time: "",
+          end_time: "",
+          reason: "Blocked slot",
+        });
+        fetchBlockedSlots();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.detail || "Failed to block slot", false);
+      }
+    } catch {
+      showToast("Error blocking slot", false);
+    } finally {
+      setSavingBlock(false);
+    }
+  };
+
+  const handleDeleteBlockedSlot = async (slotId: number) => {
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(`${API_BASE_URL}/calendar/blocked-slots/${slotId}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        showToast("Blocked slot removed");
+        fetchBlockedSlots();
+      }
+    } catch {
+      showToast("Failed to remove blocked slot", false);
+    }
+  };
+
+  const handleSaveAvailability = async () => {
+    setSavingBlock(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(`${API_BASE_URL}/calendar/availability`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(availabilityHours),
+      });
+      if (res.ok) {
+        showToast("Working hours saved successfully");
+      }
+    } catch {
+      showToast("Failed to save working hours", false);
+    } finally {
+      setSavingBlock(false);
+    }
+  };
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -362,12 +484,21 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
   }, [form.linked, leads, clients, employees]);
 
   // ── Open Create / Edit ──
-  const openCreate = () => {
+  const openCreate = (initialDate?: string) => {
     setEditing(null);
-    setForm(emptyForm(viewerTz));
+    const ef = emptyForm(viewerTz);
+    if (initialDate) {
+      ef.due_local = `${initialDate}T10:00`;
+    }
+    setForm(ef);
     loadEntities();
     setShowForm(true);
   };
+
+  useEffect(() => {
+    fetchBlockedSlots();
+    fetchAvailability();
+  }, []);
 
   const openEdit = (f: FollowUp) => {
     const tz = f.timezone || viewerTz;
@@ -601,6 +732,39 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
     })),
   };
 
+  // Calendar days helper
+  const year = calendarDate.getFullYear();
+  const month = calendarDate.getMonth();
+  const firstDayIndex = new Date(year, month, 1).getDay();
+  const totalDaysInMonth = new Date(year, month + 1, 0).getDate();
+  const prevMonthTotalDays = new Date(year, month, 0).getDate();
+
+  const calendarDays = useMemo(() => {
+    const days: { dayNumber: number; isCurrentMonth: boolean; dateStr: string }[] = [];
+    for (let i = firstDayIndex - 1; i >= 0; i--) {
+      const d = prevMonthTotalDays - i;
+      const prevDate = new Date(year, month - 1, d);
+      const dateStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      days.push({ dayNumber: d, isCurrentMonth: false, dateStr });
+    }
+    for (let d = 1; d <= totalDaysInMonth; d++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      days.push({ dayNumber: d, isCurrentMonth: true, dateStr });
+    }
+    const remaining = 42 - days.length;
+    for (let d = 1; d <= remaining; d++) {
+      const nextDate = new Date(year, month + 1, d);
+      const dateStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      days.push({ dayNumber: d, isCurrentMonth: false, dateStr });
+    }
+    return days;
+  }, [year, month, firstDayIndex, totalDaysInMonth, prevMonthTotalDays]);
+
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
   const totalFollowups = items.length;
   const activeFollowups = counts.overdue + counts.pending + counts.upcoming;
 
@@ -671,10 +835,30 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
               <Table className="w-3.5 h-3.5" />
               <span className="hidden md:inline">Table</span>
             </button>
+            <button
+              onClick={() => setViewMode("calendar")}
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition ${
+                viewMode === "calendar" ? "bg-white dark:bg-white/10 text-slate-900 dark:text-white shadow-xs" : "text-slate-500 hover:text-slate-700 dark:text-zinc-400"
+              }`}
+              title="Interactive calendar view"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Calendar</span>
+            </button>
           </div>
 
           <button
-            onClick={openCreate}
+            type="button"
+            onClick={() => setShowAvailabilityModal(true)}
+            title="Configure working hours & blocked dates / blackout times"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 text-xs font-semibold transition shadow-xs cursor-pointer"
+          >
+            <Clock className="w-3.5 h-3.5 text-amber-500" />
+            <span className="hidden sm:inline">Availability & Blocked Times</span>
+          </button>
+
+          <button
+            onClick={() => openCreate()}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-semibold text-xs shadow-xs transition"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -800,6 +984,148 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
           <Loader2 className="animate-spin text-amber-500 w-9 h-9" />
           <p className="text-sm font-semibold text-slate-400">Loading follow-ups & reminders…</p>
         </div>
+      ) : viewMode === "calendar" ? (
+        /* ── Calendar View ── */
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden p-3.5 sm:p-6 space-y-4">
+          {/* Calendar Month Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 dark:border-white/10 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold shrink-0">
+                <CalendarDays className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white">
+                  {monthNames[month]} {year}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-zinc-400">
+                  Click on any day cell to book a follow-up or meeting
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCalendarDate(new Date(year, month - 1, 1))}
+                className="p-2 rounded-xl border border-slate-200/80 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-600 dark:text-zinc-300 transition cursor-pointer"
+                title="Previous Month"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setCalendarDate(new Date())}
+                className="px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-white/10 text-xs font-bold text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition cursor-pointer"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => setCalendarDate(new Date(year, month + 1, 1))}
+                className="p-2 rounded-xl border border-slate-200/80 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-600 dark:text-zinc-300 transition cursor-pointer"
+                title="Next Month"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Calendar 7-Column Grid */}
+          <div className="grid grid-cols-7 gap-px bg-slate-200/80 dark:bg-white/10 rounded-2xl overflow-hidden border border-slate-200/80 dark:border-white/10">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((dayName) => (
+              <div
+                key={dayName}
+                className="bg-slate-50 dark:bg-zinc-800/80 p-2 sm:py-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-zinc-400"
+              >
+                {dayName}
+              </div>
+            ))}
+
+            {calendarDays.map((cd, idx) => {
+              const dayFollowUps = items.filter((f) =>
+                (f.due_at_local || f.due_at || "").startsWith(cd.dateStr)
+              );
+              const dayBlocked = blockedSlots.filter((b) =>
+                (b.date || "").startsWith(cd.dateStr)
+              );
+              const isToday =
+                cd.dateStr === new Date().toISOString().slice(0, 10);
+
+              return (
+                <div
+                  key={`${cd.dateStr}-${idx}`}
+                  onClick={() => openCreate(cd.dateStr)}
+                  className={`min-h-[95px] sm:min-h-[115px] p-1.5 sm:p-2 bg-white dark:bg-[#101014] hover:bg-amber-50/30 dark:hover:bg-white/5 transition flex flex-col justify-between cursor-pointer group ${
+                    !cd.isCurrentMonth ? "opacity-35" : ""
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`text-xs font-extrabold w-6 h-6 flex items-center justify-center rounded-full ${
+                        isToday
+                          ? "bg-amber-500 text-white shadow-xs"
+                          : "text-slate-700 dark:text-zinc-300 group-hover:text-amber-500"
+                      }`}
+                    >
+                      {cd.dayNumber}
+                    </span>
+
+                    {/* Quick Add indicator */}
+                    <span className="opacity-0 group-hover:opacity-100 text-[10px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-0.5">
+                      <Plus className="w-2.5 h-2.5" /> Book
+                    </span>
+                  </div>
+
+                  {/* Badges / Follow-ups */}
+                  <div className="space-y-1 my-1 overflow-y-auto max-h-16 scrollbar-none">
+                    {/* Blocked Slot Tag */}
+                    {dayBlocked.map((b) => (
+                      <div
+                        key={b.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowAvailabilityModal(true);
+                        }}
+                        className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-300 text-[10px] font-bold truncate"
+                        title={b.reason || "Slot Blocked"}
+                      >
+                        <Lock className="w-2.5 h-2.5 shrink-0" />
+                        <span className="truncate">Blocked: {b.reason || "Unavailable"}</span>
+                      </div>
+                    ))}
+
+                    {/* Follow-up tags */}
+                    {dayFollowUps.map((f) => {
+                      const ChIcon = CHANNELS.find((c) => c.key === f.channel)?.icon || Flag;
+                      return (
+                        <div
+                          key={f.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEdit(f);
+                          }}
+                          className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold border truncate transition ${
+                            f.status === "Completed"
+                              ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/40 opacity-75 line-through"
+                              : f.bucket === "overdue"
+                              ? "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/40"
+                              : "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/40 hover:border-indigo-400"
+                          }`}
+                          title={`${f.title} (${f.status})`}
+                        >
+                          <ChIcon className="w-2.5 h-2.5 shrink-0" />
+                          <span className="truncate">{f.title}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div />
+                </div>
+              );
+            })}
+          </div>
+        </div>
       ) : visible.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 px-4 text-center bg-white dark:bg-zinc-900 border border-dashed border-slate-300 dark:border-zinc-800 rounded-3xl shadow-sm">
           <div className="w-16 h-16 rounded-3xl bg-amber-500/10 flex items-center justify-center mb-4">
@@ -816,7 +1142,7 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
               : "Everything looks clear! Schedule a new follow-up to stay ahead on your sales pipeline."}
           </p>
           <button
-            onClick={openCreate}
+            onClick={() => openCreate()}
             className="px-5 h-11 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs sm:text-sm font-bold flex items-center gap-2 shadow-md shadow-amber-500/20 hover:opacity-90 transition"
           >
             <Plus className="w-4 h-4" /> Schedule New Follow-up
@@ -1550,6 +1876,197 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
           </div>
         )}
       </Sheet>
+
+      {/* ── Admin Availability & Blocked Slots Modal ── */}
+      {showAvailabilityModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-2xl rounded-3xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121217] p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                    Calendar Availability & Blackout Times
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-zinc-400">
+                    Define working hours and block specific dates or times from being booked
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAvailabilityModal(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Section 1: Standard Working Hours */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-white/5 space-y-3">
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300">
+                1. Standard Daily Working Hours
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-400 block mb-1">
+                    Start Time
+                  </label>
+                  <input
+                    type="time"
+                    value={availabilityHours.start_time}
+                    onChange={(e) =>
+                      setAvailabilityHours({ ...availabilityHours, start_time: e.target.value })
+                    }
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-400 block mb-1">
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    value={availabilityHours.end_time}
+                    onChange={(e) =>
+                      setAvailabilityHours({ ...availabilityHours, end_time: e.target.value })
+                    }
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleSaveAvailability}
+                disabled={savingBlock}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition active:scale-95"
+              >
+                Save Working Hours
+              </button>
+            </div>
+
+            {/* Section 2: Blackout / Blocked Date or Times */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-white/5 space-y-3">
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300">
+                2. Block Date or Specific Time Slot
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-400 block mb-1">
+                    Date to Block
+                  </label>
+                  <input
+                    type="date"
+                    value={blockForm.date}
+                    onChange={(e) => setBlockForm({ ...blockForm, date: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-400 block mb-1">
+                    Start Time (Optional)
+                  </label>
+                  <input
+                    type="time"
+                    value={blockForm.start_time}
+                    onChange={(e) => setBlockForm({ ...blockForm, start_time: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-400 block mb-1">
+                    End Time (Optional)
+                  </label>
+                  <input
+                    type="time"
+                    value={blockForm.end_time}
+                    onChange={(e) => setBlockForm({ ...blockForm, end_time: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-400 block mb-1">
+                  Reason / Description
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. National Holiday, Strategy Review, Offsite"
+                  value={blockForm.reason}
+                  onChange={(e) => setBlockForm({ ...blockForm, reason: e.target.value })}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCreateBlockedSlot}
+                disabled={savingBlock || !blockForm.date}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs transition active:scale-95 disabled:opacity-50"
+              >
+                <Lock className="w-3.5 h-3.5" /> Block This Slot
+              </button>
+            </div>
+
+            {/* Section 3: List of Active Blocked Slots */}
+            <div>
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300 mb-2">
+                Active Blackout / Blocked Slots ({blockedSlots.length})
+              </h4>
+              {blockedSlots.length === 0 ? (
+                <p className="text-xs text-slate-400 italic">No dates or times are currently blocked.</p>
+              ) : (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {blockedSlots.map((slot) => (
+                    <div
+                      key={slot.id}
+                      className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-zinc-900 text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Lock className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                        <div>
+                          <span className="font-extrabold text-slate-900 dark:text-white">
+                            {slot.date}
+                          </span>
+                          {slot.start_time && slot.end_time && (
+                            <span className="text-[11px] text-slate-500 dark:text-zinc-400 ml-1.5">
+                              ({slot.start_time} - {slot.end_time})
+                            </span>
+                          )}
+                          <span className="text-slate-600 dark:text-zinc-300 ml-2">
+                            — {slot.reason || "Blocked slot"}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteBlockedSlot(slot.id)}
+                        className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                        title="Remove blocked slot"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-slate-200 dark:border-white/10 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowAvailabilityModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

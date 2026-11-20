@@ -6,7 +6,7 @@ from unittest import mock
 from sqlmodel import Session, select
 from tests import _support as S
 from tests._fixtures import TenantIsolationBase
-from database import Lead, TenantDomain, Notification
+from database import Lead, TenantDomain, Notification, User
 from modules import company_domains as domains, tenant_settings, features
 from addons.lead_capture.models import Enquiry
 from addons.lead_capture.config import default_form
@@ -128,6 +128,23 @@ class LeadCapture(TenantIsolationBase):
         self.assertEqual(r.status_code, 403)
         r = self.client.get("/leads", headers={"x-company-host": "dapros.serphawk.in", "x-company-time": "0"})
         self.assertEqual(r.status_code, 403)
+
+    def test_login_redirect_signal_requires_valid_credentials_on_the_wrong_domain(self):
+        password = "test-password"
+        with Session(S.ENGINE) as session:
+            user = session.get(User, self.users[3])
+            email = user.email
+            user.password = self.main._hash_password(password)
+            session.add(user)
+            session.commit()
+        bad = self.signed("POST", "/login", {"email": email, "password": "incorrect"})
+        self.assertEqual(bad.status_code, 401)
+        wrong = self.signed("POST", "/login", {"email": email, "password": password})
+        self.assertEqual(wrong.status_code, 403)
+        self.assertEqual(wrong.json()["detail"]["code"], "wrong_company")
+        self.assertNotIn("token", wrong.json())
+        correct = self.signed("POST", "/login", {"email": email, "password": password}, host="serphawk.in")
+        self.assertEqual(correct.status_code, 200, correct.text)
 
     def test_local_development_allows_loopback_branding_without_proxy_headers(self):
         with mock.patch.dict(os.environ, {"COMPANY_LOCAL_DEVELOPMENT": "1"}):

@@ -23,7 +23,16 @@ import {
   UserCheck,
   Layers,
   ArrowRight,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Sparkles,
+  Send,
+  Calendar,
+  Loader2,
+  Target,
+  Mic,
+  MicOff,
+  Volume2,
+  Radio
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
@@ -116,6 +125,197 @@ export default function TaskSheetPage() {
   const [formTimeSpent, setFormTimeSpent] = useState<string>("30");
   const [formAssignedUserId, setFormAssignedUserId] = useState<number>(user?.id || 0);
 
+  // AI Task Sheet Generator State
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [todayActivityData, setTodayActivityData] = useState<any | null>(null);
+  const [taskSheetDate, setTaskSheetDate] = useState<string>(todayStr());
+  const [submittedToday, setSubmittedToday] = useState(false);
+
+  // Voice Recording & Mapping State
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceMappingBusy, setVoiceMappingBusy] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  const startVoiceRecording = () => {
+    const SpeechRecognition = typeof window !== "undefined" && ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+    if (!SpeechRecognition) {
+      alert("Voice speech recognition is not supported in this browser. Please use Chrome or Edge, or type your update directly.");
+      return;
+    }
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+      recognition.onresult = (event: any) => {
+        let current = "";
+        for (let i = 0; i < event.results.length; i++) {
+          current += event.results[i][0].transcript + " ";
+        }
+        setVoiceTranscript(current.trim());
+      };
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition error:", event.error);
+        setIsRecordingVoice(false);
+      };
+      recognition.onend = () => {
+        setIsRecordingVoice(false);
+      };
+      recognitionRef.current = recognition;
+      recognition.start();
+      setIsRecordingVoice(true);
+    } catch (e) {
+      console.error(e);
+      alert("Could not start microphone recording. Please allow microphone permissions in your browser.");
+    }
+  };
+
+  const stopVoiceRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    setIsRecordingVoice(false);
+  };
+
+  const handleMapVoiceToCRM = async () => {
+    if (!voiceTranscript.trim()) {
+      alert("Please record or speak your update first.");
+      return;
+    }
+    setVoiceMappingBusy(true);
+    try {
+      const uId = isAdmin && formAssignedUserId ? formAssignedUserId : user?.id;
+      const res = await fetch(`${API_BASE_URL}/task-sheet/voice-map`, {
+        method: "POST",
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          transcript: voiceTranscript,
+          work_date: taskSheetDate || todayStr(),
+          user_id: uId,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to map voice to CRM activity");
+      const data = await res.json();
+      if (data.summary) setFormSummary(data.summary);
+      if (data.proof_of_work) setFormProofOfWork(data.proof_of_work);
+      if (data.today_activities?.metrics) {
+        setTodayActivityData({ metrics: data.today_activities.metrics });
+      }
+      setMessage({
+        type: "success",
+        text: "Voice successfully transcribed and mapped to verified CRM activities! You can edit the text below before submitting.",
+      });
+    } catch (err) {
+      console.error(err);
+      setMessage({
+        type: "error",
+        text: "Could not synthesize voice with CRM activities.",
+      });
+    } finally {
+      setVoiceMappingBusy(false);
+    }
+  };
+
+  const getAuthHeaders = useCallback((extra: Record<string, string> = {}) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    return {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...extra,
+    };
+  }, []);
+
+  const generateAiTaskSheet = useCallback(async (dateOverride?: string, userIdOverride?: number) => {
+    setAiGenerating(true);
+    setMessage(null);
+    try {
+      const d = dateOverride || taskSheetDate || todayStr();
+      const uId = userIdOverride || (isAdmin && formAssignedUserId ? formAssignedUserId : user?.id);
+      const params = new URLSearchParams({ work_date: d, date: d });
+      if (uId) params.append("user_id", String(uId));
+      const res = await fetch(`${API_BASE_URL}/task-sheet/today-activity?${params.toString()}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error("Failed to compile activities for today.");
+      const data = await res.json();
+      setTodayActivityData(data);
+      setFormSummary(data.summary || "");
+      setFormProofOfWork(data.proof_of_work || "");
+      setFormWorkDate(data.work_date || d);
+      setFormTimeSpent(String(data.metrics?.time_spent_minutes || 60));
+      setSubmittedToday(Boolean(data.is_submitted));
+      if (data.metrics) {
+        setMetrics({
+          outreaches_count: String(data.metrics.calls_count || 0),
+          positives_count: String(data.metrics.converted_leads_count || 0),
+          negatives_count: "0",
+          followups_scheduled: String(data.metrics.followups_count || 0),
+          meetings_scheduled: String(data.metrics.meetings_count || 0),
+        });
+      }
+    } catch (err: any) {
+      setMessage({ text: err.message || "Could not fetch today's activity", type: "error" });
+    } finally {
+      setAiGenerating(false);
+    }
+  }, [taskSheetDate, isAdmin, formAssignedUserId, user?.id]);
+
+  useEffect(() => {
+    if (user?.id) {
+      generateAiTaskSheet();
+    }
+  }, [user?.id, generateAiTaskSheet]);
+
+  const handleAiSubmitTasksheet = async () => {
+    if (!formSummary.trim()) {
+      setMessage({ text: "Please generate or enter work summary first.", type: "error" });
+      return;
+    }
+    setSaving(true);
+    setMessage(null);
+    try {
+      const targetUserId = isAdmin && formAssignedUserId ? formAssignedUserId : (user?.id || 0);
+      const payload = {
+        user_id: targetUserId,
+        work_date: formWorkDate || todayStr(),
+        area: "AI Daily Task Sheet",
+        summary: formSummary.trim(),
+        status: "Submitted",
+        proof_of_work: formProofOfWork.trim() || "Activities verified from CRM activity log.",
+        completion_date: formWorkDate || todayStr(),
+        time_spent_minutes: Number(formTimeSpent) || 60,
+        outreaches_count: Number(metrics.outreaches_count || 0),
+        positives_count: Number(metrics.positives_count || 0),
+        negatives_count: Number(metrics.negatives_count || 0),
+        followups_scheduled: Number(metrics.followups_scheduled || 0),
+        meetings_scheduled: Number(metrics.meetings_scheduled || 0),
+      };
+
+      const existingId = todayActivityData?.existing_entry_id;
+      const url = existingId ? `${API_BASE_URL}/task-sheet/${existingId}` : `${API_BASE_URL}/task-sheet`;
+      const method = existingId ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || "Failed to submit task sheet.");
+      }
+
+      setMessage({ text: "Tasksheet submitted to Admin successfully! 🚀", type: "success" });
+      setSubmittedToday(true);
+      loadEntries();
+    } catch (err: any) {
+      setMessage({ text: err.message || "Failed to submit task sheet", type: "error" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Load Users for filters & assignment
   useEffect(() => {
     if (!isAdmin) return;
@@ -130,7 +330,7 @@ export default function TaskSheetPage() {
         }));
         setUsersList(uList);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [isAdmin]);
 
   // Update assigned user id default when user logs in
@@ -168,7 +368,9 @@ export default function TaskSheetPage() {
         params.set("status", filterStatus);
       }
 
-      const res = await fetch(`${API_BASE_URL}/task-sheet?${params.toString()}`);
+      const res = await fetch(`${API_BASE_URL}/task-sheet?${params.toString()}`, {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) {
         const data = await res.json();
         if (version === loadVersion.current) setEntries(data.entries || []);
@@ -340,7 +542,7 @@ export default function TaskSheetPage() {
 
       const res = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(payload),
       });
 
@@ -440,56 +642,47 @@ export default function TaskSheetPage() {
           </p>
         </div>
 
-        {/* View Switcher for Admins */}
+        {/* View Switcher for Admins & Users */}
         <div className="flex items-center gap-2">
           {isAdmin && <button type="button" onClick={summarize} disabled={summaryBusy} className="rounded-xl border border-indigo-200 px-3 py-2 text-xs font-bold text-indigo-600 disabled:opacity-50">{summaryBusy ? "Preparing…" : "AI summary"}</button>}
-          {(
-            <div className="bg-slate-100 dark:bg-zinc-800 p-1 rounded-xl flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setActiveTab("oversight")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  activeTab === "oversight"
-                    ? "bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-sm"
-                    : "text-slate-600 dark:text-zinc-400 hover:text-slate-900"
+          <div className="bg-slate-100 dark:bg-zinc-800 p-1 rounded-xl flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab("entry")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "entry"
+                  ? "bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                  : "text-slate-600 dark:text-zinc-400 hover:text-slate-900"
                 }`}
-              >
-                <UserCheck size={14} /> {isAdmin ? "Team history" : "My history"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  resetForm();
-                  setActiveTab("entry");
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  activeTab === "entry"
-                    ? "bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-sm"
-                    : "text-slate-600 dark:text-zinc-400 hover:text-slate-900"
+            >
+              <Sparkles size={14} className="text-indigo-500" /> ✨ AI Daily Tasksheet
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("oversight")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "oversight"
+                  ? "bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                  : "text-slate-600 dark:text-zinc-400 hover:text-slate-900"
                 }`}
-              >
-                <Plus size={14} /> Log Task
-              </button>
-            </div>
-          )}
+            >
+              <UserCheck size={14} /> {isAdmin ? "Team Submissions & Oversight" : "Submission History"}
+            </button>
+          </div>
 
           {isAdmin && activeTab === "oversight" && (
             <button
               onClick={downloadCSV}
               className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
             >
-              <Download size={14} /> <LocalizedText text={"Export CSV"} /></button>
+              <Download size={14} /> <LocalizedText text={"Export CSV"} />
+            </button>
           )}
 
           {!isAdmin && (
             <button
-              onClick={() => {
-                resetForm();
-                setActiveTab("entry");
-              }}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition-all"
+              onClick={() => setActiveTab("entry")}
+              className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:opacity-95 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
             >
-              <Plus size={15} /> Log New Task
+              <Sparkles size={14} className="text-amber-300" /> Generate Today's Tasksheet
             </button>
           )}
         </div>
@@ -499,11 +692,10 @@ export default function TaskSheetPage() {
       {teamSummary && <section className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5 dark:border-indigo-900 dark:bg-indigo-950/30"><h2 className="font-bold">AI summary</h2><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{teamSummary}</p></section>}
       {message && (
         <div
-          className={`p-4 rounded-xl flex items-center justify-between gap-3 text-sm font-semibold transition-all ${
-            message.type === "success"
+          className={`p-4 rounded-xl flex items-center justify-between gap-3 text-sm font-semibold transition-all ${message.type === "success"
               ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
               : "bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800"
-          }`}
+            }`}
         >
           <div className="flex items-center gap-2">
             {message.type === "success" ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
@@ -571,18 +763,18 @@ export default function TaskSheetPage() {
               {isAdmin && <><label className="text-xs font-bold text-slate-500 dark:text-zinc-400 flex items-center gap-1.5">
                 <UserCheck size={14} className="text-indigo-500" /> Team member:
               </label>
-              <select
-                value={filterUser}
-                onChange={(e) => setFilterUser(e.target.value)}
-                className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="all">👥 All team members ({usersList.length})</option>
-                {usersList.map((u) => (
-                  <option key={u.id} value={String(u.id)}>
-                    {u.name} ({u.role})
-                  </option>
-                ))}
-              </select></>}
+                <select
+                  value={filterUser}
+                  onChange={(e) => setFilterUser(e.target.value)}
+                  className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="all">👥 All team members ({usersList.length})</option>
+                  {usersList.map((u) => (
+                    <option key={u.id} value={String(u.id)}>
+                      {u.name} ({u.role})
+                    </option>
+                  ))}
+                </select></>}
 
               {/* Date Presets */}
               <div className="flex items-center bg-slate-100 dark:bg-zinc-800 p-0.5 rounded-xl ml-1">
@@ -591,11 +783,10 @@ export default function TaskSheetPage() {
                     key={preset}
                     type="button"
                     onClick={() => setFilterDatePreset(preset)}
-                    className={`px-2.5 py-1 text-xs font-bold rounded-lg capitalize transition-all ${
-                      filterDatePreset === preset
+                    className={`px-2.5 py-1 text-xs font-bold rounded-lg capitalize transition-all ${filterDatePreset === preset
                         ? "bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-sm"
                         : "text-slate-500 hover:text-slate-900 dark:text-zinc-400"
-                    }`}
+                      }`}
                   >
                     {preset === "all" ? "All Time" : preset}
                   </button>
@@ -724,11 +915,10 @@ export default function TaskSheetPage() {
                         ) : (
                           /* Expected Date & Blocker (If Not Done) */
                           <div
-                            className={`border rounded-xl p-2.5 flex items-start gap-2 text-xs ${
-                              isOverdue
+                            className={`border rounded-xl p-2.5 flex items-start gap-2 text-xs ${isOverdue
                                 ? "bg-rose-50/70 dark:bg-rose-500/10 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300"
                                 : "bg-amber-50/70 dark:bg-amber-500/10 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300"
-                            }`}
+                              }`}
                           >
                             {isOverdue ? (
                               <AlertTriangle size={15} className="text-rose-600 shrink-0 mt-0.5" />
@@ -809,353 +999,334 @@ export default function TaskSheetPage() {
       )}
 
       {/* ───────────────────────────────────────────────────────────────────────── */}
-      {/* TAB 2: QUESTION-BASED TASK LOGGING FORM (SALES & STAFF INSTANCE)          */}
+      {/* TAB 2: AI-POWERED DAILY TASK SHEET (SALES & STAFF INSTANCE)               */}
       {/* ───────────────────────────────────────────────────────────────────────── */}
       {activeTab === "entry" && (
-        <div className="max-w-3xl mx-auto space-y-6">
-          <form
-            onSubmit={handleSubmit}
-            className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-8"
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 pb-5">
-              <div>
-                <span className="text-xs font-black uppercase tracking-wider text-indigo-500">
-                  {editingEntryId ? "Update Task Entry" : "Daily Activity Update"}
-                </span>
-                <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mt-0.5">
-                  Answer 3 Simple Questions
+        <div className="max-w-4xl mx-auto space-y-6">
+          {/* Hero Generator Card */}
+          <div className="relative overflow-hidden rounded-3xl border border-indigo-200/90 dark:border-indigo-900/50 bg-gradient-to-br from-indigo-50/70 via-white to-violet-50/50 dark:from-zinc-900 dark:via-zinc-900 dark:to-indigo-950/30 p-6 sm:p-8 shadow-md">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-indigo-100 dark:border-zinc-800">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 shadow-2xs">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  Instant Activity Synthesis
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  Today's AI Task Sheet
                 </h2>
-                <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
-                  Keep records accurate: status, proof of work, or expected date.
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-zinc-400 max-w-xl">
+                  Automatically extracts every action performed today across your CRM instance: calls logged, meetings & demos, prospect follow-ups, new leads added, student admissions converted, and notes.
                 </p>
               </div>
-              {editingEntryId && (
+
+              {/* Date & Trigger Button */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex items-center gap-1.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-2.5 py-1.5 shadow-2xs">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="date"
+                    value={taskSheetDate}
+                    onChange={(e) => {
+                      const d = e.target.value;
+                      setTaskSheetDate(d);
+                      generateAiTaskSheet(d);
+                    }}
+                    className="bg-transparent text-xs font-bold text-slate-800 dark:text-zinc-200 outline-none"
+                  />
+                </div>
                 <button
                   type="button"
-                  onClick={resetForm}
-                  className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 bg-slate-100 dark:bg-zinc-800 rounded-xl"
+                  onClick={() => generateAiTaskSheet()}
+                  disabled={aiGenerating}
+                  className="px-4 py-2.5 bg-gradient-to-r from-indigo-600 via-indigo-700 to-violet-600 hover:opacity-95 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-md disabled:opacity-50 transition-all cursor-pointer"
                 >
-                  Cancel Edit
+                  {aiGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-amber-300" />}
+                  {aiGenerating ? "Compiling..." : "Generate Tasksheet for Today"}
                 </button>
-              )}
+              </div>
             </div>
 
-            {/* Admin Rep Assignment (If Admin is logging on behalf of someone) */}
+            {/* Admin Logging selector */}
             {isAdmin && (
-              <div className="bg-indigo-50/60 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-800/40 rounded-2xl p-4">
-                <label className="text-xs font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-400 block mb-2">
-                  Logging on behalf of Team member:
-                </label>
+              <div className="mt-4 pt-3 flex flex-wrap items-center gap-3 text-xs">
+                <span className="font-bold text-slate-500 flex items-center gap-1">
+                  <UserCheck className="w-3.5 h-3.5 text-indigo-500" />
+                  Inspecting Team Member:
+                </span>
                 <select
                   value={formAssignedUserId}
-                  onChange={(e) => setFormAssignedUserId(Number(e.target.value))}
-                  className="w-full bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3.5 py-2 text-sm font-bold outline-none"
+                  onChange={(e) => {
+                    const uid = Number(e.target.value);
+                    setFormAssignedUserId(uid);
+                    generateAiTaskSheet(taskSheetDate, uid);
+                  }}
+                  className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-1.5 font-bold text-slate-800 dark:text-zinc-200 shadow-2xs outline-none cursor-pointer"
                 >
                   {usersList.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.name} — {u.email} ({u.role})
+                      {u.name} ({u.role})
                     </option>
                   ))}
                 </select>
               </div>
             )}
 
-            {/* ───────────────────────────────────────────────────────────── */}
-            {/* QUESTION 1: WHAT DID YOU WORK ON?                             */}
-            {/* ───────────────────────────────────────────────────────────── */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shrink-0">
-                  1
-                </span>
-                <h3 className="text-base font-black text-slate-900 dark:text-white">
-                  What activity or task did you work on?
-                </h3>
-              </div>
-
-              {/* Category selector pills */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                {CATEGORIES.filter(cat => isOn("institute") || !["Demo Conducted", "Student Admission"].includes(cat.id)).map((cat) => {
-                  const Icon = cat.icon;
-                  const isSelected = formCategory === cat.id;
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => setFormCategory(cat.id)}
-                      className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition-all ${
-                        isSelected
-                          ? "border-indigo-600 bg-indigo-50/80 dark:bg-indigo-500/10 ring-2 ring-indigo-500/30 text-indigo-900 dark:text-white font-bold"
-                          : "border-slate-200 dark:border-zinc-800 hover:border-slate-300 text-slate-700 dark:text-zinc-300 font-medium"
-                      }`}
-                    >
-                      <div className={`p-1.5 rounded-xl ${cat.color}`}>
-                        <Icon size={16} />
-                      </div>
-                      <span className="text-xs leading-tight">{cat.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Work Description / Summary */}
-              <div>
-                <label className="text-xs font-bold text-slate-600 dark:text-zinc-400 block mb-1.5">
-                  Describe the specific work details or prospect names:
-                </label>
-                <textarea
-                  required
-                  rows={3}
-                  value={formSummary}
-                  onChange={(e) => setFormSummary(e.target.value)}
-                  placeholder="Describe the outreach, delivery work, meeting or outcome."
-                  className="w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl p-3.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-slate-400"
-                />
-              </div>
-
-              {/* Date & Time Spent */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-                <div>
-                  <label className="text-xs font-bold text-slate-600 dark:text-zinc-400 block mb-1">
-                    Date of Work:
-                  </label>
-                  <input
-                    type="date"
-                    value={formWorkDate}
-                    onChange={(e) => setFormWorkDate(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-zinc-200 outline-none"
-                  />
+            {/* Live Metrics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-6">
+              <div className="bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xs rounded-2xl border border-slate-200/80 dark:border-white/5 p-3.5 shadow-xs">
+                <div className="flex items-center justify-between text-blue-500 mb-1">
+                  <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">Calls Logged</span>
+                  <PhoneCall size={16} />
                 </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 dark:text-zinc-400 block mb-1">
-                    Time Spent (Minutes):
-                  </label>
-                  <div className="flex items-center gap-1.5">
-                    {["15", "30", "45", "60", "120"].map((mins) => (
-                      <button
-                        key={mins}
-                        type="button"
-                        onClick={() => setFormTimeSpent(mins)}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition-all ${
-                          formTimeSpent === mins
-                            ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-transparent"
-                            : "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-400"
-                        }`}
-                      >
-                        {mins}m
-                      </button>
-                    ))}
-                  </div>
+                <p className="text-xl font-black text-slate-900 dark:text-white">
+                  {todayActivityData?.metrics?.calls_count || 0}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Phone & AI calls</p>
+              </div>
+
+              <div className="bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xs rounded-2xl border border-slate-200/80 dark:border-white/5 p-3.5 shadow-xs">
+                <div className="flex items-center justify-between text-purple-500 mb-1">
+                  <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">Meetings & Demos</span>
+                  <Video size={16} />
                 </div>
+                <p className="text-xl font-black text-slate-900 dark:text-white">
+                  {todayActivityData?.metrics?.meetings_count || 0}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Sessions conducted</p>
+              </div>
+
+              <div className="bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xs rounded-2xl border border-slate-200/80 dark:border-white/5 p-3.5 shadow-xs">
+                <div className="flex items-center justify-between text-indigo-500 mb-1">
+                  <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">New Leads</span>
+                  <Target size={16} />
+                </div>
+                <p className="text-xl font-black text-slate-900 dark:text-white">
+                  {todayActivityData?.metrics?.new_leads_count || 0}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Pipeline additions</p>
+              </div>
+
+              <div className="bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xs rounded-2xl border border-slate-200/80 dark:border-white/5 p-3.5 shadow-xs">
+                <div className="flex items-center justify-between text-emerald-500 mb-1">
+                  <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">Conversions</span>
+                  <GraduationCap size={16} />
+                </div>
+                <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">
+                  {todayActivityData?.metrics?.converted_leads_count || 0}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Students / Won clients</p>
+              </div>
+
+              <div className="bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xs rounded-2xl border border-slate-200/80 dark:border-white/5 p-3.5 shadow-xs col-span-2 sm:col-span-1">
+                <div className="flex items-center justify-between text-amber-500 mb-1">
+                  <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">Follow-ups</span>
+                  <Clock size={16} />
+                </div>
+                <p className="text-xl font-black text-slate-900 dark:text-white">
+                  {todayActivityData?.metrics?.followups_count || 0}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Walkins, notes & tasks</p>
               </div>
             </div>
+          </div>
 
-            {/* ───────────────────────────────────────────────────────────── */}
-            {/* QUESTION 2: IS IT DONE OR NOT DONE?                           */}
-            {/* ───────────────────────────────────────────────────────────── */}
-            <div className="space-y-4 border-t border-slate-100 dark:border-zinc-800 pt-6">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shrink-0">
-                  2
-                </span>
-                <h3 className="text-base font-black text-slate-900 dark:text-white">
-                  Is this task Done or Not Done?
-                </h3>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* DONE OPTION */}
-                <button
-                  type="button"
-                  onClick={() => setFormIsDone(true)}
-                  className={`p-5 rounded-2xl border-2 text-left transition-all flex items-start gap-3.5 ${
-                    formIsDone
-                      ? "border-emerald-500 bg-emerald-50/70 dark:bg-emerald-500/10 ring-2 ring-emerald-500/20"
-                      : "border-slate-200 dark:border-zinc-800 hover:border-slate-300 opacity-60"
-                  }`}
-                >
-                  <div className={`p-2 rounded-xl shrink-0 ${formIsDone ? "bg-emerald-600 text-white" : "bg-slate-200 dark:bg-zinc-700 text-slate-500"}`}>
-                    <CheckCircle2 size={24} />
-                  </div>
-                  <div>
-                    <h4 className="text-base font-black text-emerald-800 dark:text-emerald-400">
-                      ✅ Done (Completed)
-                    </h4>
-                    <p className="text-xs text-slate-600 dark:text-zinc-400 mt-1 leading-snug">
-                      Work has finished completely. You will provide proof of work below.
-                    </p>
-                  </div>
-                </button>
-
-                {/* NOT DONE OPTION */}
-                <button
-                  type="button"
-                  onClick={() => setFormIsDone(false)}
-                  className={`p-5 rounded-2xl border-2 text-left transition-all flex items-start gap-3.5 ${
-                    !formIsDone
-                      ? "border-amber-500 bg-amber-50/70 dark:bg-amber-500/10 ring-2 ring-amber-500/20"
-                      : "border-slate-200 dark:border-zinc-800 hover:border-slate-300 opacity-60"
-                  }`}
-                >
-                  <div className={`p-2 rounded-xl shrink-0 ${!formIsDone ? "bg-amber-600 text-white" : "bg-slate-200 dark:bg-zinc-700 text-slate-500"}`}>
-                    <Clock size={24} />
-                  </div>
-                  <div>
-                    <h4 className="text-base font-black text-amber-800 dark:text-amber-400">
-                      ⏳ Not Done (In Progress)
-                    </h4>
-                    <p className="text-xs text-slate-600 dark:text-zinc-400 mt-1 leading-snug">
-                      Still pending or awaiting customer response. You will set expected date below.
-                    </p>
-                  </div>
-                </button>
-              </div>
-            </div>
-
-            {/* ───────────────────────────────────────────────────────────── */}
-            {/* QUESTION 3: PROOF (IF DONE) OR EXPECTED DATE (IF NOT DONE)    */}
-            {/* ───────────────────────────────────────────────────────────── */}
-            <div className="space-y-4 border-t border-slate-100 dark:border-zinc-800 pt-6">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shrink-0">
-                  3
-                </span>
-                <h3 className="text-base font-black text-slate-900 dark:text-white">
-                  {formIsDone ? "Provide Proof of Work" : "Provide Expected Completion Date"}
-                </h3>
-              </div>
-
-              {/* BRANCH A: PROOF OF WORK (IF DONE) */}
-              {formIsDone ? (
-                <div className="bg-emerald-50/50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-800/40 rounded-2xl p-5 space-y-3">
-                  <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-400">
-                    <LinkIcon size={16} />
-                    <span className="text-xs font-black uppercase tracking-wider">
-                      Proof of Work / Verification Outcome
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-600 dark:text-zinc-400">
-                    Provide a link (Google Drive, WhatsApp screenshot, sheet link), receipt/slip number, or verified notes of what was delivered.
+          {/* Submission Status Notice */}
+          {submittedToday && (
+            <div className="rounded-2xl border border-emerald-300 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/40 p-4 flex items-center justify-between gap-3 text-emerald-800 dark:text-emerald-300 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                <div>
+                  <h4 className="text-sm font-bold">Tasksheet Submitted for {formWorkDate}</h4>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                    Your daily tasksheet has been submitted and recorded for Admin inspection. You can update and re-submit if new activities occur.
                   </p>
-                  <textarea
-                    rows={3}
-                    required={formIsDone}
-                    value={formProofOfWork}
-                    onChange={(e) => setFormProofOfWork(e.target.value)}
-                    placeholder="e.g. Receipt #REC-9821 generated, admission slip confirmed, payment slip attached at https://drive.google.com/..."
-                    className="w-full bg-white dark:bg-zinc-800 border border-emerald-300 dark:border-emerald-700 rounded-xl p-3 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                  {formProofOfWork && (formProofOfWork.includes("http") || formProofOfWork.includes(".com")) && (
-                    <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-bold">
-                      <CheckCircle2 size={13} /> Link detected for admin instant inspection
-                    </div>
-                  )}
                 </div>
-              ) : (
-                /* BRANCH B: EXPECTED COMPLETION DATE & BLOCKER (IF NOT DONE) */
-                <div className="bg-amber-50/50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-800/40 rounded-2xl p-5 space-y-4">
-                  <div className="flex items-center gap-2 text-amber-800 dark:text-amber-400">
-                    <Clock size={16} />
-                    <span className="text-xs font-black uppercase tracking-wider">
-                      When will this be completed?
-                    </span>
-                  </div>
+              </div>
+              <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-600 text-white shadow-2xs whitespace-nowrap">
+                Verified Submitted
+              </span>
+            </div>
+          )}
 
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-600 dark:text-zinc-400 block">
-                      Expected Completion Date:
-                    </label>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <input
-                        type="date"
-                        required={!formIsDone}
-                        value={formExpectedDate}
-                        onChange={(e) => setFormExpectedDate(e.target.value)}
-                        className="bg-white dark:bg-zinc-800 border border-amber-300 dark:border-amber-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-zinc-200 outline-none"
-                      />
-                      {/* Quick shortcut pills */}
-                      {[
-                        { label: "Tomorrow", offset: 1 },
-                        { label: "In 2 Days", offset: 2 },
-                        { label: "In 3 Days", offset: 3 },
-                        { label: "Next Week", offset: 7 },
-                      ].map((item) => {
-                        const d = new Date();
-                        d.setDate(d.getDate() + item.offset);
-                        const val = d.toISOString().slice(0, 10);
-                        return (
-                          <button
-                            key={item.label}
-                            type="button"
-                            onClick={() => setFormExpectedDate(val)}
-                            className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 transition-colors"
-                          >
-                            {item.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-600 dark:text-zinc-400 block">
-                      Why is it pending? Next action or blocker:
-                    </label>
-                    <input
-                      type="text"
-                      value={formBlocker}
-                      onChange={(e) => setFormBlocker(e.target.value)}
-                      placeholder="e.g. Student requested follow-up after 6 PM / Waiting for father's decision"
-                      className="w-full bg-white dark:bg-zinc-800 border border-amber-300 dark:border-amber-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500"
-                    />
-                  </div>
+          {/* Voice Activity Dictation & CRM Activity Matcher Card */}
+          <div className="bg-white dark:bg-zinc-900 border border-violet-200/80 dark:border-violet-900/50 rounded-3xl p-5 sm:p-7 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-zinc-800">
+              <div className="flex items-center gap-2.5">
+                <div className={`p-2 rounded-xl ${isRecordingVoice ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-violet-100 text-violet-600 dark:bg-violet-950/60'}`}>
+                  {isRecordingVoice ? <Radio className="w-5 h-5 animate-pulse" /> : <Mic className="w-5 h-5" />}
                 </div>
-              )}
+                <div>
+                  <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                    Voice Dictation & CRM Activity Mapping
+                    {isRecordingVoice && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-500 text-white animate-pulse">
+                        Listening...
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-zinc-400">
+                    Speak what you did today. We transcribe your speech and automatically cross-verify it against your actual CRM calls, demos, follow-ups, and student admissions.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {!isRecordingVoice ? (
+                  <button
+                    type="button"
+                    onClick={startVoiceRecording}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-white bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 shadow-md shadow-violet-500/20 transition cursor-pointer active:scale-95"
+                  >
+                    <Mic className="w-4 h-4" /> Speak Work Done
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={stopVoiceRecording}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-white bg-red-600 hover:bg-red-700 shadow-md shadow-red-500/25 transition cursor-pointer animate-pulse"
+                  >
+                    <MicOff className="w-4 h-4" /> Stop Recording
+                  </button>
+                )}
+              </div>
             </div>
 
-            <fieldset className="rounded-2xl border border-slate-200 p-4 dark:border-zinc-800"><legend className="px-2 text-sm font-bold">Sales activity</legend><div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{METRICS.map((key, index) => <label key={key} className="text-xs font-semibold">{METRIC_LABELS[index]}<input type="number" min="0" step="1" value={metrics[key]} onChange={event => setMetrics(previous => ({ ...previous, [key]: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-transparent px-3 py-2 dark:border-zinc-700" /></label>)}</div><label className="mt-3 block text-xs font-semibold">Key focus<input value={keyFocus} onChange={event => setKeyFocus(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-transparent px-3 py-2 dark:border-zinc-700" /></label></fieldset>
-            {/* Submit Button */}
+            {/* Live Dictation Textarea */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-zinc-300 flex items-center gap-1.5">
+                  <Volume2 className="w-3.5 h-3.5 text-violet-500" />
+                  Your Voice Dictation / Live Transcript:
+                </label>
+                {voiceTranscript && (
+                  <button
+                    type="button"
+                    onClick={() => setVoiceTranscript("")}
+                    className="text-[11px] text-slate-400 hover:text-red-500 transition"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <textarea
+                rows={3}
+                value={voiceTranscript}
+                onChange={(e) => setVoiceTranscript(e.target.value)}
+                placeholder="Click 'Speak Work Done' above and speak freely: e.g. 'Today I called 5 leads, closed 1 student admission for Fullstack with 5000 advance, and scheduled 2 demos for tomorrow'..."
+                className="w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl p-3.5 text-xs sm:text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500 leading-relaxed font-sans"
+              />
+            </div>
+
+            {/* Synthesize Button */}
+            {voiceTranscript.trim() && (
+              <div className="flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={handleMapVoiceToCRM}
+                  disabled={voiceMappingBusy}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black text-white bg-gradient-to-r from-indigo-600 via-indigo-700 to-violet-600 hover:opacity-95 shadow-md shadow-indigo-500/25 transition cursor-pointer disabled:opacity-50"
+                >
+                  {voiceMappingBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-amber-300" />}
+                  {voiceMappingBusy ? "Mapping with CRM..." : "Map Voice with CRM Activities & Synthesize Report"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Review & Edit Sheet Content */}
+          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-zinc-800 pb-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  Work Summary & Major Accomplishments
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-zinc-400">
+                  AI-compiled overview of today's activities. You may edit or add personal remarks before submitting.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                <Clock className="w-3.5 h-3.5" />
+                <span>Working time:</span>
+                <input
+                  type="number"
+                  value={formTimeSpent}
+                  onChange={(e) => setFormTimeSpent(e.target.value)}
+                  className="w-16 px-2 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-center font-bold text-slate-800 dark:text-zinc-200"
+                />
+                <span>mins</span>
+              </div>
+            </div>
+
+            {/* Summary Text Area */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1.5">
+                Summary Narrative:
+              </label>
+              <textarea
+                rows={5}
+                value={formSummary}
+                onChange={(e) => setFormSummary(e.target.value)}
+                placeholder="Click 'Generate Tasksheet for Today' above to auto-populate your activities..."
+                className="w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 text-xs sm:text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 font-sans leading-relaxed"
+              />
+            </div>
+
+            {/* Proof of Work Area */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300 flex items-center gap-1.5">
+                  <LinkIcon className="w-3.5 h-3.5 text-indigo-500" />
+                  Verifiable Proof of Work & Concrete Action Items:
+                </label>
+                <span className="text-[11px] text-slate-400">Directly visible to Admin</span>
+              </div>
+              <textarea
+                rows={5}
+                value={formProofOfWork}
+                onChange={(e) => setFormProofOfWork(e.target.value)}
+                placeholder="Specific calls, meeting summaries, student admissions slips, receipts, and client links..."
+                className="w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 text-xs sm:text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-xs leading-relaxed"
+              />
+            </div>
+
+            {/* Big Action Button */}
             <div className="pt-2">
               <button
-                type="submit"
-                disabled={saving}
-                className="w-full py-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-2xl font-black text-sm shadow-lg hover:shadow-indigo-500/25 transition-all flex items-center justify-center gap-2"
+                type="button"
+                onClick={handleAiSubmitTasksheet}
+                disabled={saving || !formSummary.trim()}
+                className="w-full py-4 bg-gradient-to-r from-indigo-600 via-indigo-700 to-violet-600 hover:opacity-95 text-white rounded-2xl font-black text-sm sm:text-base shadow-lg hover:shadow-indigo-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
-                <Save size={18} />
-                {saving ? "Saving…" : editingEntryId ? "Save Task Changes" : "Submit Daily Task Entry"}
-                <ArrowRight size={16} />
+                {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                {saving ? "Submitting..." : submittedToday ? "Re-Submit Updated Tasksheet to Admin" : "Submit Tasksheet to Admin"}
               </button>
             </div>
-          </form>
+          </div>
 
-          {/* User's Own Recent Tasks Preview */}
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm space-y-3">
+          {/* User's Recently Logged Tasks */}
+          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-5 sm:p-6 shadow-xs space-y-3">
             <h3 className="text-xs font-black uppercase tracking-wider text-slate-500">
-              Your Recently Logged Tasks
+              Your Recent Tasksheet Submissions
             </h3>
             {entries.length === 0 ? (
-              <p className="text-xs text-slate-400 italic">No tasks logged yet for today.</p>
+              <p className="text-xs text-slate-400 italic">No tasksheet submissions found yet.</p>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-zinc-800">
                 {entries.slice(0, 5).map((e) => (
-                  <div key={e.id} className="py-2.5 flex items-center justify-between text-xs gap-3">
-                    <div className="flex items-center gap-2 flex-1 truncate">
-                      {e.status === "Done" || e.status === "Completed" ? (
-                        <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
-                      ) : (
-                        <Clock size={14} className="text-amber-500 shrink-0" />
-                      )}
-                      <span className="font-semibold text-slate-800 dark:text-zinc-200 truncate">
-                        {e.summary}
-                      </span>
+                  <div key={e.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-2">
+                    <div className="flex items-start gap-2 flex-1">
+                      <CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-slate-800 dark:text-zinc-200 line-clamp-1">{e.summary}</p>
+                        {e.proof_of_work && <p className="text-[11px] text-slate-500 dark:text-zinc-400 line-clamp-1 mt-0.5 font-mono">{e.proof_of_work}</p>}
+                      </div>
                     </div>
-                    <span className="text-[10px] text-slate-400 shrink-0">{e.work_date}</span>
-                    <button
-                      onClick={() => openEdit(e)}
-                      className="text-indigo-600 hover:underline text-[11px] font-bold shrink-0"
-                    >
-                      <LocalizedText text={"Edit"} /> </button>
+                    <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                        {e.status}
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-medium">{e.work_date}</span>
+                    </div>
                   </div>
                 ))}
               </div>

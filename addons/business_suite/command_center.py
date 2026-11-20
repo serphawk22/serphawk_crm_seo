@@ -317,7 +317,13 @@ class Data:
 # Lead-source analytics engine
 # ─────────────────────────────────────────────────────────────────────────────
 
-ALIASES = {"fb": "facebook", "ig": "instagram", "lnkd": "linkedin", "li": "linkedin", "gads": "google", "adwords": "google"}
+ALIASES = {
+    "fb": "facebook", "ig": "instagram", "lnkd": "linkedin", "li": "linkedin",
+    "gads": "google", "adwords": "google", "google ads": "google",
+    "radar": "radar scan", "radar scan": "radar scan", "radar analysis": "radar scan", "radar scanner": "radar scan",
+    "import": "import", "csv import": "import", "sheet": "import", "bulk import": "import", "csv": "import",
+    "manual": "website", "direct": "website", "walkin": "website", "organic": "google organic",
+}
 
 
 def _new_bucket(src: Optional[LeadSource]) -> Dict[str, Any]:
@@ -368,7 +374,7 @@ class SourceEngine:
                 if key and (key in v or v in key):
                     res = s
                     break
-        if res is None and v in ALIASES:
+        if res is None and v in ALIASES and ALIASES[v] != v:
             res = self._resolve(ALIASES[v])
         self._rcache[v] = res
         return res
@@ -406,6 +412,16 @@ class SourceEngine:
         lead_src: Dict[int, Optional[LeadSource]] = {}
         for l in all_leads:
             src = self._match(l.lead_source_id, l.source)
+            if not src or src.name.lower() in ("unassigned", "other"):
+                src_text = (l.source or "").strip().lower()
+                if "radar" in src_text:
+                    src = next((s for s in d.sources if s.name.lower() == "radar scan"), src)
+                elif "import" in src_text or "csv" in src_text:
+                    src = next((s for s in d.sources if s.name.lower() == "import"), src)
+                elif not src_text or src_text in ("unassigned", "none", "null"):
+                    is_radar = bool(l.ai_analysis_results or l.swot_analysis or (l.website and not l.phone))
+                    target_name = "radar scan" if is_radar else "import"
+                    src = next((s for s in d.sources if s.name.lower() == target_name), src)
             lead_src[l.id] = src
             self.lead_bucket[l.id] = self._key(src)
 

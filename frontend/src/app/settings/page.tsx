@@ -4,11 +4,12 @@ import LocalizedText from "@/components/LocalizedText";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Building2, Loader2, Settings, Shield, User, Check, KeyRound } from "lucide-react";
+import { Building2, Loader2, Settings, Shield, User, Check, KeyRound, Bell } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
 import { useTenantConfig } from "@/context/TenantConfigContext";
 import { CompanySettingsPanel } from "@/app/admin/branding/page";
+import NotificationEmailRecipientsTab from "./components/NotificationEmailRecipientsTab";
 import PhoneInput from "@/components/PhoneInput";
 import { isPlausiblePhone } from "@/lib/phone";
 
@@ -73,7 +74,10 @@ function SettingsContent() {
   const tabs = [
     { key: "profile", label: "My Profile", Icon: User },
     { key: "security", label: "Security", Icon: Shield },
-    ...(role === "Admin" ? [{ key: "company", label: "Company Settings", Icon: Building2 }] : [])
+    ...(role === "Admin" || role === "SuperAdmin" ? [
+      { key: "company", label: "Company Settings", Icon: Building2 },
+      { key: "notifications", label: "Email Notifications", Icon: Bell },
+    ] : [])
   ];
   const active = tabs.some(value => value.key === tab) ? tab : "profile";
 
@@ -126,8 +130,10 @@ function SettingsContent() {
         </div>
       )}
 
-      {active === "company" && role === "Admin" ? (
+      {active === "company" && (role === "Admin" || role === "SuperAdmin") ? (
         <CompanySettingsPanel embedded />
+      ) : active === "notifications" && (role === "Admin" || role === "SuperAdmin") ? (
+        <NotificationEmailRecipientsTab />
       ) : loading ? (
         <div className="flex items-center justify-center h-48 bg-white dark:bg-zinc-900 rounded-xl border border-slate-200/90 dark:border-white/10">
           <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />

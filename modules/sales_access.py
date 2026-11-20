@@ -49,4 +49,13 @@ def effective_modules(tenant_id, role):
         for key in enabled:
             enabled[key] = enabled[key] and overrides.get(key, key != "reports")
         enabled["teams"] = False
+    elif role == "Admissions":
+        overrides = tenant_settings.get_setting(tenant_id, "admissions_module_access", {}) or {}
+        for key, allowed in overrides.items():
+            feature = features.FEATURES.get(key)
+            if feature and not feature.locked:
+                enabled[key] = enabled[key] and allowed
+        for key, feature in features.FEATURES.items():
+            if feature.parent_key:
+                enabled[key] = enabled[key] and enabled[feature.parent_key]
     return enabled

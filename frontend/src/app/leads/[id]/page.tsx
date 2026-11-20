@@ -4,13 +4,13 @@ import LocalizedText from "@/components/LocalizedText";
 import BackgroundDetailsEditor from '@/components/BackgroundDetailsEditor';
 import LeadDemoTracker from './components/LeadDemoTracker';
 import { useTenantConfig } from '@/context/TenantConfigContext';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity, MessageSquare, StickyNote, CheckSquare, Building2, ChevronDown,
   Target, FolderOpen, HeartPulse, LayoutDashboard, Users,
-  TrendingUp, TrendingDown, Lightbulb, ShieldAlert, IndianRupee, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone, X, FileText, Send, Search, Filter, Check, Smartphone, Calendar, AlertCircle, ArrowUpRight, Copy, Brain, Loader2, Radar, CalendarClock
+  TrendingUp, TrendingDown, Lightbulb, ShieldAlert, IndianRupee, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone, X, FileText, Send, Search, Filter, Check, Smartphone, Calendar, AlertCircle, ArrowUpRight, Copy, Brain, Loader2, Radar, CalendarClock, Sparkles
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -27,15 +27,20 @@ import AiCopilotPanelLead from './components/AiCopilotPanelLead';
 import TimelineTab from './components/tabs/TimelineTab';
 import ConversationsTab from './components/tabs/ConversationsTab';
 import NotesTab from './components/tabs/NotesTab';
-import TasksTab from './components/tabs/TasksTab';
+import EntityTasksTab from '@/components/EntityTasksTab';
 import FilesTab from './components/tabs/FilesTab';
 import AiDataTab from '@/app/admin/clients/[id]/components/tabs/AiDataTab';
 import RecordEmailTab from '@/components/email/RecordEmailTab';
 import RecordFollowUpsTab from '@/components/followups/RecordFollowUpsTab';
+import LinkedContacts from '@/components/LinkedContacts';
+import LeadServicesTab from './components/tabs/LeadServicesTab';
 
 // ─── Tab definitions ───────────────────────────────────────────────────────────
 const TABS = [
   { key: 'overview',       label: 'Overview',       icon: LayoutDashboard },
+  { key: 'contacts',       label: 'Contacts',        icon: Users           },
+  { key: 'services',       label: 'Services',        icon: Sparkles        },
+  { key: 'tasks',          label: 'Tasks',           icon: CheckSquare     },
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
   { key: 'ai_data',        label: 'AI DATA',         icon: Brain           },
   { key: 'email',          label: 'EMAIL',           icon: Mail            },
@@ -107,7 +112,8 @@ function CollapsibleSection({ title, icon: Icon, count, defaultOpen = false, acc
 // ─── Overview Tab — premium light ──────────────────────────────────────────
 function OverviewTab({ lead, employees, serviceRequests, activities, timeline, research, notes, conversations, leadId, onNotesRefresh, onConversationsRefresh, emails, handleGenerateAnalysis, isGeneratingResearch, onRefresh, onActivitySelect }: any) {
   const { t, language } = useLanguage();
-  const { isOn } = useTenantConfig();
+  const { isOn, settings, preset } = useTenantConfig();
+  const isInstitute = isOn('institute') || preset === 'institute' || settings?.company_type === 'institute' || Boolean((settings as any)?.institute);
   const recentActivities = (activities || []).slice(0, 8);
 
   // ── Add Note ────────────────────────────────────────────────────────────
@@ -276,7 +282,7 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
       )}
 
       {/* Company Overview */}
-      {research?.company_overview && (
+      {!isInstitute && research?.company_overview && (
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, padding: '16px 20px', backdropFilter: 'blur(16px)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <div style={{ background: 'var(--accent)', borderRadius: 8, padding: '4px 7px', display: 'flex' }}><Building2 size={13} color="#fff" /></div>
@@ -286,7 +292,7 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
         </div>
       )}
       {/* Key Decision Makers */}
-      {(() => {
+      {!isInstitute && (() => {
         let people: any[] = [];
         try {
           if (research?.key_decision_makers) {
@@ -344,7 +350,7 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
       })()}
 
       {/* ── Services Offered ──────────────────────────────────────────── */}
-      {(() => {
+      {!isInstitute && (() => {
         let parsedServices: any[] = [];
         try {
           const serviceSource = lead?.services_offered
@@ -570,11 +576,12 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
 
 
 
+      {/* Linked Contacts */}
+      <LinkedContacts leadId={String(leadId)} />
+
     </div>
   );
 }
-
-// ─── SWOT TAB ────────────────────────────────────────────────────────────────
 function LeadSwotTab({ lead, onRefresh }: { lead: any, onRefresh: () => void }) {
   const [isSwotLoading, setIsSwotLoading] = useState(false);
 
@@ -714,9 +721,11 @@ export default function LeadDetailsPage() {
   const router = useRouter();
   const { role, user, loading } = useRole();
   const { t, language } = useLanguage();
+  const { isOn, settings, preset } = useTenantConfig();
+  const isInstitute = isOn('institute') || preset === 'institute' || settings?.company_type === 'institute' || Boolean((settings as any)?.institute);
 
   // Data state
-  const [lead, setLead]               = useState<any>(null);
+  const [lead, setLead]                   = useState<any>(null);
   const [employees, setEmployees]         = useState<any[]>([]);
   const [activities, setActivities]       = useState<any[]>([]);
   const [emails, setEmails]               = useState<any[]>([]);
@@ -737,6 +746,19 @@ export default function LeadDetailsPage() {
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
   const [newUserForm, setNewUserForm] = useState({ name: '', email: '', role: 'SalesManager', password: 'password123' });
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
+
+  const visibleTabs = useMemo(() => {
+    return TABS.filter(t => {
+      if (isInstitute && (t.key === 'services' || t.key === 'ai_data')) return false;
+      return true;
+    });
+  }, [isInstitute]);
+
+  useEffect(() => {
+    if (isInstitute && (activeTab === 'services' || activeTab === 'ai_data')) {
+      setActiveTab('overview');
+    }
+  }, [isInstitute, activeTab]);
 
   // Force light theme always — no dark mode on this page
   useEffect(() => {
@@ -793,7 +815,7 @@ export default function LeadDetailsPage() {
       if (convRes.status === 'fulfilled') setConversations(convRes.value.conversations || []);
       if (taskRes.status === 'fulfilled') {
         const tVal = Array.isArray(taskRes.value?.tasks) ? taskRes.value.tasks : (Array.isArray(taskRes.value) ? taskRes.value : []);
-        setTasks(tVal.filter((t: any) => String(t.client_id) === String(id)));
+        setTasks(tVal);
       }
       if (filesRes.status === 'fulfilled') {
         const fVal = Array.isArray(filesRes.value?.files) ? filesRes.value.files : (Array.isArray(filesRes.value) ? filesRes.value : []);
@@ -802,10 +824,6 @@ export default function LeadDetailsPage() {
       if (researchRes.status === 'fulfilled') {
         const rData = researchRes.value.research || null;
         setResearch(rData);
-        // Automatic AI Profile Preparation on lead opening if research not started
-        if (!rData || !rData.email_agent_data) {
-          fetch(`${API_BASE_URL}/leads/${id}/auto-research`, { method: 'POST' }).catch(() => {});
-        }
       }
     } catch (e) { console.error(e); }
     finally { setPageLoading(false); }
@@ -992,7 +1010,7 @@ export default function LeadDetailsPage() {
           <main className="min-w-0">
             {/* Tab Bar - Premium Pill Style */}
             <div className="flex items-center gap-2 overflow-x-auto p-1.5 mb-6 bg-slate-100 dark:bg-zinc-800/80 rounded-2xl border border-slate-200 dark:border-zinc-700/60 scrollbar-thin w-fit max-w-full">
-              {TABS.map(({ key, label, icon: Icon }) => {
+              {visibleTabs.map(({ key, label, icon: Icon }: any) => {
                 const badge = tabBadges[key];
                 return (
                   <button
@@ -1045,6 +1063,27 @@ export default function LeadDetailsPage() {
                     isGeneratingResearch={isGeneratingResearch}
                     onRefresh={fetchAll}
                     onActivitySelect={setSelectedActivity}
+                  />
+                )}
+                {activeTab === 'contacts' && (
+                  <div className="mt-1">
+                    <LinkedContacts leadId={String(id)} />
+                  </div>
+                )}
+                {activeTab === 'services' && (
+                  <LeadServicesTab
+                    leadId={id}
+                    lead={lead}
+                    onRefresh={fetchAll}
+                  />
+                )}
+                {activeTab === 'tasks' && (
+                  <EntityTasksTab
+                    leadId={id}
+                    entityName={lead?.company_name}
+                    tasks={tasks}
+                    employees={employees}
+                    onRefresh={() => fetch(`${API_BASE_URL}/tasks?lead_id=${id}`).then(r => r.json()).then(d => setTasks(d.tasks || []))}
                   />
                 )}
                 {activeTab === 'timeline' && (
@@ -1165,11 +1204,13 @@ export default function LeadDetailsPage() {
                   <a href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors">
                     <Globe className="w-3.5 h-3.5" /> <LocalizedText text={"Visit Site"} /> </a>
                 )}
-                <button 
-                  onClick={() => router.push(`/leads/${id}/competitors`)}
-                  className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-1.5 rounded-lg shadow-md hover:shadow-lg transition-all"
-                >
-                  <Navigation className="w-3.5 h-3.5" /> <LocalizedText text={"Radar Scan"} /> </button>
+                {!isInstitute && (
+                  <button 
+                    onClick={() => router.push(`/leads/${id}/competitors`)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-1.5 rounded-lg shadow-md hover:shadow-lg transition-all"
+                  >
+                    <Navigation className="w-3.5 h-3.5" /> <LocalizedText text={"Radar Scan"} /> </button>
+                )}
               </div>
               <p className="text-xs font-black uppercase tracking-wider text-slate-400  mb-2">{language === 'es' ? 'Fechas de Seguimiento' : 'Follow-up Dates'}</p>
               <div className="space-y-2">

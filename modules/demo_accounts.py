@@ -25,6 +25,7 @@ from database import ClientProfile, EmailOTP, Lead, Notification, PageVisitTelem
 from modules import features, onboarding, tenant_settings
 
 DEMO_PRESET = "serphawk"          # a self-service demo shows the product as SerpHawk itself ships it
+DEMO_MODELS = {"b2b": DEMO_PRESET, "b2c": "institute"}
 DEMO_LIMITS = {"limit_clients": 5, "limit_emails": 5, "limit_searches": 5, "limit_projects": 5, "limit_calls": 2}
 LIMIT_KEYS = {"clients": "limit_clients", "emails": "limit_emails", "searches": "limit_searches",
               "projects": "limit_projects", "calls": "limit_calls"}
@@ -62,13 +63,13 @@ def signup_mail_ready() -> bool:
 
 
 # ── Creation ─────────────────────────────────────────────────────────────────
-def create_self_service_demo(session: Session, *, name: str, email: str, password_hash: str) -> dict:
-    """A visitor's own demo workspace: trial tenant with demo limits, the flagship modules and one Demo user."""
+def create_self_service_demo(session: Session, *, name: str, email: str, password_hash: str, model: str = "b2b") -> dict:
+    """Create a trial workspace with the selected model and the existing demo limits."""
     email = email.strip()
     name = (name or "").strip() or email.split("@")[0]
     out = onboarding.create_workspace(
         session, company_name=f"{name} (demo)", admin_name=name, admin_email=email, password_hash=password_hash,
-        preset=DEMO_PRESET, is_trial=True, limits=DEMO_LIMITS, tenant_name=f"Demo Tenant {email.lower()}",
+        preset=DEMO_MODELS[model], is_trial=True, limits=DEMO_LIMITS, tenant_name=f"Demo Tenant {email.lower()}",
         admin_role="Demo")
     onboarding.notify_operators(session, "New demo signup", f"{name} ({email}) created a demo workspace.",
                                 link="/admin/telemetry")

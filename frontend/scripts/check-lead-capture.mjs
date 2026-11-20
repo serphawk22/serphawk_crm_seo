@@ -38,7 +38,7 @@ const previousWindow = globalThis.window;
 const calls = [];
 globalThis.window = { location: { pathname: '/leadformpage' }, fetch: async (...args) => { calls.push(args); return new Response('{"receipt":"anonymous"}'); } };
 try {
-  compile('src/context/RoleContext.tsx', { 'next/navigation': {}, '@/config': { API_BASE_URL: '/api/backend' }, '@/lib/apiRequest': { isInternalApi() { throw new Error('Public requests must bypass CRM interception'); } } });
+  compile('src/context/RoleContext.tsx', { 'next/navigation': {}, '@/config': { API_BASE_URL: '/api/backend' }, '@/lib/authRoutes': {}, '@/components/CompanyBoundary': {}, '@/lib/apiRequest': { isInternalApi() { throw new Error('Public requests must bypass CRM interception'); } } });
   const response = await window.fetch('/api/lead-capture', { method: 'POST', body: '{}' });
   assert.equal((await response.json()).receipt, 'anonymous');
   assert.equal(calls.length, 1);
