@@ -9,8 +9,10 @@ fall back to gTTS (accent approximated via Google's regional domains).
 import hashlib
 import os
 import threading
+import time
 import uuid
-from typing import Optional, Tuple
+from contextvars import copy_context
+from typing import Dict, Iterator, List, Optional, Tuple
 
 # 5 OpenAI voices that are available on every OpenAI TTS model (so the
 # tts-1 fallback keeps the same voice).
@@ -137,6 +139,179 @@ FILLER_PHRASES = {
 _CLIP_CACHE: dict = {}
 _CLIP_LOCKS: dict = {}
 _CLIP_LOCK = threading.Lock()
+
+
+# ── Live HTTP-streamed TTS clips ──────────────────────────────────────────────
+# Instead of waiting for 100% of an MP3 to finish generating and writing to disk before returning
+# TwiML, live call replies start streaming OpenAI TTS bytes immediately and return the Twilio
+# <Play> URL the moment the FIRST audio chunk arrives (~300-700ms TTFB instead of 3-5s).
+_STREAM_TTL_SECONDS = 120.0
+_STREAMING_CLIPS: Dict[str, "StreamingClip"] = {}
+_STREAMING_LOCK = threading.Lock()
+
+
+class StreamingClip:
+    """In-memory chunk buffer fed by a background OpenAI TTS stream and read by Twilio."""
+
+    def __init__(self, clip_id: str, cache_name: str, cache_path: str) -> None:
+        self.clip_id = clip_id
+        self.cache_name = cache_name
+        self.cache_path = cache_path
+        self.chunks: List[bytes] = []
+        self.done = False
+        self.error: Optional[Exception] = None
+        self.created_at = time.monotonic()
+        self.first_chunk_event = threading.Event()
+        self.cond = threading.Condition()
+
+    def push(self, chunk: bytes) -> None:
+        if not chunk:
+            return
+        with self.cond:
+            self.chunks.append(chunk)
+            if not self.first_chunk_event.is_set():
+                self.first_chunk_event.set()
+            self.cond.notify_all()
+
+    def finish(self, error: Optional[Exception] = None) -> None:
+        with self.cond:
+            self.error = error
+            self.done = True
+            self.first_chunk_event.set()
+            self.cond.notify_all()
+        if error is None and self.chunks:
+            # Persist completed clip to deterministic disk cache so repeated phrases hit cache.
+            try:
+                os.makedirs(AUDIO_DIR, exist_ok=True)
+                tmp_path = f"{self.cache_path}.{self.clip_id}.tmp"
+                with open(tmp_path, "wb") as f:
+                    for c in self.chunks:
+                        f.write(c)
+                os.replace(tmp_path, self.cache_path)
+                url = "/" + self.cache_path.replace("\\", "/")
+                with _CLIP_LOCK:
+                    _CLIP_CACHE[self.cache_name] = url
+            except OSError:
+                pass
+
+
+def _evict_stale_streams() -> None:
+    now = time.monotonic()
+    with _STREAMING_LOCK:
+        expired = [cid for cid, clip in _STREAMING_CLIPS.items() if now - clip.created_at > _STREAM_TTL_SECONDS]
+        for cid in expired:
+            _STREAMING_CLIPS.pop(cid, None)
+
+
+def get_streaming_clip(clip_id: str) -> Optional[StreamingClip]:
+    with _STREAMING_LOCK:
+        return _STREAMING_CLIPS.get(clip_id)
+
+
+def iter_streaming_clip(clip: StreamingClip, chunk_timeout: float = 15.0) -> Iterator[bytes]:
+    """Yield audio bytes from ``clip`` as OpenAI produces them."""
+    idx = 0
+    while True:
+        with clip.cond:
+            while idx >= len(clip.chunks) and not clip.done:
+                if not clip.cond.wait(timeout=chunk_timeout):
+                    return
+            if idx < len(clip.chunks):
+                chunk = clip.chunks[idx]
+                idx += 1
+            elif clip.done:
+                return
+            else:
+                continue
+        yield chunk
+
+
+def start_streaming_tts(
+    text: str,
+    *,
+    voice: str = DEFAULT_VOICE,
+    accent: Optional[str] = None,
+    style: Optional[str] = None,
+    speed: float = 1.0,
+    language: Optional[str] = "en",
+    prefix: str = "reply",
+    timeout: Optional[float] = None,
+) -> Tuple[Optional[str], Optional[str], bool]:
+    """Start streaming live TTS and return as soon as the first audio chunk is ready.
+
+    Returns ``(static_url, stream_clip_id, from_cache)``:
+    * When already cached on disk: ``(static_url, None, True)`` in <1ms.
+    * When OpenAI streaming succeeds: ``(None, clip_id, False)`` on first-byte arrival.
+    * When provider is not OpenAI or streaming API is unavailable: falls back to ``synthesize_cached``.
+    """
+    if not text or not text.strip():
+        raise ValueError("Text cannot be empty")
+    cached = cached_audio(text, voice=voice, accent=accent, style=style, speed=speed,
+                          language=language, prefix=prefix)
+    if cached:
+        return cached, None, True
+
+    provider = os.getenv("TTS_PROVIDER", "openai").strip().lower()
+    if provider != "openai":
+        url, from_cache = synthesize_cached(
+            text, voice=voice, accent=accent, style=style, speed=speed,
+            language=language, prefix=prefix, timeout=timeout,
+        )
+        return url, None, from_cache
+
+    from modules.llm_engine import get_openai_client
+
+    client = get_openai_client()
+    speech_api = getattr(getattr(client, "audio", None), "speech", None)
+    streaming_api = getattr(speech_api, "with_streaming_response", None)
+    if streaming_api is None:
+        url, from_cache = synthesize_cached(
+            text, voice=voice, accent=accent, style=style, speed=speed,
+            language=language, prefix=prefix, timeout=timeout,
+        )
+        return url, None, from_cache
+
+    resolved_voice = voice if voice in VOICE_IDS else (DEFAULT_VOICE if DEFAULT_VOICE in VOICE_IDS else "nova")
+    resolved_speed = float(speed or 1.0)
+    model = CALL_TTS_MODEL
+    kwargs = {"model": model, "voice": resolved_voice, "input": text, "response_format": "mp3"}
+    if "gpt-4o" in model:
+        kwargs["instructions"] = build_instructions(accent, style, resolved_speed, language)
+    else:
+        kwargs["speed"] = max(0.25, min(4.0, resolved_speed))
+    ttfb_budget = timeout if timeout is not None else CALL_TTS_TIMEOUT
+    # Allow a slightly longer read timeout for the remaining stream after TTFB succeeds.
+    kwargs["timeout"] = max(ttfb_budget, 12.0)
+
+    cache_name = _clip_filename(text, resolved_voice, accent, style, resolved_speed, language, prefix)
+    cache_path = os.path.join(AUDIO_DIR, cache_name)
+    clip_id = uuid.uuid4().hex[:20]
+    clip = StreamingClip(clip_id, cache_name, cache_path)
+    _evict_stale_streams()
+    with _STREAMING_LOCK:
+        _STREAMING_CLIPS[clip_id] = clip
+
+    ctx = copy_context()
+
+    def _produce() -> None:
+        try:
+            with streaming_api.create(**kwargs) as resp:
+                for chunk in resp.iter_bytes(chunk_size=4096):
+                    if chunk:
+                        clip.push(chunk)
+            clip.finish(None)
+        except Exception as exc:
+            clip.finish(exc)
+
+    threading.Thread(target=ctx.run, args=(_produce,), daemon=True, name=f"tts-stream-{clip_id[:6]}").start()
+
+    if not clip.first_chunk_event.wait(timeout=ttfb_budget):
+        raise TimeoutError(f"TTS first audio chunk timed out after {ttfb_budget:.1f}s")
+    if clip.error is not None and not clip.chunks:
+        raise clip.error
+    if not clip.chunks:
+        raise RuntimeError("TTS stream returned empty audio")
+    return None, clip_id, False
 
 
 def _clip_filename(text: str, voice: str, accent: Optional[str], style: Optional[str],

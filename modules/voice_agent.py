@@ -19,19 +19,22 @@ from xml.sax.saxutils import escape, quoteattr
 import requests
 from requests.auth import HTTPBasicAuth
 
-from modules import public_url
+from modules import public_url, tenant_voice
+from modules.tenant_voice import TenantVoiceProfile
 
-COMPANY_NAME = os.getenv("VOICE_AGENT_COMPANY", "SERP Hawk")
+# Env fallbacks only; every live call uses the owning tenant's profile stored on the AICall.
+COMPANY_NAME = os.getenv("VOICE_AGENT_COMPANY", "your company")
 COMPANY_PITCH = os.getenv(
     "VOICE_AGENT_COMPANY_DESC",
-    "an elite SEO and digital marketing agency (SEO, link building, local SEO, content, paid ads, web design)",
+    "a company whose services are described in its CRM knowledge base",
 )
 CONVERSATION_MODEL = os.getenv("VOICE_AGENT_MODEL", "gpt-4o-mini")
 PITCH_MODEL = os.getenv("VOICE_AGENT_PITCH_MODEL", "gpt-4o")
-# Latency-critical spoken reply: a tiny JSON object so the model returns in well under a second
-# and the line stays 1-2 short sentences. A higher-cap retry only fires if the tiny cap truncates.
-REPLY_MAX_TOKENS = int(os.getenv("VOICE_AGENT_REPLY_MAX_TOKENS", "60"))
-REPLY_MAX_TOKENS_RETRY = int(os.getenv("VOICE_AGENT_REPLY_MAX_TOKENS_RETRY", "160"))
+# Latency-critical spoken reply: a compact JSON object so the model returns quickly
+# and the line stays 1-2 short sentences without hitting truncation retries.
+REPLY_MAX_TOKENS = int(os.getenv("VOICE_AGENT_REPLY_MAX_TOKENS", "95"))
+REPLY_MAX_TOKENS_RETRY = int(os.getenv("VOICE_AGENT_REPLY_MAX_TOKENS_RETRY", "180"))
+REPLY_HISTORY_TURNS = int(os.getenv("VOICE_AGENT_REPLY_HISTORY_TURNS", "10"))
 
 INTENTS = [
     "interested", "not_interested", "question", "objection", "doubt", "request_info",
@@ -53,20 +56,44 @@ def _openai():
 # Pitch writing
 # ─────────────────────────────────────────────────────────────────────────────
 
-def generate_pitch_text(entity_context: str, extra_context: Optional[str] = None, language: str = "English") -> str:
-    prompt = f"""You are an expert outbound sales rep for "{COMPANY_NAME}", {COMPANY_PITCH}.
-Write the OPENING PITCH that an AI voice will speak on a cold/warm phone call to the prospect below.
+def generate_pitch_text(entity_context: str, extra_context: Optional[str] = None, language: str = "English",
+                        profile: Optional[TenantVoiceProfile] = None,
+                        prospect: Optional[dict] = None) -> str:
+    """Write the spoken opening pitch in the reference's four-sentence sales-rep style."""
+    ctx = tenant_voice.prompt_context(profile)
+    company = ctx["company_name"]
+    facts = tenant_voice.pitch_facts(prospect if prospect is not None else entity_context, profile)
+    identity = profile.identity_line() if profile else (
+        f'You are an expert outbound sales rep calling on behalf of "{company}", '
+        f'{ctx["company_description"]}. Keep the tone {ctx["tone"]}.'
+    )
+    prompt = f"""{identity}
+Write the OPENING PITCH that this AI voice will speak on a cold/warm phone call to the prospect below.
+You MUST NOT mention any other company or platform; speak only for "{company}".
 
-Prospect information:
+Prospect facts (use these exact details, never a placeholder):
+- Prospect company: {facts["company"]}
+- Prospect industry: {facts["industry"]}
+- Relevant audience for this business: {facts["audience"]}
+- What we specialize in: {facts["offer"]}
+
+Full prospect information:
 {entity_context}
 
+Write EXACTLY four spoken sentences, in this order, following the flow and wording style of this reference (adapt it naturally to the prospect - do not copy it word for word for every company):
+"Hello! This is [our rep name] from [our company], calling to help [prospect company] increase its online visibility in the [prospect industry] sector. We specialize in boosting your digital presence with top-notch SEO strategies and powerful link-building, allowing you to reach more [relevant target audience] effectively. Let's explore how we can place [prospect company] at the forefront of [prospect industry] innovation online. Can I schedule a time for us to chat further?"
+
 Rules:
-- 90-140 words, about 45-60 seconds when spoken.
-- Greet the person, introduce yourself as calling from {COMPANY_NAME}, and say why you're calling in one sentence.
-- Reference something specific about their business, then give one or two concrete benefits.
-- End with ONE short open question that invites them to respond (e.g. about their current marketing).
-- Natural spoken English: short sentences, contractions, no lists, no markdown, no placeholders like [Name], no stage directions.
-- Write the pitch in {language} (natural, native-sounding {language}; keep the company name as is).
+- Sentence 1: "Hello! This is {facts["agent"]} from {company}, calling to help [prospect company] increase its online visibility in the [prospect industry] sector." Use the actual lead's company name and industry from the facts above.
+- Sentence 2: Say what we specialize in using the "boosting your digital presence with ..." style, then "allowing you to reach more [audience] effectively", choosing an audience that makes sense for this lead's business.
+- Sentence 3: "Let's explore how we can place [prospect company] at the forefront of [prospect industry] innovation online." Keep the same forward-looking, industry-specific shape.
+- Sentence 4: "Can I schedule a time for us to chat further?" Keep it exactly this short and conversational.
+- 60-85 words total, about 30-40 seconds when spoken. Four sentences, no more and no fewer.
+- Start with the greeting itself: no "hope you're well", no "I noticed", no preamble or explanation.
+- Natural spoken language: contractions, short sentences, no lists, no markdown, no placeholders in the output, no stage directions.
+- NEVER speak raw CRM field labels, URLs, or internal placeholders (no "Company:", "Website:", "https://...", "Industry:", "Lead status:", or "CRM knowledge base").
+- If the lead has no industry, infer it from the notes or website; if still unknown, say "your industry" grammatically. Never invent a different company or industry.
+- Write the pitch in {language or ctx["language"]} (natural, native-sounding; keep proper names as they are).
 - Output ONLY the words to be spoken."""
     if extra_context:
         prompt += f"\n\nAdditional instructions from the sales rep (follow closely):\n{extra_context}"
@@ -139,7 +166,8 @@ def _chat_json(messages: List[dict], max_tokens: int) -> dict:
 def generate_reply_only(*, client_text: str, transcript: List[dict], pitch_text: str,
                         entity_context: str, knowledge: List[dict], state: dict,
                         interrupted: bool = False, agent_available: bool = False,
-                        language: str = "English") -> dict:
+                        language: str = "English",
+                        profile: Optional[TenantVoiceProfile] = None) -> dict:
     """Latency-critical half of the turn: ONLY the next spoken line plus the two flags the call
     flow needs (escalate / end_call). The rich analysis (sentiment, doubts, questions…) runs
     afterwards in the background via :func:`analyze_and_respond`, so it never delays the reply.
@@ -152,10 +180,19 @@ def generate_reply_only(*, client_text: str, transcript: List[dict], pitch_text:
     ) or "(no knowledge base entries)"
     already_said = [t.get("text") for t in (transcript or []) if t.get("role") in ("ai", "agent")][-5:]
     _state = state or {}
+    ctx = tenant_voice.prompt_context(profile)
+    identity = profile.identity_line() if profile else (
+        f'You are a warm, human-sounding sales rep calling on behalf of "{ctx["company_name"]}", '
+        f'{ctx["company_description"]}.'
+    )
     doubts = ", ".join(_state.get("doubts", [])[-4:]) or "none yet"
     objections = ", ".join(_state.get("objections", [])[-4:]) or "none yet"
     adaptation = _state.get("adaptation") or "Follow the original pitch."
-    system = f"""You are a warm, human-sounding sales rep for {COMPANY_NAME}, {COMPANY_PITCH}, on a LIVE phone call in {language}.
+    recent_history = _format_history(transcript, max_turns=REPLY_HISTORY_TURNS)
+    # Avoid repeating the full opening pitch when it is already verbatim inside recent_history.
+    pitch_block = "" if (pitch_text and pitch_text[:60] in recent_history) else f"\nORIGINAL PITCH:\n{pitch_text}\n"
+    system = f"""{identity} You are on a LIVE phone call in {language or ctx["language"]}.
+You only ever represent "{ctx['company_name']}" — never another company or platform.
 Reply with ONLY this JSON (keep it tiny): {{"reply":"...","intent":"{'|'.join(INTENTS)}","escalate":false,"end_call":false}}
 
 Rules for "reply" — it is spoken aloud to the client:
@@ -164,22 +201,21 @@ Rules for "reply" — it is spoken aloud to the client:
 - NEVER repeat a line already said on this call and never re-ask for information the client already gave.
 - Answer ONLY from the knowledge base and prospect info below. NEVER invent prices, guarantees or timelines.
   If you cannot answer, say a specialist will follow up.
-- If the client wants a human or a sales agent, set "escalate": true and reply with a short
-  acknowledgement that it is noted and a sales representative will follow up (e.g. "Thank you, I've
-  noted it - a sales rep will reach out shortly."). NEVER say you are transferring, connecting, or
-  putting them through to anyone.
-- If the matter is sensitive (legal, contract, refund, complaint), also set "escalate": true.
-- Set "end_call": true only when the conversation is clearly finished and the reply is a goodbye.
+- If the client wants a meeting, callback, or to speak with a sales representative:
+  * If they have NOT given a preferred date yet, ask ONE short question for what date and specific time works best (keep "end_call": false).
+  * If they gave a date or vague part of the day WITHOUT a specific clock time (e.g., "tomorrow", "tomorrow morning", "Monday afternoon", "this evening", "next week") and you have not already asked for the time, acknowledge it and ask ONE short question for the specific time (e.g., "Tomorrow morning sounds great — what specific time works best for you?"), keeping "end_call": false.
+  * Once they give a specific time (e.g., "10 AM", "3:30 PM") — or say any time is fine / do not want to pick a time after being asked / want to wrap up right away — confirm the date and time briefly, tell them "One of our sales representatives will get in touch with you", say a warm polite goodbye (e.g. "Have a great day, goodbye!"), and set "end_call": true.
+- NEVER say you are transferring, connecting, or putting them through live to anyone. Set "escalate": true
+  when they ask for a human/sales rep or for sensitive matters (legal, contract, refund, complaint).
+- Set "end_call": true whenever the conversation is finished (meeting date and time confirmed, not interested, or client
+  says bye) and always end that reply with a warm goodbye.
 
 CALL STATE:
 - Stage: {_state.get('stage', 'pitch')}
 - Doubts so far: {doubts}
 - Objections so far: {objections}
 - Strategy: {adaptation}
-
-ORIGINAL PITCH:
-{pitch_text}
-
+{pitch_block}
 PROSPECT INFO:
 {entity_context}
 
@@ -189,7 +225,7 @@ KNOWLEDGE BASE:
 Already said on this call (do NOT repeat):
 {chr(10).join('- ' + (s or '') for s in already_said) or '- (nothing yet)'}"""
     user = f"""CONVERSATION SO FAR:
-{_format_history(transcript)}
+{recent_history}
 
 {'NOTE: the client INTERRUPTED you mid-sentence.' if interrupted else ''}
 CLIENT JUST SAID: "{client_text}"
@@ -220,16 +256,23 @@ Return the JSON now."""
 def analyze_and_respond(*, client_text: str, transcript: List[dict], pitch_text: str,
                         entity_context: str, knowledge: List[dict], state: dict,
                         interrupted: bool = False, agent_available: bool = False,
-                        language: str = "English") -> dict:
+                        language: str = "English",
+                        profile: Optional[TenantVoiceProfile] = None) -> dict:
     """Understand what the client said and produce the next spoken reply plus structured insights."""
     kb = "\n".join(
         f"- [{k.get('kind', 'faq').upper()}] {k.get('title')}: {k.get('answer')}" for k in knowledge
     ) or "(no knowledge base entries)"
+    ctx = tenant_voice.prompt_context(profile)
+    identity = profile.identity_line() if profile else (
+        f'You are a skilled, friendly human-sounding sales rep calling on behalf of "{ctx["company_name"]}", '
+        f'{ctx["company_description"]}.'
+    )
     doubts = ", ".join(state.get("doubts", [])[-8:]) or "none yet"
     objections = ", ".join(state.get("objections", [])[-8:]) or "none yet"
     adaptation = state.get("adaptation") or "Follow the original pitch."
 
-    system = f"""You are a skilled, friendly human-sounding sales rep for {COMPANY_NAME}, {COMPANY_PITCH}, on a LIVE PHONE CALL.
+    system = f"""{identity} You are on a LIVE PHONE CALL.
+You only ever represent "{ctx['company_name']}" — never another company or platform.
 The call is in {language}: ALWAYS write "reply" in natural, native-sounding {language}, even if the client mixes languages
 (switch only if the client clearly asks for another language). All other JSON fields stay in English.
 Your replies are converted to speech, so:
@@ -250,15 +293,13 @@ Your replies are converted to speech, so:
   statistics or policies. If you don't know, say you'll have a specialist follow up, and set "unanswered_question".
 - Handle objections with empathy: acknowledge, clarify, reframe with a benefit, then ask a question. Don't argue.
 - Adapt the pitch to what the client cares about. If not interested after one respectful attempt, offer to send info by email and close politely.
-- If the client asks for a human/manager or a sales agent, set "escalate": true and reply with a short
-  acknowledgement that it is noted and a sales representative will follow up (e.g. "Thank you, I've
-  noted it - a sales rep will reach out shortly."). NEVER say you are transferring, connecting, or
-  putting them through to anyone. If the matter is sensitive (legal, contract, refund, complaint),
-  also set "escalate": true.
-- If they ask to schedule a meeting with your sales team: confirm the time ONCE ("So that's <when>, right?"),
-  thank them, say a sales executive will follow up to confirm, and end politely with "end_call": true.
-  Do NOT offer to "connect" them live or transfer them to anyone on the call.
-- If they are busy, offer a callback time and set intent "callback_request".
+- If the client asks for a human/manager or a sales agent (or agrees to a meeting/callback):
+  * If they have NOT given a preferred date yet, ask ONCE for their preferred date and specific time ("What date and time works best for our sales representative to connect with you?") with "end_call": false.
+  * If they gave a date or general part of the day WITHOUT a specific clock time (e.g., "tomorrow", "tomorrow morning", "Monday afternoon", "evening") and you have not already asked for the time, acknowledge it and ask ONCE for the specific time ("Tomorrow morning works well — what specific time is best for you?") with "end_call": false.
+  * Once they give a specific time (or say any time is fine / want to wrap up), confirm the date and time briefly, say "One of our sales representatives will get in touch with you", say a warm polite goodbye ("Have a great day, goodbye!"), set "escalate": true if they asked for a human, and set "end_call": true.
+  * NEVER say you are transferring, connecting, or putting them through live to anyone.
+  * If the matter is sensitive (legal, contract, refund, complaint), also set "escalate": true.
+- If they are busy, ask what date and specific time works better for a follow-up call and set intent "callback_request".
 - If interrupted, briefly acknowledge ("Sure, go ahead" / "Of course") and address their point directly; don't repeat what you were saying.
 
 ORIGINAL PITCH (already delivered or partially delivered at call start):
@@ -328,6 +369,89 @@ CLIENT JUST SAID: "{client_text}"
     return data
 
 
+def analyze_turn_insights(*, client_text: str, spoken_reply: str, transcript: List[dict],
+                          pitch_text: str, entity_context: str, knowledge: List[dict], state: dict,
+                          language: str = "English",
+                          profile: Optional[TenantVoiceProfile] = None) -> dict:
+    """Background turn analysis ONLY — does NOT generate a duplicate spoken reply.
+
+    Runs asynchronously after the spoken reply has already been sent to the caller, reusing the
+    preloaded call context to extract sentiment, interest score, doubts, objections, questions,
+    escalation signals, and pitch adaptation with minimal output tokens.
+    """
+    kb = "\n".join(
+        f"- [{k.get('kind', 'faq').upper()}] {k.get('title')}: {k.get('answer')}" for k in knowledge
+    ) or "(no knowledge base entries)"
+    ctx = tenant_voice.prompt_context(profile)
+    doubts = ", ".join((state or {}).get("doubts", [])[-8:]) or "none yet"
+    objections = ", ".join((state or {}).get("objections", [])[-8:]) or "none yet"
+    adaptation = (state or {}).get("adaptation") or "Follow the original pitch."
+
+    system = f"""You are a sales call intelligence analyst for "{ctx['company_name']}".
+Analyze the latest customer message and the AI rep's reply below. Return ONLY compact JSON (all fields in English).
+Do NOT invent facts not present in the transcript or knowledge base.
+
+ORIGINAL PITCH:
+{pitch_text}
+
+PROSPECT INFO:
+{entity_context}
+
+KNOWLEDGE BASE:
+{kb}
+
+CALL STATE:
+- Stage: {(state or {}).get('stage', 'pitch')}
+- Doubts so far: {doubts}
+- Objections so far: {objections}
+- Current strategy: {adaptation}
+
+Respond ONLY with JSON:
+{{
+  "intent": one of {INTENTS},
+  "sentiment": "positive" | "neutral" | "negative",
+  "interest_score": 0-100 integer,
+  "stage": "pitch" | "discovery" | "objection_handling" | "qa" | "closing" | "wrap_up",
+  "doubts": ["short descriptions of any doubts/concerns in THIS client message"],
+  "objection": null or {{"type": "price|timing|trust|need|competitor|authority|other", "text": "short summary"}},
+  "questions": [{{"question": "client question", "answered": true/false, "answer": "short answer or null"}}],
+  "unanswered_question": null or "question the rep could not answer from the knowledge base",
+  "escalate": true/false,
+  "escalate_reason": null or "why",
+  "adaptation": "one short sentence: how to adapt the pitch from now on",
+  "knowledge_used": [ids or titles of knowledge entries relied on]
+}}"""
+
+    user = f"""RECENT CONVERSATION:
+{_format_history(transcript, max_turns=12)}
+
+CLIENT SAID: "{client_text}"
+AI REP ALREADY REPLIED: "{spoken_reply}"
+"""
+    try:
+        resp = _openai().chat.completions.create(
+            model=CONVERSATION_MODEL,
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            max_tokens=220,
+        )
+        data = json.loads(resp.choices[0].message.content or "{}")
+    except Exception as e:
+        print(f"[voice_agent] analyze_turn_insights failed: {e}")
+        data = {"intent": "unclear", "sentiment": "neutral", "doubts": [], "questions": [], "escalate": False}
+
+    data.setdefault("doubts", [])
+    data.setdefault("questions", [])
+    if data.get("intent") not in INTENTS:
+        data["intent"] = "unclear"
+    try:
+        data["interest_score"] = max(0, min(100, int(data.get("interest_score") or 0)))
+    except (TypeError, ValueError):
+        data["interest_score"] = None
+    return data
+
+
 _IST = timezone(timedelta(hours=5, minutes=30))  # Asia/Kolkata, fixed offset (no tzdata needed)
 
 
@@ -372,6 +496,8 @@ Return JSON:
 {{"summary": "3-5 sentence summary",
 "outcome": "interested|not_interested|callback|meeting_booked|needs_follow_up|no_conversation|voicemail",
 "next_steps": "concrete next steps for the sales team",
+"follow_up_date": "YYYY-MM-DD in Asia/Kolkata if the prospect gave any meeting or callback date, else null",
+"follow_up_time": "HH:MM (24-hour, e.g. 14:30) if a time was mentioned, else null",
 "important_notes": "see the exact rules below"}}
 
 important_notes rules (follow EXACTLY, output only the note text):
@@ -395,6 +521,8 @@ important_notes rules (follow EXACTLY, output only the note text):
         outcome = data.get("outcome", "needs_follow_up")
         return {"summary": data.get("summary", ""), "outcome": outcome,
                 "next_steps": data.get("next_steps", ""),
+                "follow_up_date": data.get("follow_up_date") or None,
+                "follow_up_time": data.get("follow_up_time") or None,
                 "important_notes": _normalize_important_notes(outcome, data.get("important_notes", ""))}
     except Exception as e:
         print(f"[voice_agent] summarize_call failed: {e}")

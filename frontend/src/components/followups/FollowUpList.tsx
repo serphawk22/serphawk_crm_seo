@@ -3,7 +3,7 @@ import LocalizedText from "@/components/LocalizedText";
 
 import React, { useState } from 'react';
 import {
-  AlertCircle, Bot, CalendarClock, CheckCircle2, ChevronDown, Clock3, Mail, MailCheck, Pencil, RotateCcw, Trash2, User, XCircle,
+  AlertCircle, Bot, CalendarClock, CheckCircle2, ChevronDown, Clock3, Mail, MailCheck, Pencil, Phone, RotateCcw, Trash2, User, XCircle,
 } from 'lucide-react';
 import { errorText } from '@/lib/inboxApi';
 import { followupsApi, type FollowUp } from '@/lib/followupsApi';
@@ -20,7 +20,15 @@ function FollowUpRow({ f, showRecord, onAction }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const Channel = CHANNEL_META[f.channel]?.icon || Mail;
-  const pending = f.status === 'Pending';
+  const channelLabel = CHANNEL_META[f.channel]?.label || f.channel;
+  const pending = f.status === 'Pending' || f.status === 'In Progress';
+  const priorityTone = {
+    urgent: 'bg-rose-600 text-white',
+    high: 'bg-red-600 text-white',
+    medium: 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/30',
+    low: 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700',
+  }[f.priority] || 'bg-slate-100 text-slate-600';
+  const priorityLabel = f.priority ? f.priority.charAt(0).toUpperCase() + f.priority.slice(1) : 'Medium';
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -47,8 +55,18 @@ function FollowUpRow({ f, showRecord, onAction }: {
         <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setOpen((o) => !o)}>
           <div className="flex flex-wrap items-center gap-1.5">
             <StateChip state={f.state} />
+            {f.status === 'In Progress' && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-bold leading-none text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+                In Progress
+              </span>
+            )}
             <SourceChip f={f} />
-            {f.priority === 'high' && <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-black uppercase text-white"><LocalizedText text={"High"} /></span>}
+            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase ${priorityTone}`}>
+              <LocalizedText text={priorityLabel} />
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold leading-none text-slate-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+              {channelLabel}
+            </span>
             {f.auto_send && pending && !f.email_sent_at && (
               <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300">
                 <Clock3 size={10} /> <LocalizedText text="Ready for due batch" />
@@ -64,8 +82,13 @@ function FollowUpRow({ f, showRecord, onAction }: {
           <p className={`mt-1 text-sm font-bold ${pending ? 'text-slate-800 dark:text-zinc-100' : 'text-slate-500 line-through decoration-slate-300 dark:text-zinc-500'}`}>{f.title}</p>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-500 dark:text-zinc-400">
             <span className={`inline-flex items-center gap-1 font-semibold ${f.state === 'overdue' ? 'text-red-600 dark:text-red-400' : ''}`} title={fullDate(f.due_at)}>
-              <CalendarClock size={11} /> {pending ? relativeDue(f.due_at) : `Due ${fullDate(f.due_at)}`}
+              <CalendarClock size={11} /> {fullDate(f.due_at)}{pending ? ` (${relativeDue(f.due_at)})` : ''}
             </span>
+            {f.phone && (
+              <span className="inline-flex items-center gap-1 font-semibold text-sky-600 dark:text-sky-400">
+                <Phone size={11} /> {f.phone}
+              </span>
+            )}
             {(f.contact_name || f.contact_email) && <span>{[f.contact_name, f.contact_email].filter(Boolean).join(' · ')}</span>}
             {!showRecord || !(f.lead || f.client) ? (f.company_name && <span>{f.company_name}</span>) : null}
             {f.assigned_to && <span className="inline-flex items-center gap-1"><User size={11} /> {f.assigned_to.name}</span>}

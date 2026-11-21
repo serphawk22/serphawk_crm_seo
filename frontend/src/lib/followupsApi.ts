@@ -4,8 +4,8 @@ import { ApiError, errorMessage, post, query, request } from '@/lib/inboxApi';
 // ─── Types (mirror routers/followups.py and routers/email_campaigns.py) ──────
 export type FollowUpState = 'overdue' | 'today' | 'upcoming' | 'completed' | 'cancelled';
 export type FollowUpView = 'all' | 'pending' | 'overdue' | 'today' | 'upcoming' | 'completed' | 'cancelled';
-export type Channel = 'email' | 'call' | 'meeting' | 'whatsapp' | 'other';
-export type Priority = 'high' | 'medium' | 'low';
+export type Channel = 'email' | 'call' | 'meeting' | 'whatsapp' | 'webinar' | 'walk-in' | 'normal follow-up' | 'other';
+export type Priority = 'urgent' | 'high' | 'medium' | 'low';
 
 export interface Ref { id: number; name: string }
 
@@ -15,7 +15,7 @@ export interface FollowUp {
   notes: string | null;
   channel: Channel;
   priority: Priority;
-  status: 'Pending' | 'Completed' | 'Cancelled';
+  status: 'Pending' | 'In Progress' | 'Completed' | 'Cancelled';
   state: FollowUpState;
   due_at: string;
   remind_at: string | null;
@@ -24,6 +24,7 @@ export interface FollowUp {
   contact_name: string | null;
   contact_email: string | null;
   company_name: string | null;
+  phone?: string | null;
   source: 'manual' | 'ai_suggested' | 'ai_auto' | 'campaign' | 'completed_chain';
   source_ref: string | null;
   ai_reason: string | null;
@@ -123,7 +124,7 @@ export const followupsApi = {
   sender: () => request<SenderStatus>('/followups/sender'),
   assignees: () => request<{ users: { id: number; name: string; role?: string }[] }>('/followups/assignees'),
   create: (input: FollowUpInput) => post<{ item: FollowUp }>('/followups', { ...input, tz_offset: tzOffset() }),
-  update: (id: number, changes: Partial<FollowUpInput> & { status?: 'Pending' | 'Cancelled' }) =>
+  update: (id: number, changes: Partial<FollowUpInput> & { status?: 'Pending' | 'In Progress' | 'Completed' | 'Cancelled' }) =>
     patch<{ item: FollowUp }>(`/followups/${id}`, { ...changes, tz_offset: tzOffset() }),
   remove: (id: number) => request<{ ok: boolean }>(`/followups/${id}`, { method: 'DELETE' }),
   complete: (id: number, outcome: string, next?: { due_at: string; title?: string; channel?: Channel; notes?: string } | null) =>

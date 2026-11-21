@@ -21,6 +21,10 @@ export interface VoiceAgentOptions {
   default_voice: string;
   twilio: { ready: boolean; missing: string[]; from_number: string | null; webhook_base?: string | null; webhook_problem?: string | null };
   default_agent_phone: string | null;
+  tenant_voice_profile?: {
+    tenant_id: number | null; company_name: string; company_description: string; agent_name: string;
+    services: string; tone: string; language: string; voice: string; accent: string;
+  };
 }
 
 export interface Entity { id: number; name: string; phone: string | null }
@@ -64,6 +68,7 @@ export interface TranscriptTurn {
   interrupted?: boolean;
   interrupted_ai?: boolean;
   kind?: string;
+  pending?: boolean;
 }
 
 export interface CallQuestion {
@@ -114,11 +119,17 @@ export interface AICall {
   ended_at: string | null;
   created_at: string | null;
   is_active: boolean;
+  live_state?: 'ringing' | 'speaking' | 'thinking' | 'listening' | 'live' | 'ended';
+  ai_speaking_until?: number | null;
   stage: string | null;
   doubts: string[];
   objections: string[];
   adaptation: string | null;
+  follow_up_needed?: boolean;
+  follow_up_at?: string | null;
+  follow_up_reason?: string | null;
   pending_agent_message: string | null;
+  pitch_text?: string | null;
   transcript?: TranscriptTurn[];
   questions?: CallQuestion[];
 }
@@ -165,9 +176,10 @@ export const TTS_ACCENTS: Option[] = [
 ];
 
 /** Voices/accents from the server when available, otherwise the built-in lists. */
-export function voiceChoices(options: VoiceAgentOptions | null) {
+export function voiceChoices(options: VoiceAgentOptions | null, language = "en") {
   const voices = options?.voices?.length ? options.voices : TTS_VOICES;
-  const serverAccents = options?.languages?.find((l) => l.id === 'en')?.accents;
+  const serverAccents = options?.languages?.find((l) => l.id === language)?.accents
+    || options?.languages?.find((l) => l.id === 'en')?.accents;
   const accents: Option[] = serverAccents?.length ? serverAccents.map(({ id, label }) => ({ id, label })) : TTS_ACCENTS;
   return { voices, accents };
 }
@@ -222,7 +234,13 @@ export const voiceAgentApi = {
     entity_type: EntityType; entity_id: number; to_number?: string; voice: string; language: string; accent: string;
     style?: string; context?: string; pitch_text?: string; agent_phone?: string;
   }) => post<{ ok: true; pitch: VoicePitch; call: AICall }>('/quick-call', body),
-  calls: (status?: string) => request<{ calls: AICall[] }>(`/calls${status ? `?status=${status}` : ''}`),
+  calls: (status?: string, leadId?: number) => {
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    if (leadId != null) params.set('lead_id', String(leadId));
+    const qs = params.toString();
+    return request<{ calls: AICall[] }>(`/calls${qs ? `?${qs}` : ''}`);
+  },
   call: (id: number) => request<{ call: AICall }>(`/calls/${id}`),
   startCall: (body: { pitch_id: number; to_number?: string; entity_type?: EntityType | null; entity_id?: number | null; agent_phone?: string }) =>
     post<{ ok: true; call: AICall }>('/calls', body),

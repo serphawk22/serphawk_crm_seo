@@ -17,13 +17,30 @@ interface PhoneInputProps {
   placeholder?: string;
   disabled?: boolean;
   required?: boolean;
+  className?: string;
+  buttonClassName?: string;
+  inputClassName?: string;
+  dropdownAlign?: "left" | "right";
 }
 
 /**
  * A phone field with a searchable country selector. The user can change the country or the number at any time;
  * the value handed back is always "<dial code> <national number>" (empty when no number is typed).
  */
-export default function PhoneInput({ value, onChange, defaultDialCode, id, name, placeholder, disabled, required }: PhoneInputProps) {
+export default function PhoneInput({
+  value,
+  onChange,
+  defaultDialCode,
+  id,
+  name,
+  placeholder,
+  disabled,
+  required,
+  className,
+  buttonClassName,
+  inputClassName,
+  dropdownAlign = "left",
+}: PhoneInputProps) {
   const { language, t } = useLanguage();
   const countryNames = useMemo(() => new Intl.DisplayNames([language], { type: "region" }), [language]);
   const countryLabel = (country: { code: string; name: string }) => countryNames.of(country.code) || country.name;
@@ -54,8 +71,15 @@ export default function PhoneInput({ value, onChange, defaultDialCode, id, name,
     const close = (e: MouseEvent) => {
       if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
     };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [open]);
 
   const selected = COUNTRY_DIAL_CODES.find((c) => c.code === countryCode && c.dialCode === dial) || pickCountry(dial) || COUNTRY_DIAL_CODES[0];
@@ -64,20 +88,38 @@ export default function PhoneInput({ value, onChange, defaultDialCode, id, name,
     (c) => !q || countryLabel(c).toLocaleLowerCase(language).includes(q) || c.name.toLowerCase().includes(q) || (c.nativeName || "").toLowerCase().includes(q) || c.dialCode.includes(q) || c.code.toLowerCase().includes(q)
   );
 
+  const handleNumberChange = (raw: string) => {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("+") && trimmed.replace(/\D/g, "").length >= 6) {
+      const parsed = parsePhoneNumber(trimmed, dial);
+      setDial(parsed.dialCode);
+      setCountryCode(pickCountry(parsed.dialCode)?.code || "");
+      setNational(parsed.nationalNumber);
+      onChange(joinPhone(parsed.dialCode, parsed.nationalNumber));
+      return;
+    }
+    setNational(raw);
+    onChange(joinPhone(dial, raw));
+  };
+
   return (
     <div className="relative" ref={box}>
       <div
-        className={`flex items-center rounded-xl border focus-within:ring-2 focus-within:ring-blue-500 ${disabled ? "opacity-60" : ""}`}
-        style={{ borderColor: "var(--border)", background: "var(--background)" }}
+        className={`flex items-center rounded-xl border focus-within:ring-2 focus-within:ring-blue-500 ${disabled ? "opacity-60" : ""} ${className || ""}`}
+        style={className ? undefined : { borderColor: "var(--border)", background: "var(--background)" }}
       >
         <button
           type="button"
           disabled={disabled}
           onClick={() => { setOpen((o) => !o); setSearch(""); }}
-          className="flex shrink-0 items-center gap-1.5 rounded-l-xl border-r px-3 py-2 text-sm font-medium transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800/60"
-          style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+          className={`flex shrink-0 self-stretch items-center gap-1.5 rounded-l-xl border-r text-sm font-medium transition-colors ${
+            buttonClassName || "px-3 py-2 hover:bg-slate-100 dark:hover:bg-zinc-800/60"
+          }`}
+          style={buttonClassName ? undefined : { borderColor: "var(--border)", color: "var(--text-primary)" }}
           title={`${countryLabel(selected)} (${selected.dialCode}) — ${t("Change country code")}`}
           aria-label={t("Change country code")}
+          aria-expanded={open}
+          aria-haspopup="listbox"
         >
           <span className="text-base leading-none">{selected.flag}</span>
           <span className="text-xs font-semibold">{selected.dialCode}</span>
@@ -92,18 +134,20 @@ export default function PhoneInput({ value, onChange, defaultDialCode, id, name,
           required={required}
           disabled={disabled}
           value={national}
-          onChange={(e) => {
-            setNational(e.target.value);
-            onChange(joinPhone(dial, e.target.value));
-          }}
+          onChange={(e) => handleNumberChange(e.target.value)}
           placeholder={placeholder || placeholderFor(selected.code)}
-          className="w-full rounded-r-xl bg-transparent px-3 py-2 text-sm outline-none"
-          style={{ color: "var(--text-primary)" }}
+          className={`min-w-0 flex-1 rounded-r-xl bg-transparent text-sm outline-none ${inputClassName || "px-3 py-2"}`}
+          style={inputClassName ? undefined : { color: "var(--text-primary)" }}
         />
       </div>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1.5 w-72 max-w-[90vw] overflow-hidden rounded-2xl border bg-white p-2 shadow-2xl dark:bg-zinc-900" style={{ borderColor: "var(--border)" }}>
+        <div
+          className={`absolute top-full z-50 mt-1.5 w-72 max-w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border bg-white p-2 shadow-2xl dark:bg-zinc-900 ${
+            dropdownAlign === "right" ? "right-0" : "left-0"
+          }`}
+          style={{ borderColor: "var(--border)" }}
+        >
           <div className="mb-2 flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-xs" style={{ borderColor: "var(--border)", background: "var(--background)" }}>
             <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
             <input

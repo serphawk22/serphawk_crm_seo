@@ -7,7 +7,7 @@ import DuplicateLeadModal, { DuplicateLeadInfo, DuplicateDiff } from "@/componen
 import { API_BASE_URL } from "@/config";
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, Filter, MoreVertical, Building2, Globe, Mail, Phone, MapPin, Sparkles, Upload, Download, X, Loader2, ChevronDown, ArrowUpRight, CheckCircle2, Clock, Zap, Edit2, Trash2, Tag, CalendarClock, UserCheck, Calendar, ArrowRightLeft, History, User, Briefcase, UserPlus, FileScan } from "lucide-react";
+import { Search, Plus, Filter, MoreVertical, Building2, Globe, Mail, Phone, PhoneCall, MapPin, Sparkles, Upload, Download, X, Loader2, ChevronDown, ArrowUpRight, CheckCircle2, Clock, Zap, Edit2, Trash2, Tag, CalendarClock, UserCheck, Calendar, ArrowRightLeft, History, User, Briefcase, UserPlus, FileScan } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ViewSwitcher, ViewType } from "@/components/ViewSwitcher";
@@ -18,6 +18,10 @@ import SalesAssignModal from "@/components/SalesAssignModal";
 import AddFollowUpModal, { FollowUpTarget } from "@/components/AddFollowUpModal";
 import InstituteLeadScheduleModal from "@/components/InstituteLeadScheduleModal";
 import ContactSynopsisModal from "@/components/ContactSynopsisModal";
+import LeadCallModal, { type LeadCallTarget } from "@/components/voice-agent/LeadCallModal";
+import LeadCallStatusBadge from "@/components/voice-agent/LeadCallStatusBadge";
+import PhoneInput from "@/components/PhoneInput";
+import { voiceAgentApi } from "@/lib/voiceAgentApi";
 import { leadStages, scheduleStage, type ScheduleStage } from "@/lib/leadWorkflow";
 
 interface Lead {
@@ -51,6 +55,31 @@ interface Lead {
   owner_id?: number | null;
   owner_name?: string | null;
   salesperson_name?: string | null;
+  latest_call_id?: number | null;
+  latest_call_status?: string | null;
+  latest_call_at?: string | null;
+  auto_call_status?: string | null;
+  auto_call_reason?: string | null;
+  follow_up_needed?: boolean | null;
+  next_follow_up_at?: string | null;
+  follow_up_reason?: string | null;
+}
+
+function validatePhoneInput(raw: string): string | null {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) return null;
+  if (!/^[\d\s+\-().]+$/.test(trimmed)) {
+    return "Please enter a valid phone number (digits and optional + country code, e.g. +919876543210).";
+  }
+  const normalized = trimmed.replace(/[^\d+]/g, "");
+  const digits = normalized.replace(/\D/g, "");
+  if (digits.length < 7 || digits.length > 15) {
+    return "Phone number must contain between 7 and 15 digits (e.g. +919876543210).";
+  }
+  if (normalized.startsWith("+") && !/^\+[1-9]\d{7,14}$/.test(normalized)) {
+    return "Please enter a valid phone number with country code (e.g. +919876543210).";
+  }
+  return null;
 }
 
 interface ActivityLogEntry {
@@ -109,6 +138,7 @@ export default function LeadsPage() {
   const institute = isOn('institute');
   const router = useRouter();
   const isAdmin = role === 'Admin' || role === 'SuperAdmin';
+  const notify = (message: string) => alert(message);
 
   useEffect(() => {
     if (role && !['SuperAdmin', 'Admin', 'Employee', 'Intern', 'SalesManager', 'Sales', 'Demo'].includes(role)) {
@@ -130,6 +160,8 @@ export default function LeadsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editLead, setEditLead] = useState<Lead | null>(null);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<{ message: string; duplicate?: boolean } | null>(null);
+  const [watchingAutoCall, setWatchingAutoCall] = useState<{ id: number; company_name: string; phone?: string | null } | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>('list');
@@ -144,6 +176,7 @@ export default function LeadsPage() {
   const [pendingLeadForm, setPendingLeadForm] = useState<any>(null);
   const [availableSources, setAvailableSources] = useState<string[]>(SOURCES);
   const [followUpTarget, setFollowUpTarget] = useState<FollowUpTarget | null>(null);
+  const [callTarget, setCallTarget] = useState<LeadCallTarget | null>(null);
   const [employees, setEmployees] = useState<{ id: number; name: string }[]>([]);
   const [autoAssigning, setAutoAssigning] = useState(false);
   const [autofillUrl, setAutofillUrl] = useState("");
@@ -408,6 +441,7 @@ export default function LeadsPage() {
   const openCreate = () => {
     setEditLead(null);
     setForm({ ...emptyForm });
+    setFormError(null);
     setAutofillUrl("");
     setAutofillSuccess(false);
     setShowModal(true);
@@ -416,6 +450,7 @@ export default function LeadsPage() {
   const openEdit = (lead: Lead, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditLead(lead);
+    setFormError(null);
     setAutofillUrl(lead.website || "");
     setAutofillSuccess(false);
     setForm({
@@ -434,8 +469,67 @@ export default function LeadsPage() {
     setShowModal(true);
   };
 
+  // Fallback watcher: if auto_call_new_leads wasn't cached as enabled yet in this browser tab,
+  // poll the lightweight lead-filtered calls endpoint and auto-open the same Live Conversation modal the moment a call starts.
+  useEffect(() => {
+    if (!watchingAutoCall || !isOn("calls")) return;
+    let cancelled = false;
+    let attempts = 0;
+    const pollForCall = async () => {
+      attempts += 1;
+      try {
+        const res = await voiceAgentApi.calls(undefined, watchingAutoCall.id);
+        if (cancelled) return;
+        const latest = res?.calls?.[0];
+        if (latest?.id) {
+          setWatchingAutoCall(null);
+          setCallTarget({
+            id: watchingAutoCall.id,
+            company_name: watchingAutoCall.company_name,
+            phone: watchingAutoCall.phone,
+            activeCallId: latest.id,
+          });
+          fetchLeads();
+          return;
+        }
+        if (attempts >= 12) {
+          setWatchingAutoCall(null);
+        }
+      } catch {
+        if (attempts >= 12 && !cancelled) setWatchingAutoCall(null);
+      }
+    };
+    const initialTimer = setTimeout(() => { void pollForCall(); }, 1200);
+    const timer = setInterval(() => { void pollForCall(); }, 900);
+    return () => {
+      cancelled = true;
+      clearTimeout(initialTimer);
+      clearInterval(timer);
+    };
+  }, [watchingAutoCall, isOn]);
+
+  const triggerAutoCallModal = (created: { id?: number; company_name?: string; phone?: string | null }) => {
+    if (!created?.id || !created?.phone || !isOn("calls")) return;
+    const targetInfo = {
+      id: created.id,
+      company_name: created.company_name || "New Lead",
+      phone: created.phone,
+    };
+    if (isOn("auto_call_new_leads")) {
+      setCallTarget({ ...targetInfo, waitingForAutoCall: true });
+    } else {
+      setWatchingAutoCall(targetInfo);
+    }
+  };
+
   const handleSave = async () => {
     if (!form.company_name.trim()) return;
+    const phoneErr = validatePhoneInput(form.phone);
+    if (phoneErr) {
+      setFormError({ message: phoneErr });
+      return;
+    }
+    setFormError(null);
     setSaving(true);
     const instituteFields = { course_interest_id: form.course_interest_id ? Number(form.course_interest_id) : null, gpa: form.gpa ? Number(form.gpa) : null };
     try {
@@ -445,7 +539,12 @@ export default function LeadsPage() {
           method: "PUT", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...form, ...instituteFields, status: stage ? editLead.status : form.status }),
         });
-        if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(typeof data.detail === 'string' ? data.detail : 'Could not save lead'); }
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          const msg = typeof data.detail === 'string' ? data.detail : 'Could not save lead';
+          setFormError({ message: msg, duplicate: response.status === 409 });
+          return;
+        }
         setShowModal(false);
         if (stage) setSchedule({ lead: editLead, stage });
         fetchLeads();
@@ -491,11 +590,17 @@ export default function LeadsPage() {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
-          if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(typeof data.detail === 'string' ? data.detail : 'Could not create lead'); }
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            const msg = typeof data.detail === 'string' ? data.detail : 'Could not create lead';
+            setFormError({ message: msg, duplicate: response.status === 409 });
+            return;
+          }
           const created = await response.json();
           setShowModal(false);
           if (stage) setSchedule({ lead: created, stage });
           fetchLeads();
+          triggerAutoCallModal(created);
         } else {
           // New lead: show sales assign modal for admins
           setPendingLeadForm({ ...form, ...instituteFields });
@@ -504,13 +609,14 @@ export default function LeadsPage() {
         }
       }
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : 'Could not save lead');
+      setFormError({ message: err instanceof Error ? err.message : 'Could not save lead' });
     } finally { setSaving(false); }
   };
 
   const doCreateLead = async (employeeId: number | null, _employeeName: string | null) => {
+    if (saving || !pendingLeadForm) return;
+    setSaving(true);
     setShowSalesAssign(false);
-    if (!pendingLeadForm) return;
     try {
       const payload = { ...pendingLeadForm };
       const stage = scheduleStage(payload.status, institute);
@@ -520,19 +626,39 @@ export default function LeadsPage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(typeof data.detail === 'string' ? data.detail : 'Could not create lead'); }
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        const msg = typeof data.detail === 'string' ? data.detail : 'Could not create lead';
+        setFormError({ message: msg, duplicate: response.status === 409 });
+        setShowModal(true);
+        return;
+      }
       const created = await response.json();
       if (stage) setSchedule({ lead: created, stage });
       setPendingLeadForm(null);
+      setFormError(null);
       fetchLeads();
-    } catch (err) { setLoadError(err instanceof Error ? err.message : 'Could not create lead'); }
+      triggerAutoCallModal(created);
+    } catch (err) {
+      setFormError({ message: err instanceof Error ? err.message : 'Could not create lead' });
+      setShowModal(true);
+    } finally { setSaving(false); }
   };
 
   const handleDelete = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm(t("leads.confirm_delete"))) return;
-    await fetch(`${API_BASE_URL}/leads/${id}`, { method: "DELETE" });
-    fetchLeads();
+    try {
+      const res = await fetch(`${API_BASE_URL}/leads/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.detail === "string" ? data.detail : `Could not delete lead (HTTP ${res.status})`);
+      }
+      setLoadError(null);
+      fetchLeads();
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Could not delete lead");
+    }
   };
 
   const handleOpenFollowUp = (lead: Lead, e: React.MouseEvent) => {
@@ -1146,6 +1272,43 @@ export default function LeadsPage() {
                       {!lead.email && !lead.phone && (
                         <span className="text-xs text-slate-400 italic">—</span>
                       )}
+                      {(isOn('calls') || lead.next_follow_up_at) && (
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          {isOn('calls') && (
+                            <LeadCallStatusBadge
+                              status={lead.latest_call_status}
+                              at={lead.latest_call_at}
+                              onClick={lead.latest_call_id ? (e) => {
+                                e.stopPropagation();
+                                setCallTarget({
+                                  id: lead.id,
+                                  company_name: lead.company_name,
+                                  phone: lead.phone,
+                                  activeCallId: lead.latest_call_id,
+                                });
+                              } : undefined}
+                            />
+                          )}
+                          {lead.next_follow_up_at && (() => {
+                            const norm = lead.next_follow_up_at.endsWith("Z") || lead.next_follow_up_at.includes("+") ? lead.next_follow_up_at : `${lead.next_follow_up_at}Z`;
+                            const dueDate = new Date(norm);
+                            const isOverdue = !Number.isNaN(dueDate.getTime()) && dueDate.getTime() < Date.now();
+                            return (
+                              <span
+                                title={lead.follow_up_reason ? `Follow-up: ${lead.follow_up_reason}` : "Scheduled follow-up"}
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md border text-[9.5px] font-bold tracking-wide shrink-0 ${
+                                  isOverdue
+                                    ? "bg-red-100 text-red-700 border-red-200 dark:bg-red-950/60 dark:text-red-300 dark:border-red-800/70"
+                                    : "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+                                }`}
+                              >
+                                <CalendarClock className="w-2.5 h-2.5 shrink-0" />
+                                {isOverdue ? "Overdue" : "Follow-up"} · {dueDate.toLocaleDateString([], { month: "short", day: "numeric" })}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      )}
                     </div>
 
                     {/* Place & Country */}
@@ -1219,6 +1382,19 @@ export default function LeadsPage() {
                     {/* Actions */}
                     <div className="flex items-center justify-end gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
+                        {isOn('calls') && (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              setCallTarget({ id: lead.id, company_name: lead.company_name, phone: lead.phone });
+                            }}
+                            title={lead.latest_call_status ? "Call again" : "Call with AI"}
+                            className="p-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-900/30 text-emerald-600 transition-colors shadow-xs"
+                          >
+                            <PhoneCall className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={e => handleManualAnalyze(lead.id, e)}
@@ -1426,10 +1602,18 @@ export default function LeadsPage() {
                     <label className="text-sm">GPA<input type="number" min="0" max="10" step="0.01" value={form.gpa} onChange={e => setForm(f => ({ ...f, gpa: e.target.value }))} className="mt-1 w-full rounded-xl border bg-transparent p-2" /></label>
                     {([['academic_background', 'Academic background'], ['career_goal', 'Career goal']] as const).map(([key, label]) => <label key={key} className="text-sm">{label}<input value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} className="mt-1 w-full rounded-xl border bg-transparent p-2" /></label>)}
                   </div>}
-                  <div>
+                  <div className="min-w-0">
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.phone")}</label>
-                    <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+52 55 8000 8000"
-                      className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
+                    <PhoneInput
+                      value={form.phone}
+                      onChange={phone => { setForm(f => ({ ...f, phone })); setFormError(null); }}
+                      defaultDialCode="+91"
+                      dropdownAlign={institute ? "left" : "right"}
+                      className="bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 transition-all"
+                      buttonClassName="px-2 sm:px-2.5 py-2.5 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80"
+                      inputClassName="px-2.5 sm:px-3 py-2.5 text-slate-900 dark:text-white placeholder-slate-400"
+                    />
+                    <p className="mt-1 text-[10.5px] text-slate-400 dark:text-zinc-500">Include country code (e.g. +91...) for AI calling.</p>
                   </div>
                 </div>
 
@@ -1494,6 +1678,19 @@ export default function LeadsPage() {
                     placeholder={t("leads.notes_placeholder")}
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none" />
                 </div>
+
+                {formError && (
+                  <div
+                    role="alert"
+                    className={`rounded-xl border px-3.5 py-2.5 text-xs font-semibold ${
+                      formError.duplicate
+                        ? "bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300"
+                        : "bg-rose-50 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300"
+                    }`}
+                  >
+                    {formError.duplicate ? `Duplicate lead: ${formError.message}` : formError.message}
+                  </div>
+                )}
 
                 {/* ── Add Contact Person / Save to Contacts & Lead Contacts ── */}
                 {!editLead && (
@@ -1754,6 +1951,13 @@ export default function LeadsPage() {
         onClose={() => setFollowUpTarget(null)}
         target={followUpTarget}
         onSuccess={fetchLeads}
+      />
+      <LeadCallModal
+        open={!!callTarget}
+        target={callTarget}
+        onClose={() => setCallTarget(null)}
+        notify={notify}
+        onCallStarted={fetchLeads}
       />
 
       {/* Bulk Lead Transfer Modal */}

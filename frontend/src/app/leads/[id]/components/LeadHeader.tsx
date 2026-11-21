@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import {
   Building2, Star, User, ArrowLeft, Plus, MessageSquare,
   CheckSquare, Calendar, Mail, Upload, Target, Zap,
-  TrendingUp, Phone, Globe, Sun, Moon, MapPin, Linkedin
+  TrendingUp, Phone, PhoneCall, Globe, Sun, Moon, MapPin, Linkedin
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { API_BASE_URL } from '@/config';
@@ -13,6 +13,8 @@ import { useTenantConfig } from '@/context/TenantConfigContext';
 import InstituteLeadScheduleModal from '@/components/InstituteLeadScheduleModal';
 import EditLeadDetailsModal from './EditLeadDetailsModal';
 import ContactSynopsisModal from '@/components/ContactSynopsisModal';
+import LeadCallModal from '@/components/voice-agent/LeadCallModal';
+import LeadCallStatusBadge from '@/components/voice-agent/LeadCallStatusBadge';
 import { Pencil, Twitter, Instagram, Facebook } from 'lucide-react';
 import { leadStages, scheduleStage, type ScheduleStage } from '@/lib/leadWorkflow';
 
@@ -84,6 +86,8 @@ export default function LeadHeader({
   const [statusError, setStatusError] = useState('');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isContactedModalOpen, setIsContactedModalOpen] = useState(false);
+  const [callOpen, setCallOpen] = useState(false);
+  const [callPlaced, setCallPlaced] = useState(false);
   const stages = leadStages(settings.lead_statuses, isOn('institute'), LEAD_STAGES, [lead?.status || 'New']);
   const statusCfg = STATUS_CONFIG[lead?.status] || STATUS_CONFIG.Inactive;
   const assignedEmp = employees.find((e: any) => e.id === lead?.owner_id);
@@ -123,12 +127,24 @@ export default function LeadHeader({
           >
             <ArrowLeft size={16} className="text-slate-400" /> {language === 'es' ? 'Volver a Clientes' : 'Back to Leads'}
           </button>
-          <button
-            onClick={onSendEmail}
-            className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm shadow-indigo-500/20 transition-colors hover:bg-indigo-700"
-          >
-            <Mail size={14} /> {language === 'es' ? 'Enviar correo' : 'Send Email'}
-          </button>
+          <div className="flex items-center gap-2">
+            {isOn('calls') && (
+              <button
+                type="button"
+                onClick={() => setCallOpen(true)}
+                title={lead?.latest_call_status ? 'Call again' : 'Call with AI'}
+                className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-emerald-700"
+              >
+                <PhoneCall size={14} /> {lead?.latest_call_status ? 'Call again' : 'Call with AI'}
+              </button>
+            )}
+            <button
+              onClick={onSendEmail}
+              className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm shadow-indigo-500/20 transition-colors hover:bg-indigo-700"
+            >
+              <Mail size={14} /> {language === 'es' ? 'Enviar correo' : 'Send Email'}
+            </button>
+          </div>
         </div>
 
         {/* Row 2: Main header - Company identity + Contact Info + Score */}
@@ -232,6 +248,9 @@ export default function LeadHeader({
                   </span>
                 );
               })}
+              {isOn('calls') && (
+                <LeadCallStatusBadge status={lead?.latest_call_status} at={lead?.latest_call_at} />
+              )}
             </div>
           </div>
 
@@ -275,6 +294,20 @@ export default function LeadHeader({
           if (onStatusChange) onStatusChange('Contacted');
           else window.location.reload();
         }}
+      />
+
+      <LeadCallModal
+        open={callOpen}
+        target={callOpen && lead?.id ? { id: lead.id, company_name: companyName || 'Lead', phone: lead?.phone } : null}
+        onClose={() => {
+          setCallOpen(false);
+          if (callPlaced) {
+            setCallPlaced(false);
+            window.location.reload();
+          }
+        }}
+        notify={(message) => alert(message)}
+        onCallStarted={() => setCallPlaced(true)}
       />
     </div>
   );

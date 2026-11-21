@@ -743,6 +743,8 @@ export default function LeadDetailsPage() {
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
   const [newUserForm, setNewUserForm] = useState({ name: '', email: '', role: 'SalesManager', password: 'password123' });
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
+  const [markingFollowUpDone, setMarkingFollowUpDone] = useState(false);
+  const [followUpError, setFollowUpError] = useState('');
 
   // Force light theme always — no dark mode on this page
   useEffect(() => {
@@ -888,6 +890,39 @@ export default function LeadDetailsPage() {
     }
   };
 
+  const handleMarkFollowUpDone = async () => {
+    if (!lead?.id || markingFollowUpDone) return;
+    setMarkingFollowUpDone(true);
+    setFollowUpError('');
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/leads/${lead.id}/followup`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ completed: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof data?.detail === 'string' ? data.detail : `Request failed (${res.status}).`);
+      }
+      setLead((prev: any) => prev ? {
+        ...prev,
+        ...(data.lead || {}),
+        follow_up_needed: false,
+        next_follow_up_at: null,
+        follow_up_reason: null,
+      } : prev);
+      fetchAll();
+    } catch (e: any) {
+      setFollowUpError(e?.message || 'Could not mark follow-up done.');
+    } finally {
+      setMarkingFollowUpDone(false);
+    }
+  };
+
   // ─── Loading & Auth Guards ────────────────────────────────────────────────
   if (loading || pageLoading) return <PageSkeleton />;
 
@@ -987,6 +1022,75 @@ export default function LeadDetailsPage() {
 
       {/* ── Full-Width layout ──────────────────────────────────────── */}
       <div className="w-full px-4 py-4 space-y-4">
+        {(lead?.follow_up_needed || lead?.next_follow_up_at) && (() => {
+          const raw = lead?.next_follow_up_at as string | null | undefined;
+          const dueDate = raw
+            ? (() => {
+                const norm = raw.endsWith('Z') || raw.includes('+') || /[+-]\d{2}:\d{2}$/.test(raw) ? raw : `${raw}Z`;
+                const d = new Date(norm);
+                return Number.isNaN(d.getTime()) ? null : d;
+              })()
+            : null;
+          const isOverdue = !!dueDate && dueDate.getTime() < Date.now();
+          const formattedDue = dueDate
+            ? dueDate.toLocaleString(language === 'es' ? 'es-ES' : 'en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              })
+            : null;
+          const summaryParts = [
+            'Follow-up needed',
+            formattedDue,
+          ].filter(Boolean);
+          return (
+            <div
+              className={`rounded-2xl border px-4 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
+                isOverdue
+                  ? 'bg-red-50 border-red-200 text-red-900 dark:bg-red-950/45 dark:border-red-900/70 dark:text-rose-100'
+                  : 'bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-950/40 dark:border-amber-800/60 dark:text-amber-100'
+              }`}
+            >
+              <div className="flex items-start sm:items-center gap-3 min-w-0">
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                    isOverdue
+                      ? 'bg-red-100 text-red-600 dark:bg-rose-100/95 dark:text-red-600'
+                      : 'bg-amber-100 text-amber-600 dark:bg-amber-100/95 dark:text-amber-700'
+                  }`}
+                >
+                  <CalendarClock className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-[13px] font-bold leading-snug break-words">
+                    {summaryParts.join(' · ')}
+                  </p>
+                  {isOverdue && (
+                    <p className="text-xs font-medium text-red-600 dark:text-red-400 mt-0.5">
+                      This follow-up is overdue.
+                    </p>
+                  )}
+                  {followUpError && (
+                    <p role="alert" className="text-xs font-semibold text-red-600 dark:text-red-300 mt-1">
+                      {followUpError}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleMarkFollowUpDone}
+                disabled={markingFollowUpDone}
+                className="self-start sm:self-center shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 rounded-lg border border-zinc-700/80 bg-zinc-900 px-3.5 py-2 text-xs font-bold text-amber-300 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-xs"
+              >
+                {markingFollowUpDone && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Mark follow-up done
+              </button>
+            </div>
+          );
+        })()}
         <WebsiteLeadSummary leadId={Number(id)} />
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-5">
 
@@ -1205,7 +1309,9 @@ export default function LeadDetailsPage() {
                 <div>
                   <p className="text-[10px] text-slate-400 ">{language === 'es' ? 'Próximo Seguimiento' : 'Next Follow-up'}</p>
                   <p className="text-sm font-bold text-amber-600 ">
-                    {lead?.next_followup_date ? new Date(lead.next_followup_date).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—'}
+                    {(lead?.next_follow_up_at || lead?.next_followup_date)
+                      ? new Date(lead.next_follow_up_at || lead.next_followup_date).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                      : '—'}
                   </p>
                 </div>
               </div>

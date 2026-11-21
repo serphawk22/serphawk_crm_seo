@@ -36,8 +36,8 @@ from sqlmodel import Session, select
 
 import database
 from database import (
-    ActivityLog, ClientNote, ClientProfile, ConversationLog, ConversationReply, FollowUp, InboxMessage, Lead, LeadNote,
-    Remark, SentEmail, Tenant, User,
+    AICall, ActivityLog, CallLog, ClientNote, ClientProfile, ConversationLog, ConversationReply, FollowUp, InboxMessage,
+    Lead, LeadNote, Remark, SentEmail, Tenant, User,
 )
 from modules import company_mailer, email_ai, followup_ai
 from modules import followups_core as core
@@ -45,8 +45,8 @@ from routers import inbox
 
 router = APIRouter(tags=["followups"])
 
-CHANNELS = Literal["email", "call", "meeting", "whatsapp", "other"]
-PRIORITIES = Literal["high", "medium", "low"]
+CHANNELS = Literal["email", "call", "meeting", "whatsapp", "webinar", "walk-in", "normal follow-up", "other"]
+PRIORITIES = Literal["urgent", "high", "medium", "low"]
 INTERNAL_ROLES = {"Admin", "SuperAdmin", "Demo", "SalesManager", "Employee"}
 
 
@@ -145,25 +145,65 @@ def _names(session: Session, items: list) -> dict:
     lead_ids = {f.lead_id for f in items if f.lead_id}
     client_ids = {f.client_id for f in items if f.client_id}
     conversation_ids = {f.conversation_id for f in items if f.conversation_id}
+    ai_call_ids, call_log_ids = set(), set()
+    for f in items:
+        src = f.source_ref or ""
+        if src.startswith("ai_call:") and src.split(":", 1)[1].isdigit():
+            ai_call_ids.add(int(src.split(":", 1)[1]))
+        elif src.startswith("call_log:") and src.split(":", 1)[1].isdigit():
+            call_log_ids.add(int(src.split(":", 1)[1]))
     users = {u.id: (u.name or u.email) for u in session.exec(select(User).where(User.id.in_(user_ids))).all()} if user_ids else {}
-    leads = {l.id: l.company_name or f"Lead #{l.id}" for l in session.exec(
-        select(Lead).where(Lead.id.in_(lead_ids)).execution_options(skip_tenant=True)).all()} if lead_ids else {}
-    clients = {c.id: core.client_label(c) for c in session.exec(
-        select(ClientProfile).where(ClientProfile.id.in_(client_ids)).execution_options(skip_tenant=True)).all()} if client_ids else {}
+    lead_rows = session.exec(select(Lead).where(Lead.id.in_(lead_ids)).execution_options(skip_tenant=True)).all() if lead_ids else []
+    leads = {l.id: l.company_name or f"Lead #{l.id}" for l in lead_rows}
+    lead_phones = {l.id: l.phone for l in lead_rows if l.phone}
+    client_rows = session.exec(select(ClientProfile).where(ClientProfile.id.in_(client_ids)).execution_options(skip_tenant=True)).all() if client_ids else []
+    clients = {c.id: core.client_label(c) for c in client_rows}
+    client_phones = {}
+    for c in client_rows:
+        cf = c.customFields if isinstance(c.customFields, dict) else {}
+        ph = getattr(c, "phone", None) or cf.get("phone")
+        if ph:
+            client_phones[c.id] = ph
     conversations = {c.id: c for c in session.exec(
         select(ConversationLog).where(ConversationLog.id.in_(conversation_ids))).all()} if conversation_ids else {}
-    return {"users": users, "leads": leads, "clients": clients, "conversations": conversations}
+    for cv in conversations.values():
+        src = cv.source_ref or ""
+        if src.startswith("ai_call:") and src.split(":", 1)[1].isdigit():
+            ai_call_ids.add(int(src.split(":", 1)[1]))
+    ai_call_phones = {a.id: a.to_number for a in session.exec(
+        select(AICall).where(AICall.id.in_(ai_call_ids)).execution_options(skip_tenant=True)).all() if a.to_number} if ai_call_ids else {}
+    call_log_phones = {cl.id: cl.phone_number for cl in session.exec(
+        select(CallLog).where(CallLog.id.in_(call_log_ids)).execution_options(skip_tenant=True)).all() if cl.phone_number} if call_log_ids else {}
+    return {
+        "users": users, "leads": leads, "lead_phones": lead_phones, "clients": clients,
+        "client_phones": client_phones, "conversations": conversations,
+        "ai_call_phones": ai_call_phones, "call_log_phones": call_log_phones,
+    }
 
 
 def _dict(f: FollowUp, names: dict, start: datetime, end: datetime) -> dict:
     ref = lambda i, table: {"id": i, "name": names[table].get(i, f"#{i}")} if i else None  # noqa: E731
     conv = names.get("conversations", {}).get(f.conversation_id) if f.conversation_id else None
+    phone = names.get("lead_phones", {}).get(f.lead_id) if f.lead_id else None
+    if not phone and f.client_id:
+        phone = names.get("client_phones", {}).get(f.client_id)
+    if not phone:
+        src = f.source_ref or ""
+        if src.startswith("ai_call:") and src.split(":", 1)[1].isdigit():
+            phone = names.get("ai_call_phones", {}).get(int(src.split(":", 1)[1]))
+        elif src.startswith("call_log:") and src.split(":", 1)[1].isdigit():
+            phone = names.get("call_log_phones", {}).get(int(src.split(":", 1)[1]))
+    if not phone and conv:
+        cv_src = conv.source_ref or ""
+        if cv_src.startswith("ai_call:") and cv_src.split(":", 1)[1].isdigit():
+            phone = names.get("ai_call_phones", {}).get(int(cv_src.split(":", 1)[1]))
     return {
         "id": f.id, "title": f.title, "notes": f.notes, "channel": f.channel, "priority": f.priority,
         "status": f.status, "state": _state(f, start, end),
         "due_at": _iso(f.due_at), "remind_at": _iso(f.remind_at),
         "lead": ref(f.lead_id, "leads"), "client": ref(f.client_id, "clients"),
         "contact_name": f.contact_name, "contact_email": f.contact_email, "company_name": f.company_name,
+        "phone": phone,
         "source": f.source, "source_ref": f.source_ref, "ai_reason": f.ai_reason,
         "follow_up_type": f.follow_up_type, "ai_detected": bool(f.ai_detected),
         "schedule_status": f.schedule_status or "confirmed",
@@ -230,6 +270,10 @@ def list_followups(
     limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
     v: inbox.Viewer = Depends(get_viewer), session: Session = Depends(get_session),
 ):
+    try:
+        core.sync_existing_call_followups(session, v.tenant_id, lead_id=lead_id)
+    except Exception:
+        session.rollback()
     start, end, _ = _day_bounds(tz_offset)
     stmt = _view_filter(_scope(select(FollowUp), v), view, start, end)
     if lead_id:
@@ -256,6 +300,10 @@ def list_followups(
 @router.get("/followups/summary")
 def followups_summary(tz_offset: Optional[int] = None, mine: bool = False,
                       v: inbox.Viewer = Depends(get_viewer), session: Session = Depends(get_session)):
+    try:
+        core.sync_existing_call_followups(session, v.tenant_id)
+    except Exception:
+        session.rollback()
     start, end, _ = _day_bounds(tz_offset)
     base = _scope(select(FollowUp), v)
     if mine:
@@ -381,8 +429,16 @@ def _record_from_query(session: Session, v: inbox.Viewer, lead_id: Optional[int]
 def followup_history(lead_id: Optional[int] = None, client_id: Optional[int] = None, tz_offset: Optional[int] = None,
                      v: inbox.Viewer = Depends(get_viewer), session: Session = Depends(get_session)):
     kind, rec = _record_from_query(session, v, lead_id, client_id)
+    if kind == "leads":
+        try:
+            core.sync_existing_call_followups(session, rec.tenant_id if rec.tenant_id is not None else v.tenant_id, lead_id=rec.id)
+        except Exception:
+            session.rollback()
     col = FollowUp.lead_id if kind == "leads" else FollowUp.client_id
-    items = session.exec(select(FollowUp).where(col == rec.id).order_by(FollowUp.status.desc(), FollowUp.due_at.desc())).all()
+    stmt = select(FollowUp).where(col == rec.id)
+    if rec.tenant_id is not None:
+        stmt = stmt.where(FollowUp.tenant_id == rec.tenant_id)
+    items = session.exec(stmt.order_by(FollowUp.status.desc(), FollowUp.due_at.desc())).all()
     info = core.record_info(session, rec.id if kind == "leads" else None, rec.id if kind == "clients" else None)
     return {
         "record": {"type": "lead" if kind == "leads" else "client", "id": rec.id, "name": info.get("label"),
@@ -507,6 +563,7 @@ def create_followup(body: FollowUpCreate, v: inbox.Viewer = Depends(get_viewer),
                 _load(session, v, existing.id)
                 return {"item": _serialize(session, [existing], body.tz_offset)[0], "duplicate": True}
         raise HTTPException(status_code=409, detail="A follow-up for this source already exists.")
+    core.sync_call_followup(session, fu)
     core.log_activity(session, fu, "Follow-up scheduled", f"Due {due.date().isoformat()} via {fu.channel}", v.user.id)
     if fu.assigned_to and fu.assigned_to != v.user.id:
         core.notify(session, fu.assigned_to, fu.tenant_id, f"New follow-up assigned: {fu.title}",
@@ -531,7 +588,7 @@ class FollowUpUpdate(BaseModel):
     email_subject: Optional[str] = Field(default=None, max_length=500)
     email_body: Optional[str] = Field(default=None, max_length=20000)
     auto_send: Optional[bool] = None
-    status: Optional[Literal["Pending", "Cancelled"]] = None
+    status: Optional[Literal["Pending", "In Progress", "Completed", "Cancelled"]] = None
     schedule_status: Optional[Literal["confirmed", "needs_confirmation"]] = None
     requested_window: Optional[str] = Field(default=None, max_length=120)
     condition: Optional[str] = Field(default=None, max_length=2000)
@@ -569,9 +626,10 @@ def update_followup(fu_id: int, body: FollowUpUpdate, v: inbox.Viewer = Depends(
         fu.assigned_to = _check_assignee(session, v, body.assigned_to) or v.user.id
     if rescheduled:
         fu.reminder_sent_at = None  # remind again for the new date
+        fu.overdue_notified_at = None
         fu.reschedule_count = int(fu.reschedule_count or 0) + 1
         fu.rescheduled_at = core.utcnow()
-        if "schedule_status" not in fields and fu.status == core.OPEN:
+        if "schedule_status" not in fields and fu.status in core.OPEN_STATES:
             # A human picking an exact date/time settles an ambiguous "next week" request.
             fu.schedule_status = "confirmed"
             fu.requested_window = None
@@ -589,11 +647,22 @@ def update_followup(fu_id: int, body: FollowUpUpdate, v: inbox.Viewer = Depends(
         fu.completed_at = core.utcnow()
         fu.completed_by = v.user.id
         core.log_activity(session, fu, "Follow-up cancelled", "", v.user.id)
+    elif body.status == "Completed" and fu.status in core.OPEN_STATES:
+        fu.status = core.DONE
+        fu.completed_at = core.utcnow()
+        fu.completed_by = v.user.id
+        core.log_activity(session, fu, "Follow-up completed", "", v.user.id)
+    elif body.status == "In Progress" and fu.status != core.IN_PROGRESS:
+        fu.status = core.IN_PROGRESS
+        fu.completed_at = fu.completed_by = None
+        core.log_activity(session, fu, "Follow-up marked In Progress", "", v.user.id)
     elif body.status == "Pending" and fu.status not in core.OPEN_STATES:
         fu.status = core.OPEN
         fu.completed_at = fu.completed_by = fu.outcome = None
         fu.reminder_sent_at = None
         core.log_activity(session, fu, "Follow-up reopened", "", v.user.id)
+    elif body.status == "Pending" and fu.status == core.IN_PROGRESS:
+        fu.status = core.OPEN
     elif rescheduled:
         core.log_activity(session, fu, "Follow-up rescheduled", f"New date {core.as_utc(fu.due_at).date().isoformat()}", v.user.id)
     _validate_email_fields(fu)

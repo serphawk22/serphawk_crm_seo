@@ -50,7 +50,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.sql.selectable import Select
 from sqlalchemy.orm import Session as SASession
 from sqlalchemy import event
-from modules import tenant_scope, auth_tokens, features
+from sqlalchemy.orm import defer
+from modules import tenant_scope, auth_tokens, features, auto_calling
 import contextvars
 from database import (
     Account,
@@ -322,6 +323,9 @@ from database import (
 # ─────────────────────────────────────────────────────────────────────────────
 current_tenant_id = tenant_scope.current_tenant_id  # defined in modules/tenant_scope.py
 
+# Capture every committed Lead insert once; actual dialing happens off-request in a worker.
+auto_calling.install()
+
 
 @event.listens_for(SASession, "do_orm_execute")
 def _add_tenant_filter(execute_state):
@@ -444,8 +448,8 @@ def _audit_log_changes(session, flush_context):
         pk = mapper.primary_key[0].name
         return getattr(obj, pk, None)
 
-    # Tables that are root/global objects — never audit them with a tenant_id FK
-    _skip_audit_tables = {"audit_logs", "tenants"}
+    # Tables that are root/global or high-churn telemetry objects — never audit them with a tenant_id FK
+    _skip_audit_tables = {"audit_logs", "tenants", "api_requests"}
 
     for obj in session.new:
         if hasattr(obj, "__tablename__") and obj.__tablename__ not in _skip_audit_tables:
@@ -706,7 +710,7 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
                     actor_snapshot = SimpleNamespace(tenant_id=gated_tenant, role=person[1]) if person else None
                     return demo_usage.restricted_tenant(session, user=actor_snapshot)
             demo_tid = await run_in_threadpool(_demo_policy)
-            demo_usage.demo_context.set(demo_tid)
+            demo_usage.demo_context.set(demo_tid if demo_tid else demo_usage.UNRESTRICTED)
             if demo_tid:
                 policy = demo_usage.request_policy(request.method, path)
                 try:
@@ -2344,6 +2348,13 @@ class CallCreateRequest(BaseModel):
     phone_number: str
     duration_seconds: Optional[int] = None
     summary: Optional[str] = None
+    description: Optional[str] = None
+    work_done: Optional[str] = None
+    assigned_to: Optional[str] = None
+    followup_needed: bool = False
+    followup_date: Optional[str] = None
+    client_id: Optional[int] = None
+    lead_id: Optional[int] = None
 
 
 class CallSummaryRequest(BaseModel):
@@ -4615,7 +4626,7 @@ def get_employees_workload(session: Session = Depends(get_session)):
         ).all())
         # Count active (non-converted) leads owned by this employee
         lead_count = len(session.exec(
-            select(Lead).where(
+            select(Lead.id).where(
                 Lead.owner_id == emp.id,
                 Lead.is_converted == False,
                 Lead.status != "Lost"
@@ -5464,9 +5475,17 @@ def simulate_client_call(client_id: int, req: Optional[SimulateCallRequest] = No
     email = cp.user.email if cp.user else ""
     keywords = ", ".join(cp.targetKeywords) if cp.targetKeywords else ""
 
-    prompt = f"""You are an expert sales representative for "SERP Hawk" (an elite SEO and Digital Marketing Agency).
+    # Simulated calls must speak as the owning tenant, never as the platform itself.
+    from modules import tenant_voice
+    voice_ctx = tenant_voice.prompt_context(
+        tenant_voice.profile_for_call(current_tenant_id.get()))
+    company = voice_ctx["company_name"]
+    about = voice_ctx["company_description"]
+    tone = voice_ctx["tone"]
+
+    prompt = f"""You are an expert sales representative for "{company}" ({about}).
 Your task is to write a highly tailored, direct sales script to be read over the phone to this specific client. 
-DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a SERP Hawk sales rep.
+DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a {company} sales representative and use a {tone} tone.
 
 Client Profile:
 Company/Project: {cp.companyName or cp.projectName or 'Unknown'}
@@ -5483,7 +5502,7 @@ Recent Activity with them:
 Instructions:
 1. Write the exact word-for-word script that the sales person will read on the call.
 2. Directly reference their specific company name, their services/keywords, and especially any past notes or activities.
-3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
+3. Pitch {company}'s services as the solution to their specific needs.
 4. Make it conversational, persuasive, and professional.
 5. Structure it logically but seamlessly.
 6. Output ONLY the spoken script as natural dialogue. Do NOT include markdown headings like **Introduction** or **Value Proposition**. It should read exactly like a transcript of someone speaking. Do not add any meta-commentary."""
@@ -7548,6 +7567,60 @@ def list_calls(unsummarized: Optional[bool] = None, session: Session = Depends(g
     return {"calls": result}
 
 
+def _resolve_user_id_for_call(session: Session, assigned_to: Optional[str], tenant_id: Optional[int]) -> Optional[int]:
+    if not assigned_to:
+        return current_salesperson_id.get()
+    val = str(assigned_to).strip()
+    if val.isdigit():
+        return int(val)
+    q = select(User).where(or_(User.email == val, User.name == val))
+    if tenant_id is not None:
+        q = q.where(User.tenant_id == tenant_id)
+    u = session.exec(q).first()
+    return u.id if u else current_salesperson_id.get()
+
+
+def _sync_manual_call_followup(session: Session, c: CallLog, explicit_lead_id: Optional[int] = None) -> None:
+    """Keep manual CallLog follow-ups synchronized with the centralized follow_ups table."""
+    try:
+        from modules import followups_core as fcore, lead_calls
+        tid = c.tenant_id if c.tenant_id is not None else current_tenant_id.get()
+        actor_id = current_salesperson_id.get()
+        if not c.followup_needed:
+            fcore.upsert_source_followup(
+                session, tenant_id=tid, idempotency_key=f"call_log:{c.id}",
+                source_ref=f"call_log:{c.id}", completed=True, completed_by=actor_id,
+            )
+            return
+        lead = None
+        if not c.client_id:
+            lead = lead_calls.resolve_lead(
+                session, lead_id=explicit_lead_id, to_number=c.phone_number, tenant_id=tid,
+            )
+        due_utc = fcore.parse_due_datetime(c.followup_date, tenant_id=tid)
+        assigned_id = _resolve_user_id_for_call(session, c.assigned_to, tid)
+        label = (lead.company_name if lead else None) or c.phone_number
+        notes = (c.work_done or c.description or c.summary or "").strip() or None
+        fcore.upsert_source_followup(
+            session,
+            tenant_id=tid,
+            idempotency_key=f"call_log:{c.id}",
+            source="manual",
+            source_ref=f"call_log:{c.id}",
+            lead_id=lead.id if lead else None,
+            client_id=c.client_id,
+            contact_name=c.phone_number if not (lead or c.client_id) else None,
+            title=f"Follow-up call: {label}",
+            notes=notes,
+            channel="call",
+            due_at=due_utc,
+            assigned_to=assigned_id,
+            created_by=actor_id,
+        )
+    except Exception as exc:
+        print(f"[Calls] follow-up sync failed for call {c.id}: {exc}")
+
+
 @app.post("/calls")
 def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
     body.assigned_to = _call_assignee(session, body.assigned_to)
@@ -7571,6 +7644,7 @@ def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
     c = CallLog(
         phone_number=body.phone_number,
         duration_seconds=body.duration_seconds,
+        summary=body.summary,
         description=getattr(body, "description", None),
         work_done=getattr(body, "work_done", None),
         assigned_to=getattr(body, "assigned_to", None),
@@ -7580,6 +7654,9 @@ def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
         tenant_id=tenant_id
     )
     session.add(c)
+    session.commit()
+    session.refresh(c)
+    _sync_manual_call_followup(session, c, explicit_lead_id=getattr(body, "lead_id", None))
     session.commit()
     session.refresh(c)
 
@@ -7617,6 +7694,10 @@ def update_call(
     session.add(c)
     session.commit()
     session.refresh(c)
+    if any(k in body for k in ("followup_needed", "followup_date", "assigned_to", "work_done", "description", "summary", "client_id")):
+        _sync_manual_call_followup(session, c)
+        session.commit()
+        session.refresh(c)
 
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -7811,6 +7892,54 @@ def update_calling_agent_log(
 
     c.updated_at = datetime.now(timezone.utc)
     session.add(c)
+    if any(k in body for k in ("followup_needed", "followup_date", "important_notes", "assigned_to")):
+        try:
+            from modules import followups_core as fcore, lead_calls
+            tid = c.tenant_id if c.tenant_id is not None else tenant_id
+            actor_id = current_salesperson_id.get()
+            lead = lead_calls.resolve_lead(
+                session, lead_id=c.lead_id, entity_type=c.entity_type,
+                entity_id=c.entity_id, to_number=c.to_number, tenant_id=tid,
+            )
+            if lead and not c.lead_id:
+                c.lead_id = lead.id
+            client_id = c.entity_id if c.entity_type == "client" else None
+            conv = session.exec(select(ConversationLog).where(
+                ConversationLog.tenant_id == tid,
+                ConversationLog.source_ref == f"ai_call:{c.id}",
+            ).order_by(ConversationLog.id.desc())).first()
+            idem_key = f"conv-{conv.id}" if conv else f"ai_call:{c.id}"
+            if not c.followup_needed:
+                fcore.upsert_source_followup(
+                    session, tenant_id=tid, idempotency_key=idem_key,
+                    source_ref=f"ai_call:{c.id}", fallback_keys=(f"ai_call:{c.id}",),
+                    completed=True, completed_by=actor_id,
+                )
+            else:
+                due_utc = c.follow_up_at or fcore.parse_due_datetime(c.followup_date, tenant_id=tid)
+                assigned_id = _resolve_user_id_for_call(session, c.assigned_to, tid)
+                label = c.entity_name or (lead.company_name if lead else None) or c.to_number
+                notes = (c.important_notes or c.follow_up_reason or c.next_steps or "").strip() or None
+                fu, _ = fcore.upsert_source_followup(
+                    session, tenant_id=tid, idempotency_key=idem_key,
+                    source="manual", source_ref=f"ai_call:{c.id}", fallback_keys=(f"ai_call:{c.id}",),
+                    lead_id=lead.id if lead else None, client_id=client_id,
+                    title=f"Follow-up call: {label}", notes=notes, channel="call",
+                    due_at=due_utc, assigned_to=assigned_id, created_by=actor_id,
+                    conversation_id=conv.id if conv else None,
+                )
+                if conv and fu:
+                    conv.follow_up_date = fu.due_at
+                    session.add(conv)
+            if lead:
+                latest = lead_calls.latest_call_info(session, [lead.id]).get(lead.id, {})
+                if latest.get("latest_call_id") in (None, c.id):
+                    lead.follow_up_needed = bool(c.followup_needed)
+                    lead.next_follow_up_at = c.follow_up_at if c.followup_needed else None
+                    lead.follow_up_reason = (c.important_notes or c.follow_up_reason) if c.followup_needed else None
+                    session.add(lead)
+        except Exception as exc:
+            print(f"[AI Calls] follow-up sync failed for ai_call {c.id}: {exc}")
     session.commit()
     session.refresh(c)
     return {"ok": True, "calling_agent_log": _ai_call_dict(c, session)}
@@ -7921,16 +8050,54 @@ def list_scheduled_calls(session: Session = Depends(get_session)):
     return {"scheduled_calls": [_sched_dict(s, session) for s in items]}
 
 
+def _sync_scheduled_call_followup(session: Session, sc: ScheduledCall, deleted: bool = False) -> None:
+    """Keep ScheduledCall rows synchronized with the centralized follow_ups table."""
+    try:
+        from modules import followups_core as fcore
+        tid = sc.tenant_id if sc.tenant_id is not None else current_tenant_id.get()
+        actor_id = current_salesperson_id.get()
+        if deleted:
+            fcore.upsert_source_followup(
+                session, tenant_id=tid, idempotency_key=f"scheduled_call:{sc.id}",
+                source_ref=f"scheduled_call:{sc.id}", deleted=True,
+            )
+            return
+        if not sc.scheduled_at:
+            return
+        lead_id = sc.entity_id if sc.entity_type == "lead" else None
+        client_id = sc.entity_id if sc.entity_type == "client" else None
+        contact_id = sc.entity_id if sc.entity_type == "contact" else None
+        assigned_id = _resolve_user_id_for_call(session, sc.assigned_to, tid)
+        fcore.upsert_source_followup(
+            session,
+            tenant_id=tid,
+            idempotency_key=f"scheduled_call:{sc.id}",
+            source="manual",
+            source_ref=f"scheduled_call:{sc.id}",
+            lead_id=lead_id,
+            client_id=client_id,
+            contact_id=contact_id,
+            contact_name=sc.entity_name if not (lead_id or client_id) else None,
+            contact_email=sc.entity_email,
+            title=sc.title or f"Scheduled call: {sc.entity_name or 'contact'}",
+            notes=(sc.notes or sc.pitch or "").strip() or None,
+            channel="call",
+            due_at=fcore.parse_due_datetime(sc.scheduled_at, tenant_id=tid),
+            assigned_to=assigned_id,
+            created_by=actor_id,
+        )
+    except Exception as exc:
+        print(f"[ScheduledCalls] follow-up sync failed for scheduled_call {sc.id}: {exc}")
+
+
 @app.post("/scheduled-calls")
 def create_scheduled_call(body: ScheduledCallCreateRequest, session: Session = Depends(get_session)):
     body.assigned_to = _call_assignee(session, body.assigned_to)
     _validate_call_entity(session, body.entity_type, body.entity_id)
     dt = None
     if body.scheduled_at:
-        try:
-            dt = datetime.fromisoformat(body.scheduled_at)
-        except Exception:
-            dt = None
+        from modules import followups_core as fcore
+        dt = fcore.parse_due_datetime(body.scheduled_at, tenant_id=current_tenant_id.get())
 
     sc = ScheduledCall(
         title=body.title,
@@ -7942,8 +8109,12 @@ def create_scheduled_call(body: ScheduledCallCreateRequest, session: Session = D
         pitch=body.pitch,
         notes=body.notes,
         assigned_to=body.assigned_to,
+        tenant_id=current_tenant_id.get(),
     )
     session.add(sc)
+    session.commit()
+    session.refresh(sc)
+    _sync_scheduled_call_followup(session, sc)
     session.commit()
     session.refresh(sc)
 
@@ -8002,6 +8173,9 @@ def update_scheduled_call(sc_id: int, body: Dict[str, Any], session: Session = D
     session.add(sc)
     session.commit()
     session.refresh(sc)
+    _sync_scheduled_call_followup(session, sc)
+    session.commit()
+    session.refresh(sc)
 
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -8020,6 +8194,7 @@ def delete_scheduled_call(sc_id: int, session: Session = Depends(get_session)):
     sc = session.get(ScheduledCall, sc_id)
     if not sc:
         raise HTTPException(status_code=404, detail="Scheduled call not found")
+    _sync_scheduled_call_followup(session, sc, deleted=True)
     session.delete(sc)
     session.commit()
     return {"ok": True}
@@ -13296,6 +13471,7 @@ class LeadCreateRequest(BaseModel):
     owner_id: Optional[int] = None
     status: str = "New"
     notes: Optional[str] = None
+    do_not_call: bool = False  # keeps automatic calling from dialing this lead
     # ── Optional Contact person creation ──
     add_contact: Optional[bool] = False
     contact_name: Optional[str] = None
@@ -13341,6 +13517,24 @@ class ContactCreateRequest(BaseModel):
 
 # ---- LEADS API ----
 
+# The auto-call columns are added by the migration in database.py/create_db_and_tables. Until that
+# runs on an existing install, defer them so a SELECT on leads still succeeds. Serialization below
+# only reads columns that were actually loaded, so a stale schema cannot turn into a 500.
+_AUTO_CALL_DEFERRED = (
+    defer(Lead.auto_call_status),
+    defer(Lead.auto_called_at),
+    defer(Lead.auto_call_reason),
+    defer(Lead.auto_call_attempts),
+    defer(Lead.do_not_call),
+)
+
+
+def _lead_row_dict(lead: Lead) -> dict:
+    """Only loaded columns — never touches columns a stale DB may not have."""
+    loaded = lead.__dict__
+    return {attr.key: loaded[attr.key]
+            for attr in inspect(lead).mapper.column_attrs if attr.key in loaded}
+
 
 @app.get("/leads")
 def get_leads(owner_id: Optional[int] = None, session: Session = Depends(get_session)):
@@ -13351,7 +13545,7 @@ def get_leads(owner_id: Optional[int] = None, session: Session = Depends(get_ses
     tenant_id = current_tenant_id.get()
     if tenant_id and tenant_id != 1:
         query = query.where(Lead.tenant_id == tenant_id)
-    leads = session.exec(query.order_by(Lead.created_at.desc())).all()
+    leads = session.exec(query.order_by(Lead.created_at.desc()).options(*_AUTO_CALL_DEFERRED)).all()
     owner_ids = {lead.owner_id for lead in leads if lead.owner_id}
     owners = {
         user.id: user.name
@@ -13378,7 +13572,7 @@ def get_leads(owner_id: Optional[int] = None, session: Session = Depends(get_ses
     return {
         "leads": [
             {
-                **lead.model_dump(),
+                **_lead_row_dict(lead),
                 "owner_name": owners.get(lead.owner_id),
                 "salesperson_name": owners.get(lead.owner_id),
                 "ai_status": ai_status_map.get(lead.id, "not_started"),
@@ -13696,11 +13890,29 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
             if current_count >= tenant.limit_clients:
                 raise HTTPException(
                     status_code=403, detail=f"Lead limit reached. Maximum allowed: {tenant.limit_clients}")
-    lead_dict = body.dict(exclude={
+    lead_data = body.dict(exclude={
         "add_contact", "contact_name", "contact_first_name", "contact_last_name",
         "contact_designation", "contact_email", "contact_phone", "contact_department"
     })
-    lead = Lead(**lead_dict)
+    raw_phone = (lead_data.get("phone") or "").strip()
+    if not raw_phone:
+        lead_data["phone"] = None
+    else:
+        if not re.fullmatch(r"[\d\s+\-().]+", raw_phone):
+            raise HTTPException(
+                status_code=422,
+                detail="Please enter a valid phone number (e.g. +919876543210)",
+            )
+        from modules import auto_calling as _ac, voice_agent as _va
+        normalized_phone = _ac._normalize_lead_phone(raw_phone, tenant_id) if tenant_id else _va.normalize_phone(raw_phone)
+        digit_count = len(re.sub(r"\D", "", normalized_phone))
+        if digit_count < 7 or digit_count > 15 or (normalized_phone.startswith("+") and not _va.is_e164(normalized_phone)):
+            raise HTTPException(
+                status_code=422,
+                detail="Please enter a valid phone number with country code (e.g. +919876543210)",
+            )
+        lead_data["phone"] = normalized_phone
+    lead = Lead(**lead_data)
     lead.tenant_id = current_tenant_id.get()
     if not lead.owner_id and lead.tenant_id:
         try:
@@ -13803,12 +14015,20 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
     except Exception as ne:
         print("[CreateLead] Notification dispatch error:", ne)
 
-    # ── WHATSAPP NOTIFICATION ──
+    # ── WHATSAPP NOTIFICATION (background thread so POST /leads returns immediately) ──
     try:
-        from modules.whatsapp import send_ai_polished_whatsapp_message
-        base_url = "https://crm-seo.allytechcourses.com"
-        send_ai_polished_whatsapp_message(
-            "New Lead Added", lead.dict(), f"{base_url}/leads/{lead.id}")
+        _wa_lead_dict = lead.dict()
+        _wa_lead_id = lead.id
+        def _send_wa_bg():
+            try:
+                from modules.whatsapp import send_ai_polished_whatsapp_message
+                base_url = "https://crm-seo.allytechcourses.com"
+                send_ai_polished_whatsapp_message(
+                    "New Lead Added", _wa_lead_dict, f"{base_url}/leads/{_wa_lead_id}")
+            except Exception as e:
+                print("WhatsApp Error:", e)
+        import threading
+        threading.Thread(target=_send_wa_bg, daemon=True).start()
     except Exception as e:
         print("WhatsApp Error:", e)
 
@@ -14107,12 +14327,12 @@ def get_leads_transfers_history(
 
 @app.get("/leads/{lead_id}")
 def get_lead(lead_id: int, session: Session = Depends(get_session)):
-    lead = session.get(Lead, lead_id)
+    lead = session.get(Lead, lead_id, options=_AUTO_CALL_DEFERRED)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
     from modules.lead_calls import latest_call_info
-    return {**lead.model_dump(), **latest_call_info(session, [lead_id]).get(lead_id, {})}
+    return {**_lead_row_dict(lead), **latest_call_info(session, [lead_id]).get(lead_id, {})}
 
 
 @app.get("/leads/{lead_id}/activities")
@@ -14921,20 +15141,53 @@ def delete_lead(lead_id: int, session: Session = Depends(get_session)):
         session.add(del_rec)
         session.flush()
 
-        # Delete related records to prevent ForeignKeyViolation
-        queries = [
-            "DELETE FROM sent_emails WHERE lead_id = :lead_id",
-            "DELETE FROM activity_logs WHERE lead_id = :lead_id",
-            "DELETE FROM contacts WHERE lead_id = :lead_id",
-            "DELETE FROM meetings WHERE lead_id = :lead_id",
-            "DELETE FROM quotes WHERE lead_id = :lead_id",
-            "DELETE FROM sales_orders WHERE lead_id = :lead_id",
-            "DELETE FROM cases WHERE lead_id = :lead_id",
-            "DELETE FROM client_research WHERE lead_id = :lead_id",
+        # Safely detach or remove related records referencing leads.id to prevent ForeignKeyViolation
+        # while preserving call recordings/transcripts, emails, contacts, quotes, and history.
+        existing_tables = set(inspect(session.get_bind()).get_table_names())
+        detach_refs = [
+            ("ai_calls", "lead_id"),
+            ("activity_logs", "lead_id"),
+            ("conversation_logs", "lead_id"),
+            ("sent_emails", "lead_id"),
+            ("contacts", "lead_id"),
+            ("meetings", "lead_id"),
+            ("quotes", "lead_id"),
+            ("sales_orders", "lead_id"),
+            ("cases", "lead_id"),
+            ("client_notes", "lead_id"),
+            ("proposals", "lead_id"),
+            ("tasks", "lead_id"),
+            ("projects", "leadId"),
+            ("students", "lead_id"),
+            ("lead_enquiries", "lead_id"),
+            ("temp_leads", "promoted_lead_id"),
+            ("radar_analyses", "lead_id"),
+            ("competitor_relationships", "source_lead_id"),
+            ("competitor_relationships", "discovered_lead_id"),
         ]
-        for q in queries:
-            session.execute(text(q + " AND tenant_id = :tenant_id"),
-                            {"lead_id": lead_id, "tenant_id": current_tenant_id.get()})
+        for tbl, col in detach_refs:
+            if tbl in existing_tables:
+                session.execute(
+                    text(f'UPDATE "{tbl}" SET "{col}" = NULL WHERE "{col}" = :lead_id'),
+                    {"lead_id": lead_id},
+                )
+
+        delete_children = [
+            "contact_lead_links",
+            "lead_notes",
+            "lead_demo_sessions",
+            "lead_follow_ups",
+            "lead_transfer_history",
+            "lead_walk_ins",
+            "lead_webinars",
+            "client_research",
+        ]
+        for tbl in delete_children:
+            if tbl in existing_tables:
+                session.execute(
+                    text(f'DELETE FROM "{tbl}" WHERE "lead_id" = :lead_id'),
+                    {"lead_id": lead_id},
+                )
 
         session.delete(lead)
         session.commit()
@@ -15718,6 +15971,9 @@ async def import_execute(
 
         df = df.fillna('')
         records = df.to_dict(orient='records')
+
+        # Bulk-created leads are skipped by auto-calling unless the tenant opts in.
+        auto_calling.mark_bulk_import(session)
 
         imported_count = 0
         skipped_count = 0
@@ -18509,9 +18765,17 @@ def simulate_lead_call(lead_id: int, req: Optional[SimulateCallRequest] = None, 
     industry = lead.industry or "Unknown Industry"
     notes = lead.notes or "No prior notes."
 
-    prompt = f"""You are an expert sales representative for "SERP Hawk" (an elite SEO and Digital Marketing Agency).
+    # Use the tenant that owns this simulated call (same tenant written to the AICall below).
+    from modules import tenant_voice
+    voice_ctx = tenant_voice.prompt_context(
+        tenant_voice.profile_for_call(tenant_id))
+    company = voice_ctx["company_name"]
+    about = voice_ctx["company_description"]
+    tone = voice_ctx["tone"]
+
+    prompt = f"""You are an expert sales representative for "{company}" ({about}).
 Your task is to write a highly tailored, direct sales script to be read over the phone to this specific lead. 
-DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a SERP Hawk sales rep.
+DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a {company} sales representative and use a {tone} tone.
 
 Lead Profile:
 Company Name: {client_name}
@@ -18528,7 +18792,7 @@ Recent Activity:
 Instructions:
 1. Write the exact word-for-word script that the sales person will read on the call.
 2. Directly reference their specific company name, their industry, and any past notes or activities.
-3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
+3. Pitch {company}'s services as the solution to their specific needs.
 4. Make it conversational, persuasive, and professional.
 5. Structure it logically but seamlessly.
 6. Output ONLY the spoken script as natural dialogue. Do NOT include markdown headings like **Introduction** or **Value Proposition**. It should read exactly like a transcript of someone speaking. Do not add any meta-commentary."""
@@ -18601,9 +18865,17 @@ def simulate_contact_call(contact_id: int, req: Optional[SimulateCallRequest] = 
     designation = contact.designation or "Unknown Title"
     notes = contact.notes or "No prior notes."
 
-    prompt = f"""You are an expert sales representative for "SERP Hawk" (an elite SEO and Digital Marketing Agency).
+    # Use the tenant that owns this simulated call (same tenant written to the AICall below).
+    from modules import tenant_voice
+    voice_ctx = tenant_voice.prompt_context(
+        tenant_voice.profile_for_call(tenant_id))
+    company = voice_ctx["company_name"]
+    about = voice_ctx["company_description"]
+    tone = voice_ctx["tone"]
+
+    prompt = f"""You are an expert sales representative for "{company}" ({about}).
 Your task is to write a highly tailored, direct sales script to be read over the phone to this specific contact. 
-DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a SERP Hawk sales rep.
+DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a {company} sales representative and use a {tone} tone.
 
 Contact Profile:
 Name: {client_name}
@@ -18618,7 +18890,7 @@ Notes from our CRM:
 Instructions:
 1. Write the exact word-for-word script that the sales person will read on the call.
 2. Directly reference their specific name, their role/title, and any past notes.
-3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
+3. Pitch {company}'s services as the solution to their specific needs.
 4. Make it conversational, persuasive, and professional.
 5. Structure it logically but seamlessly.
 6. Output ONLY the spoken script as natural dialogue. Do NOT include markdown headings like **Introduction** or **Value Proposition**. It should read exactly like a transcript of someone speaking. Do not add any meta-commentary."""
@@ -20332,7 +20604,7 @@ def _tenant_browser_table(session: Session, table_name: str):
     if table is None or "tenant_id" not in table.c or table_name in tenant_scope.GLOBAL_TABLES:
         raise HTTPException(status_code=403, detail="This table is not available in the company data viewer")
     module = {"leads": "leads", "client_profiles": "clients", "call_logs": "calls", "scheduled_calls": "calls",
-              "ai_calls": "voice_agent", "inbox_messages": "inbox", "sent_emails": "inbox"}.get(table_name)
+              "ai_calls": "calls", "inbox_messages": "inbox", "sent_emails": "inbox"}.get(table_name)
     if module and not features.is_enabled(tenant_id, module):
         raise HTTPException(status_code=403, detail="The table's module is not enabled", headers={"X-Module": module})
     columns = [c for c in table.c if not any(word in c.name.lower() for word in ("password", "token"))

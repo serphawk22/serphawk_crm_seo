@@ -4,7 +4,8 @@ Feature entitlements: which product modules a tenant (client) may use.
 Resolution for one feature: a ``tenant_features`` row wins; with no row the registry default applies. Every
 feature that existed before this table was introduced defaults to ON, so existing tenants keep exactly what
 they had until an admin switches something off. ``locked`` features cannot be switched off. Presets
-(modules/presets.py) write an explicit row for every feature when a client is onboarded.
+(modules/presets.py) write an explicit row for every feature when a client is onboarded. The retired
+``voice_agent`` entitlement is folded into ``calls`` on first read/write so legacy AI callers keep access.
 
 Enforcement
   * Backend: ``gate_for_path`` maps a request path to a feature (``path_prefixes``); the middleware in
@@ -58,8 +59,15 @@ _FEATURES: List[Feature] = [
     _f("task_sheet", "Task Sheet", "Work", path_prefixes=("/task-sheet",)),
     _f("reports", "Reports", "Work", path_prefixes=("/reports",)),
     _f("meetings", "Meetings", "Work", path_prefixes=("/meetings",)),     # /meetings/history is the longer prefix: its own module
-    _f("calls", "Calls", "Work", path_prefixes=("/calls", "/scheduled-calls"),
-       path_regexes=(r"^/(clients|leads|contacts)/\d+/simulate-call$",)),
+    _f("calls", "Calls", "Work",
+       path_prefixes=("/calls", "/scheduled-calls", "/voice-agent", "/calling-agent-logs"),
+       path_regexes=(r"^/(clients|leads|contacts)/\d+/simulate-call$",),
+       public_prefixes=("/voice-agent/twilio/",)),
+    # Sub-option of Calls: off for every existing client until an admin turns it on, and never
+    # effective while the parent Calls module is off (enforced in _resolve and at trigger time).
+    _f("auto_call_new_leads", "Automatic calling on new leads", "Work",
+       "Dial a new lead with the AI voice agent shortly after it is created. Only applies when Calls is on.",
+       default_on=False, parent_key="calls"),
     _f("teams", "Team Directory", "Teams"),
     _f("leaderboard", "Leaderboard", "Teams", path_prefixes=("/leaderboard",)),
     # Communication / AI agents
@@ -69,8 +77,6 @@ _FEATURES: List[Feature] = [
        path_prefixes=("/followups",), path_regexes=(r"^/leads/\d+/followup$",)),
     _f("email_agent", "Email Agent", "AI agents", "AI outreach and Excel email campaigns.",
        path_prefixes=("/email-campaigns",)),
-    _f("voice_agent", "AI Voice Caller", "AI agents", "Outbound AI phone calls.",
-       path_prefixes=("/voice-agent", "/calling-agent-logs"), public_prefixes=("/voice-agent/twilio/",)),
     # Sales operations
     _f("inventory", "Inventory & orders", "Sales operations", "Inventory, RFQs, purchase and sales orders.",
        path_prefixes=("/inventory", "/rfq", "/purchase-orders", "/sales-orders")),
@@ -150,11 +156,38 @@ def invalidate(tenant_id: Optional[int] = None) -> None:
         _cache.pop(int(tenant_id), None)
 
 
+def _promote_legacy_rows(session: Session, tenant_id: int, rows: Dict[str, TenantFeature]) -> bool:
+    """Fold the retired `voice_agent` entitlement into `calls` once, then drop the old row.
+
+    Clients that bought AI calling must keep it after the two modules are merged. A legacy
+    `voice_agent=true` therefore turns Calls on; `voice_agent=false` is simply retired because
+    there is no longer a separate AI Calling switch. The row itself is deleted so no tenant can
+    keep a second calling permission in the catalog or in `GET /me/features`.
+    """
+    legacy = rows.pop("voice_agent", None)
+    if legacy is None:
+        return False
+    if bool(legacy.enabled):
+        calls = rows.get("calls")
+        if calls is None:
+            calls = TenantFeature(tenant_id=tenant_id, feature_key="calls", enabled=True)
+            rows["calls"] = calls
+        elif not bool(calls.enabled):
+            calls.enabled = True
+        session.add(calls)
+    session.delete(legacy)
+    return True
+
+
 def _load_rows(tenant_id: int) -> Dict[str, bool]:
     with Session(database.engine) as session:
         rows = session.exec(select(TenantFeature).where(TenantFeature.tenant_id == tenant_id)
                             .execution_options(skip_tenant=True)).all()
-    return {r.feature_key: bool(r.enabled) for r in rows}
+        by_key = {r.feature_key: r for r in rows}
+        if _promote_legacy_rows(session, tenant_id, by_key):
+            session.commit()
+            invalidate(tenant_id)
+        return {key: bool(row.enabled) for key, row in by_key.items()}
 
 
 def effective_features(tenant_id: Optional[int], use_cache: bool = True) -> Dict[str, bool]:
@@ -179,11 +212,11 @@ def _resolve(rows: Dict[str, bool]) -> Dict[str, bool]:
     for key, parent in (("invoices", "billing"), ("cases", "support")):
         if key not in rows:
             result[key] = result[parent]
-    if result.get("institute") and "voice_agent" not in rows:
-        result["voice_agent"] = False  # admissions calling stays on hold until explicitly configured
     for key in result:
         parent = "dashboard_b2c" if key.startswith("dashboard_b2c_") else "command_center" if key.startswith("command_center_") else None
-        if parent:
+        if key in FEATURES and FEATURES[key].parent_key:
+            parent = FEATURES[key].parent_key
+        if parent and parent in result:
             result[key] = result[key] and result[parent]
     return result
 
@@ -236,7 +269,7 @@ def gates_for_path(path: str) -> List[str]:
     # Specialized handlers still need their parent CRM section enabled. Public
     # intake resolves its tenant and entitlement in the handler itself.
     if path not in {"/leads/intake", "/leads/webhook", "/api/leads/webhook"}:
-        for prefix, parent in (("/leads", "leads"), ("/clients", "clients"), ("/reports", "reports"), ("/calling-agent-logs", "calls")):
+        for prefix, parent in (("/leads", "leads"), ("/clients", "clients"), ("/reports", "reports")):
             if _matches(path, prefix) and parent not in gates:
                 gates.append(parent)
     return gates
@@ -249,7 +282,8 @@ def set_features(session: Session, tenant_id: int, changes: Dict[str, bool], *, 
         raise ValueError(f"Unknown feature(s): {', '.join(sorted(unknown))}")
     existing = {r.feature_key: r for r in session.exec(
         select(TenantFeature).where(TenantFeature.tenant_id == tenant_id).execution_options(skip_tenant=True)).all()}
-    previous = _resolve({key: row.enabled for key, row in existing.items()})
+    _promote_legacy_rows(session, tenant_id, existing)
+    previous = _resolve({key: bool(row.enabled) for key, row in existing.items()})
     for key in ("lead_source_analytics", "invoices", "cases"):
         if key not in existing and key not in changes:
             session.add(TenantFeature(tenant_id=tenant_id, feature_key=key, enabled=previous[key]))

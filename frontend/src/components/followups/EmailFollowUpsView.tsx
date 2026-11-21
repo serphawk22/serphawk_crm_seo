@@ -88,6 +88,17 @@ export default function EmailFollowUpsView() {
   }, [load, initialised]);
 
   useEffect(() => {
+    if (!initialised) return;
+    const sync = () => { if (document.visibilityState === 'visible') void load(); };
+    window.addEventListener('focus', sync);
+    document.addEventListener('visibilitychange', sync);
+    return () => {
+      window.removeEventListener('focus', sync);
+      document.removeEventListener('visibilitychange', sync);
+    };
+  }, [load, initialised]);
+
+  useEffect(() => {
     const t = setTimeout(() => setSearch(q.trim()), 350);
     return () => clearTimeout(t);
   }, [q]);

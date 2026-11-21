@@ -163,7 +163,8 @@ class Import(ImportBase):
         with Session(self.tgt) as s:
             rows = {r.feature_key: r.enabled for r in s.exec(select(TenantFeature).where(TenantFeature.tenant_id == tid).execution_options(skip_tenant=True)).all()}
         self.assertTrue(rows["finance_suite"])
-        self.assertFalse(rows["voice_agent"])
+        self.assertTrue(rows["calls"])
+        self.assertNotIn("voice_agent", rows)
         self.assertEqual(report.tables["leads"].copied, 2)
         self.assertEqual(report.tables["users"].copied, 2)
         self.assertEqual(report.tables["leads"].dangling.get("owner_id"), 1)
