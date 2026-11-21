@@ -26,7 +26,11 @@ const common = name => {
   if (name === '@/components/LocalizedText') return { __esModule: true, default: ({ text }) => text };
   if (name === '@/context/RoleContext') return { useRole: () => ({ role: 'Admin' }) };
   if (name === '@/context/LanguageContext') return { useLanguage: () => ({ t: key => key }) };
-  if (name === '@/context/TenantConfigContext') return { useTenantConfig: () => ({ hasFeature: () => true }) };
+  if (name === '@/context/TenantConfigContext') return { useTenantConfig: () => ({ hasFeature: () => true, features: {} }) };
+  if (name === '@/config') return { API_BASE_URL: '/api/backend' };
+  if (['./BookingLinkPicker', './OutreachResearch', './CopyButton'].includes(name)) {
+    return load(`src/components/email-agent/${name.slice(2)}.tsx`, common);
+  }
   if (name === '@/lib/researchContacts') return contacts;
   if (name === '@/lib/inboxApi') return { post: () => { posts++; throw Error('Unexpected mail request'); }, errorText: () => '' };
   if (name === '@/lib/followupsApi') return { campaignsApi: { list: () => { posts++; throw Error('Unexpected passive query'); } }, followupsApi: {}, wasCancelled: r => !!r.cancelled };
@@ -54,6 +58,7 @@ const broken = { contact: { email: 'Extracted Phone Numbers:' }, company_info: {
 const brokenHtml = renderToStaticMarkup(React.createElement(card.ResultCard, props(broken)));
 assert.ok(toInput(brokenHtml).includes('value=""'));
 assert.ok(brokenHtml.includes('No usable email was found.'));
+assert.ok(brokenHtml.includes('Calendar provider') && brokenHtml.includes('Insert booking link'));
 const recovered = { ...broken, company_info: { extracted_emails: ['Extracted Phone Numbers:', 'hello@site.test'] } };
 assert.ok(toInput(renderToStaticMarkup(React.createElement(card.ResultCard, props(recovered)))).includes('value="hello@site.test"'));
 
@@ -79,18 +84,20 @@ const hookReact = { ...React,
   },
 };
 const stateful = load('src/components/email-agent/ResultCard.tsx', name => name === 'react' ? hookReact : common(name));
-const findInput = node => {
+const findNode = (node, matches) => {
   if (!node || typeof node !== 'object') return undefined;
-  if (node.type === 'input' && node.props['aria-label'] === 'Recipient email') return node;
+  if (matches(node)) return node;
   const children = React.Children.toArray(node.props?.children);
-  for (const child of children) { const found = findInput(child); if (found) return found; }
+  for (const child of children) { const found = findNode(child, matches); if (found) return found; }
 };
-const renderCard = result => {
+const renderTree = result => {
   cursor = 0; effects = [];
   const tree = stateful.ResultCard(props(result));
   effects.forEach(effect => effect());
-  return findInput(tree);
+  return tree;
 };
+const renderCard = result => findNode(renderTree(result),
+  node => node.type === 'input' && node.props['aria-label'] === 'Recipient email');
 renderCard(broken);
 renderCard(recovered);
 assert.equal(renderCard(recovered).props.value, 'hello@site.test', 'New research fills the untouched To field');
@@ -98,4 +105,28 @@ renderCard(recovered).props.onChange({ target: { value: 'chosen@site.test' } });
 const updated = { ...recovered, contact: { email: 'different@site.test' } };
 renderCard(updated);
 assert.equal(renderCard(updated).props.value, 'chosen@site.test', 'Updated research must preserve the user-entered recipient');
-console.log('Research recipient parsing, rendered To field, manual edits and visible manual controls passed.');
+
+const bookingPicker = tree => findNode(tree, node => typeof node.props?.onInsert === 'function');
+const emailBody = tree => findNode(tree, node => node.type === 'textarea').props.value;
+const link = 'https://calendly.com/sales/discovery';
+bookingPicker(renderTree(updated)).props.onInsert(link);
+bookingPicker(renderTree(updated)).props.onInsert(link);
+assert.equal(emailBody(renderTree(updated)), `Book a meeting: ${link}`);
+
+hooks.length = 0;
+const picker = load('src/components/email-agent/BookingLinkPicker.tsx', name => name === 'react' ? hookReact : common(name));
+const inserted = [];
+const renderPicker = () => {
+  cursor = 0;
+  return picker.default({ onInsert: url => inserted.push(url) });
+};
+const enterLink = value => findNode(renderPicker(), node => node.type === 'input').props.onChange({ target: { value } });
+const insert = () => findNode(renderPicker(), node => node.type === 'button').props.onClick();
+enterLink('https://calendly.com.example.test/fake');
+insert();
+assert.equal(inserted.length, 0, 'A link must match the selected provider');
+assert.ok(findNode(renderPicker(), node => node.props?.role === 'alert'));
+enterLink(link);
+insert();
+assert.deepEqual(inserted, [link]);
+console.log('Research recipients, manual controls and booking links passed.');

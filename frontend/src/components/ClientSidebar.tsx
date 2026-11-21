@@ -16,6 +16,7 @@ import {
   Receipt,
   FileSignature,
   BarChart2,
+  BookOpen,
   ChevronRight,
   Sun,
   Moon,
@@ -39,6 +40,7 @@ const NAV_ITEMS = [
   { icon: Target, href: "/milestones", labelKey: "navigation.milestones" },
   { icon: Upload, href: "/my-files", labelKey: "navigation.my_files" },
   { icon: Bell, href: "/notifications", labelKey: "navigation.notifications" },
+  { icon: BookOpen, href: "/product-guide", labelKey: "navigation.productGuide" },
   { icon: Settings, href: "/setup", labelKey: "common.settings" },
 ];
 

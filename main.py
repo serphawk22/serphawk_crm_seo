@@ -794,6 +794,7 @@ def on_startup():
     from database import engine
     patch_openai()
     if engine.url.get_backend_name() == "postgresql" and os.path.exists(".migration_done") and os.getenv("RUN_STARTUP_MIGRATIONS") != "1":
+        sales_assist.ensure_postgres_schema(engine, rls_enabled=os.getenv("RLS_MODE", "off").lower() == "enforce")
         print(f"[startup] database: {engine.url.get_backend_name()} host={engine.url.host or 'local file'} name={engine.url.database} (schema migrations already applied)")
         return
     try:
@@ -1486,7 +1487,7 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
                         sess.add(cp_obj)
                     elif resolved_tenant_id:
                         cr.tenant_id = resolved_tenant_id
-                cr.email_agent_data = json.dumps(data, default=str)
+                cr.email_agent_data = preserve_outreach(cr.email_agent_data, data)
                 cr.company_overview = overview
                 cr.key_decision_makers = json.dumps(contacts_list, default=str)
                 # Store additional rich fields
@@ -1534,29 +1535,41 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
     t.start()
 
 
+from modules import sales_assist
+from modules.sales_research import build_research, json_object, preserve_outreach, website_host
+
+
 @app.post("/smart-research")
 async def smart_research(body: SmartResearchRequest, session: Session = Depends(get_session)):
     """
     Takes a company name (and optional URL) and uses local scraper and LLM to return
     analysis, extracted contacts, and generated emails.
     """
-    check_tenant_limit(session, "emails")
+    viewer = _require_roles(session, sales_assist.SALES_STAFF)
     from modules.scraper import research_and_map_company
     from modules.llm_engine import generate_email
     import json
 
     # Determine the URL
-    url = body.company_url
+    url = (body.company_url or "").strip()
     if not url:
         # Simple fallback if no URL provided
         formatted_name = body.company_name.replace(
             " ", "").replace(",", "").replace(".", "").lower()
         url = f"https://www.{formatted_name}.com"
+    if "://" not in url:
+        url = f"https://{url}"
+    domain = website_host(url)
+    if not domain or len(url) > 500:
+        raise HTTPException(status_code=422, detail="Enter a valid company website")
+    check_tenant_limit(session, "emails")
 
     try:
         # Run local research (which uses Firecrawl and OpenAI)
         result = await research_and_map_company(url)
         analysis = result.get("company_analysis", {})
+        if analysis.get("error"):
+            return {"_error_message": "Company research is unavailable. Try again later."}
         mapping = result.get("service_mapping", [])
 
         # Extract Contact Info
@@ -1659,6 +1672,7 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
             comp_facebook = scraped_fb
 
         data = {
+            "outreach_research": build_research(analysis, raw_text, url),
             "company_info": {
                 "company_name": analysis.get("company_name", body.company_name),
                 "summary": analysis.get("what_they_do", ""),
@@ -1694,18 +1708,15 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
         from database import Lead, ClientResearch
         from sqlmodel import select
 
-        # See if a lead already exists for this domain
-        existing_lead = None
-        if url:
-            domain = url.replace(
-                "https://", "").replace("http://", "").replace("www.", "").split('/')[0]
-            if domain:
-                existing_lead = session.exec(select(Lead).where(
-                    Lead.website.like(f"%{domain}%"))).first()
+        # Match the registered website exactly. A substring could overwrite an unrelated lead.
+        candidates = session.exec(select(Lead).where(Lead.website.ilike(f"%{domain}%")).order_by(Lead.id)).all()
+        existing_lead = next((record for record in candidates if website_host(record.website) == domain), None)
 
         if not existing_lead and email:
-            existing_lead = session.exec(
-                select(Lead).where(Lead.email == email)).first()
+            contacts_with_email = session.exec(select(Lead).where(Lead.email == email).order_by(Lead.id)).all()
+            existing_lead = next((record for record in contacts_with_email if not website_host(record.website)), None)
+            if existing_lead:
+                existing_lead.website = url
 
         lead_id = None
         if not existing_lead:
@@ -1718,6 +1729,8 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
                 phone=phone if phone else None,
                 source="Email Agent",
                 status="Generated",
+                owner_id=viewer.id,
+                created_by=viewer.id,
                 ai_analysis_results=data
             )
             session.add(new_lead)
@@ -1725,30 +1738,79 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
             session.refresh(new_lead)
             lead_id = new_lead.id
         else:
-            existing_lead.ai_analysis_results = data
+            existing_lead.ai_analysis_results = {**json_object(existing_lead.ai_analysis_results), **data}
             if email and not existing_lead.email:
                 existing_lead.email = email
             session.add(existing_lead)
             session.commit()
             lead_id = existing_lead.id
 
-        # We no longer save Email Agent JSON to ClientResearch.email_agent_data
-        # because that field is reserved for the massive Deep Research Markdown report.
-        # ------------------------------------------
+        return {**data, "lead_id": lead_id}
 
-        return data
-
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
         print(f"Smart Research Local Exception: {e}")
         return {
+            "_error_message": "Company research is unavailable. Try again later.",
             "company_info": {"company_name": body.company_name, "summary": f"Smart Research Exception: {e}"},
             "contact": {"email": ""},
             "draft": {"subject": "", "english_body": ""},
             "recommended_services": [],
             "extracted_services": []
         }
+
+@app.post("/leads/{lead_id}/save-research-to-client")
+def save_research_to_client(lead_id: int, session: Session = Depends(get_session)):
+    viewer = _require_roles(session, sales_assist.SALES_STAFF)
+    from modules.sales_access import effective_modules
+    enabled = effective_modules(viewer.tenant_id, _normalize_role(viewer.role))
+    if not (enabled.get("clients") and enabled.get("email_agent")):
+        raise HTTPException(status_code=403, detail="Clients and Email Agent must be enabled")
+    return {"client_id": sales_assist.save_client_research(session, viewer, lead_id)}
+
+
+@app.post("/{kind}/{record_id}/sales-next-steps")
+def sales_next_steps(
+    kind: Literal["leads", "clients"], record_id: int,
+    lang: Literal["en", "es"] = "en", session: Session = Depends(get_session),
+):
+    viewer = _require_roles(session, sales_assist.SALES_STAFF)
+    record = sales_assist.get_record(session, viewer.tenant_id, kind, record_id)
+    context = sales_assist.sales_context(session, viewer.tenant_id, kind, record)
+    session.rollback()
+    try:
+        return sales_assist.prepare_sales_plan(context, "Spanish" if lang == "es" else "English")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=503, detail="Sales suggestions are unavailable. Try again later.")
+
+
+@app.put("/{kind}/{record_id}/sales-next-steps/draft")
+def save_sales_plan_draft(
+    kind: Literal["leads", "clients"], record_id: int, body: sales_assist.SalesDraft,
+    session: Session = Depends(get_session),
+):
+    viewer = _require_roles(session, sales_assist.SALES_STAFF)
+    return {"draft_id": sales_assist.save_sales_draft(session, viewer, kind, record_id, body)}
+
+
+@app.get("/{kind}/{record_id}/sales-next-steps/draft")
+def get_sales_plan_drafts(
+    kind: Literal["leads", "clients"], record_id: int, session: Session = Depends(get_session),
+):
+    viewer = _require_roles(session, sales_assist.SALES_STAFF)
+    sales_assist.get_record(session, viewer.tenant_id, kind, record_id)
+    query = sales_assist.draft_query(viewer, kind, record_id)
+    drafts = session.exec(query.order_by(sales_assist.SalesPlanDraft.id.desc()).limit(10)).all()
+    return {"drafts": [
+        {"id": draft.id, "to_email": draft.to_email, "subject": draft.subject, "body": draft.body}
+        for draft in drafts
+    ]}
+
 
 # --- Send Manual: create client + record email + activity ---
 
@@ -5085,7 +5147,7 @@ async def _auto_research_client_bg(client_id: int, website: str):
                 "company_socials": data.get("company_socials", {}),
                 "people": data.get("people", [])
             }
-            research.email_agent_data = json.dumps(ai_data)
+            research.email_agent_data = preserve_outreach(research.email_agent_data, ai_data)
 
             # Also store the people array natively into key_decision_makers for legacy/direct display
             if data.get("people"):
@@ -5811,7 +5873,7 @@ def add_client_followup(client_id: int, body: ClientFollowUpRequest, session: Se
             )
             session.add(client_research)
         else:
-            client_research.email_agent_data = body.email_agent_data
+            client_research.email_agent_data = preserve_outreach(client_research.email_agent_data, body.email_agent_data)
             session.add(client_research)
         session.commit()
 
@@ -6083,9 +6145,8 @@ def add_conversation_reply(client_id: int, conv_id: int, body: ConversationReply
 
 @app.get("/clients/{client_id}/research")
 def get_client_research(client_id: int, session: Session = Depends(get_session)):
-    cp = session.get(ClientProfile, client_id)
-    if not cp:
-        return {"research": None}
+    viewer = _require_roles(session, sales_assist.SALES_STAFF)
+    cp = sales_assist.get_record(session, viewer.tenant_id, "clients", client_id)
     research = session.exec(select(ClientResearch).where(
         ClientResearch.client_id == client_id).execution_options(skip_tenant=True)).first()
     if not research:
@@ -6121,9 +6182,8 @@ def trigger_full_analysis(client_id: int, session: Session = Depends(get_session
 @app.get("/clients/{client_id}/full-analysis")
 def get_full_analysis(client_id: int, session: Session = Depends(get_session)):
     import json as _j
-    cp = session.get(ClientProfile, client_id)
-    if not cp:
-        raise HTTPException(status_code=404, detail="Client not found")
+    viewer = _require_roles(session, sales_assist.SALES_STAFF)
+    cp = sales_assist.get_record(session, viewer.tenant_id, "clients", client_id)
     cr = session.exec(select(ClientResearch).where(
         ClientResearch.client_id == client_id).execution_options(skip_tenant=True)).first()
     if not cr or not cr.email_agent_data:
@@ -6154,11 +6214,15 @@ def get_full_analysis(client_id: int, session: Session = Depends(get_session)):
 
 @app.put("/clients/{client_id}/research")
 def upsert_client_research(client_id: int, body: ClientResearchUpdateRequest, session: Session = Depends(get_session)):
+    viewer = _require_roles(session, sales_assist.SALES_STAFF)
+    sales_assist.get_record(session, viewer.tenant_id, "clients", client_id, lock=True)
     research = session.exec(select(ClientResearch).where(
-        ClientResearch.client_id == client_id)).first()
+        ClientResearch.client_id == client_id).with_for_update()).first()
     if not research:
         research = ClientResearch(client_id=client_id)
     for field, val in body.model_dump(exclude_unset=True).items():
+        if field == "email_agent_data":
+            val = preserve_outreach(research.email_agent_data, val)
         setattr(research, field, val)
     research.updated_at = datetime.now(timezone.utc)
     session.add(research)
@@ -6311,7 +6375,7 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
                         session.flush()  # get the id without committing
                     research.company_overview = osint_data.get(
                         "company_overview", "")
-                    research.email_agent_data = _json.dumps(osint_data)
+                    research.email_agent_data = preserve_outreach(research.email_agent_data, osint_data)
                     session.commit()
                     print(
                         f"[DraftGen] Deep investigation complete for client {client_id}")

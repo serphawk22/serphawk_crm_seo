@@ -820,6 +820,21 @@ class SentEmail(SQLModel, table=True):
     reply_body: Optional[str] = Field(default=None, sa_column=Column(Text))
 
 
+class SalesPlanDraft(SQLModel, table=True):
+    """An unsent sales plan draft that belongs to the salesperson who saved it."""
+    __tablename__ = "sales_plan_drafts"
+    __table_args__ = (Index("ix_sales_plan_drafts_record", "tenant_id", "kind", "record_id", "author_id"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenants.id")
+    kind: str = Field(max_length=10)
+    record_id: int
+    author_id: int
+    to_email: str = Field(max_length=255)
+    subject: str = Field(max_length=500)
+    body: str = Field(sa_column=Column(Text))
+
+
 class EmailReply(SQLModel, table=True):
     """
     One row per inbound reply message, so a thread with several back-and-forth

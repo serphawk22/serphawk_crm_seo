@@ -68,7 +68,7 @@ _FEATURES: List[Feature] = [
     _f("followups", "Follow-ups", "Communication", "Follow-up scheduling, reminders and auto-send.",
        path_prefixes=("/followups",), path_regexes=(r"^/leads/\d+/followup$",)),
     _f("email_agent", "Email Agent", "AI agents", "AI outreach and Excel email campaigns.",
-       path_prefixes=("/email-campaigns",)),
+       path_prefixes=("/email-campaigns",), path_regexes=(r"^/smart-research$",)),
     _f("voice_agent", "AI Voice Caller", "AI agents", "Outbound AI phone calls.",
        path_prefixes=("/voice-agent", "/calling-agent-logs"), public_prefixes=("/voice-agent/twilio/",)),
     # Sales operations

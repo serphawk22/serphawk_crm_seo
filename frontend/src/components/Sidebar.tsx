@@ -182,7 +182,7 @@ const defaultSidebarSections: SidebarSection[] = [
     id: "section-ai-agents",
     heading: "AI AGENTS",
     items: [
-      { id: "item-email-agent", name: "Email Agent", icon: "Mail", href: "/email-agent", roles: ["Admin", "Demo"] },
+      { id: "item-email-agent", name: "Email Agent", icon: "Mail", href: "/email-agent", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
       { id: "item-voice-agent", name: "AI Voice Caller", icon: "PhoneCall", href: "/voice-agent", roles: ["Admin", "SalesManager", "Employee", "Demo"] },
     ],
   },
@@ -203,6 +203,7 @@ const defaultSidebarSections: SidebarSection[] = [
     id: "section-support",
     heading: "SUPPORT",
     items: [
+      { id: "item-product-guide", name: "Product Overview", icon: "BookOpen", href: "/product-guide", roles: ["Admin", "SalesManager", "Sales", "Employee", "Demo", "Intern", "Admissions"] },
       { id: "item-support-sh", name: "Support @SH", icon: "HeadphonesIcon", href: "/support/helpdesk", roles: ["Admin", "SalesManager", "Sales", "Employee", "ProjectMember", "Demo"] },
       { id: "item-cases", name: "Cases", icon: "HeadphonesIcon", href: "/support/cases", roles: ["Admin", "SalesManager", "Employee", "ProjectMember", "Demo"] },
       { id: "item-solutions", name: "Solutions", icon: "BookOpen", href: "/support/solutions", roles: ["Admin", "SalesManager", "Demo"] },
