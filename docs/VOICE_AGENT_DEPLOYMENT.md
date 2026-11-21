@@ -1,5 +1,9 @@
 # The AI voice agent in production
 
+AI voice calling is part of the unified **Calls** module in the CRM UI. The internal service and
+`/voice-agent` API paths keep their names for compatibility; the old separate AI Voice Caller
+menu, Superadmin toggle and `voice_agent` permission no longer exist.
+
 The voice agent dials through Twilio and answers the prospect live. Twilio fetches the TwiML of
 every call from a **public HTTPS URL** that this backend owns, so the single most important
 setting of the whole feature is *which URL Twilio is told to use*.

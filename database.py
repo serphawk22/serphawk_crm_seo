@@ -1449,6 +1449,13 @@ class Lead(SQLModel, table=True):
     next_follow_up_at: Optional[datetime] = Field(default=None, index=True)
     follow_up_reason: Optional[str] = Field(default=None, sa_column=Column(Text))
     last_contact_at: Optional[datetime] = Field(default=None)
+    # Auto-calling state. `auto_call_status` is also the idempotency guard: only a lead with no
+    # status is ever claimed for an automatic call; every later attempt writes its outcome here.
+    auto_call_status: Optional[str] = Field(default=None, max_length=30, index=True)
+    auto_called_at: Optional[datetime] = Field(default=None, index=True)
+    auto_call_reason: Optional[str] = Field(default=None, sa_column=Column(Text))
+    auto_call_attempts: int = Field(default=0)
+    do_not_call: bool = Field(default=False, sa_column_kwargs={"server_default": text("FALSE")})
     course_interest_id: Optional[int] = Field(default=None, index=True)  # courses.id (institute add-on)
     gpa: Optional[float] = Field(default=None)
     education_level: Optional[str] = Field(default=None, max_length=120)
@@ -1956,6 +1963,15 @@ def create_db_and_tables():
         "ALTER TABLE ai_calls ADD COLUMN language VARCHAR(20) DEFAULT 'en'",
         # AI voice agent: speaking speed (nullable) so replies use the pitch's speed
         "ALTER TABLE ai_calls ADD COLUMN speed FLOAT",
+        # Auto-call new leads. Kept here as well as in migrations/2026_11_20_auto_call_new_leads.sql
+        # because the Lead ORM model now reads these columns on every leads query.
+        "ALTER TABLE leads ADD COLUMN auto_call_status VARCHAR(30)",
+        "ALTER TABLE leads ADD COLUMN auto_called_at TIMESTAMP",
+        "ALTER TABLE leads ADD COLUMN auto_call_reason TEXT",
+        "ALTER TABLE leads ADD COLUMN auto_call_attempts INTEGER DEFAULT 0",
+        "ALTER TABLE leads ADD COLUMN do_not_call BOOLEAN DEFAULT FALSE",
+        "CREATE INDEX IF NOT EXISTS ix_leads_auto_call_status ON leads (auto_call_status)",
+        "CREATE INDEX IF NOT EXISTS ix_leads_auto_called_at ON leads (auto_called_at)",
         # Tenant ownership for child tables that had none
         "ALTER TABLE inventory_suppliers ADD COLUMN tenant_id INTEGER REFERENCES tenants(id)",
         "ALTER TABLE rfq_responses ADD COLUMN tenant_id INTEGER REFERENCES tenants(id)",

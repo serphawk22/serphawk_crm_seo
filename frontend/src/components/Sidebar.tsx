@@ -64,7 +64,7 @@ const ITEM_FEATURE: Record<string, string> = {
   "item-leads": "leads", "item-temp-leads": "leads", "item-contacts": "contacts", "item-clients": "clients",
   "item-projects": "projects", "item-task-sheet": "task_sheet", "item-reports": "reports",
   "item-meetings": "meetings", "item-calls": "calls", "item-teams": "teams", "item-leaderboard": "leaderboard",
-  "item-email-agent": "email_agent", "item-voice-agent": "voice_agent",
+  "item-email-agent": "email_agent",
   "item-inventory": "inventory", "item-orders": "inventory", "item-products": "products",
   "item-billing": "billing", "item-invoices": "invoices", "item-proposals": "proposals", "item-marketplace": "marketplace",
   "item-cases": "cases", "item-solutions": "support", "item-support-sh": "support_sh",
@@ -191,7 +191,6 @@ const defaultSidebarSections: SidebarSection[] = [
     heading: "AI AGENTS",
     items: [
       { id: "item-email-agent", name: "Email Agent", icon: "Mail", href: "/email-agent", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
-      { id: "item-voice-agent", name: "AI Voice Caller", icon: "PhoneCall", href: "/voice-agent", roles: ["Admin", "SalesManager", "Employee", "Demo"] },
     ],
   },
   {

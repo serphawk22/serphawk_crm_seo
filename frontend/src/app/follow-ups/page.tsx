@@ -2,12 +2,13 @@
 import LocalizedText from "@/components/LocalizedText";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, X, Clock, CheckCircle2, AlertTriangle, CalendarClock, Search, Loader2, Mail, Phone, Video,
   MessageCircle, Bell, BellOff, Pencil, Trash2, Sparkles, Send, RotateCcw, Hourglass, User, Building2,
-  RefreshCw, ChevronRight, Flag, LayoutGrid, Table, Check, ExternalLink, Calendar, ChevronDown, UserCheck, Presentation, Lock, CalendarDays, ChevronLeft,
+  RefreshCw, ChevronRight, Flag, LayoutGrid, Table, Check, ExternalLink, Calendar, ChevronDown, UserCheck, Presentation, Lock, CalendarDays, ChevronLeft, Bot,
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
@@ -47,6 +48,10 @@ interface FollowUp {
   owner_name?: string | null;
   last_email_at?: string | null;
   phone?: string | null;
+  source?: string | null;
+  ai_detected?: boolean;
+  ai_reason?: string | null;
+  conversation_id?: number | null;
 }
 
 interface Employee {
@@ -193,13 +198,13 @@ function Sheet({ open, onClose, title, children, footer }: { open: boolean; onCl
 function RemindersBoard({ revision = 0 }: { revision?: number }) {
   const { role, user } = useRole();
   const viewerTz = useMemo(() => detectTimeZone(), []);
-  const canSeeAll = role === "Admin" || role === "SuperAdmin";
+  const canSeeAll = role === "Admin" || role === "SuperAdmin" || role === "Demo";
 
   const [items, setItems] = useState<FollowUp[]>([]);
   const [counts, setCounts] = useState<Record<Bucket, number>>({ overdue: 0, pending: 0, upcoming: 0, completed: 0 });
   const [bucket, setBucket] = useState<Bucket>("pending");
   const [autoPicked, setAutoPicked] = useState(false);
-  const [scope, setScope] = useState<"mine" | "all">("mine");
+  const [scope, setScope] = useState<"mine" | "all">("all");
   const [search, setSearch] = useState("");
   const [channelFilter, setChannelFilter] = useState<string>("All");
   const [priorityFilter, setPriorityFilter] = useState<string>("All");
@@ -371,6 +376,16 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
 
   useEffect(() => { const controller = new AbortController(); void load(false, controller.signal); return () => controller.abort(); }, [load, revision]);
 
+  useEffect(() => {
+    const sync = () => { if (document.visibilityState === "visible") void load(true); };
+    window.addEventListener("focus", sync);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      window.removeEventListener("focus", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [load]);
+
   // first load: land on the most urgent non-empty tab
   useEffect(() => {
     if (autoPicked || loading) return;
@@ -414,11 +429,10 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
     }
   }, [loadEntities, viewerTz]);
 
-  // Filtered visible items
-  const visible = useMemo(() => {
+  // Items matching search + channel + priority across all buckets
+  const matchedAllBuckets = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter(i => {
-      if (i.bucket !== bucket) return false;
       if (channelFilter !== "All" && i.channel !== channelFilter) return false;
       if (priorityFilter !== "All" && i.priority !== priorityFilter) return false;
       if (q) {
@@ -426,11 +440,37 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
         const matchesEntity = (i.entity_name || "").toLowerCase().includes(q);
         const matchesNotes = (i.notes || "").toLowerCase().includes(q);
         const matchesOwner = (i.owner_name || "").toLowerCase().includes(q);
-        if (!matchesTitle && !matchesEntity && !matchesNotes && !matchesOwner) return false;
+        const matchesPhone = (i.phone || "").toLowerCase().includes(q);
+        if (!matchesTitle && !matchesEntity && !matchesNotes && !matchesOwner && !matchesPhone) return false;
       }
       return true;
     });
-  }, [items, bucket, search, channelFilter, priorityFilter]);
+  }, [items, search, channelFilter, priorityFilter]);
+
+  // Bucket counts reflecting active channel/priority/search filters
+  const displayCounts = useMemo<Record<Bucket, number>>(() => {
+    const hasFilter = channelFilter !== "All" || priorityFilter !== "All" || search.trim().length > 0;
+    if (!hasFilter) return counts;
+    const c: Record<Bucket, number> = { overdue: 0, pending: 0, upcoming: 0, completed: 0 };
+    for (const i of matchedAllBuckets) {
+      if (i.bucket in c) c[i.bucket] += 1;
+    }
+    return c;
+  }, [counts, matchedAllBuckets, channelFilter, priorityFilter, search]);
+
+  // When a channel/priority filter is picked and the current bucket has 0 matches, jump to the first bucket that has matches.
+  useEffect(() => {
+    if (loading) return;
+    if (channelFilter === "All" && priorityFilter === "All" && !search.trim()) return;
+    if (displayCounts[bucket] > 0) return;
+    const next = (["pending", "upcoming", "overdue", "completed"] as Bucket[]).find(b => displayCounts[b] > 0);
+    if (next) setBucket(next);
+  }, [channelFilter, priorityFilter, search, displayCounts, bucket, loading]);
+
+  // Filtered visible items for the active bucket
+  const visible = useMemo(() => {
+    return matchedAllBuckets.filter(i => i.bucket === bucket);
+  }, [matchedAllBuckets, bucket]);
 
   // When user selects a related Lead / Client in the creation form,
   // automatically detect that Lead's assigned salesperson!
@@ -919,7 +959,7 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
             >
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">{t.label}</p>
-                <p className={`text-base sm:text-lg font-bold leading-tight mt-0.5 ${t.tone}`}>{loading ? "–" : counts[t.key]}</p>
+                <p className={`text-base sm:text-lg font-bold leading-tight mt-0.5 ${t.tone}`}>{loading ? "–" : displayCounts[t.key]}</p>
                 <p className="text-[10px] text-slate-400 dark:text-zinc-500 leading-tight truncate mt-0.5">{t.hint}</p>
               </div>
               <div className={`p-1.5 rounded-lg bg-slate-50 dark:bg-white/5 ${t.tone}`}>
@@ -1506,6 +1546,11 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
                           <ChIcon className="w-3 h-3 text-amber-500" />
                           {f.channel}
                         </span>
+                        {(f.ai_detected || f.source === "ai_auto") && (
+                          <span className="text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-md border border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-300 flex items-center gap-1">
+                            <Bot className="w-3 h-3" /> AI Call
+                          </span>
+                        )}
                         {f.reminder_minutes > 0 && f.status !== "Completed" ? (
                           <span className="text-[11px] text-slate-400 flex items-center gap-1 px-1.5 py-0.5">
                             <Bell className="w-3 h-3 text-amber-500" />
@@ -1518,15 +1563,30 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
                       <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-zinc-800/80 space-y-1.5">
                         {f.entity_name && (
                           <div className="flex items-center justify-between gap-2 text-xs">
-                            <span className="text-slate-600 dark:text-zinc-300 flex items-center gap-1.5 font-bold truncate">
-                              {f.entity_type === "contact" ? (
-                                <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              ) : (
-                                <Building2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                              )}
-                              <span className="truncate">{f.entity_name}</span>
-                              <span className="text-slate-400 font-normal capitalize">({f.entity_type})</span>
-                            </span>
+                            {f.lead_id || f.client_id ? (
+                              <Link
+                                href={f.client_id ? `/admin/clients/${f.client_id}?tab=followups` : `/leads/${f.lead_id}?tab=followups`}
+                                className="text-slate-600 dark:text-zinc-300 hover:text-amber-600 dark:hover:text-amber-400 flex items-center gap-1.5 font-bold truncate transition-colors"
+                              >
+                                {f.entity_type === "contact" ? (
+                                  <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                ) : (
+                                  <Building2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                )}
+                                <span className="truncate">{f.entity_name}</span>
+                                <span className="text-slate-400 font-normal capitalize">({f.entity_type})</span>
+                              </Link>
+                            ) : (
+                              <span className="text-slate-600 dark:text-zinc-300 flex items-center gap-1.5 font-bold truncate">
+                                {f.entity_type === "contact" ? (
+                                  <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                ) : (
+                                  <Building2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                )}
+                                <span className="truncate">{f.entity_name}</span>
+                                <span className="text-slate-400 font-normal capitalize">({f.entity_type})</span>
+                              </span>
+                            )}
 
                             {/* Direct Communication Quick Buttons */}
                             <div className="flex items-center gap-1 shrink-0">
@@ -1539,6 +1599,16 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
                                 </button>
                               )}
                             </div>
+                          </div>
+                        )}
+
+                        {/* Phone Number */}
+                        {f.phone && (
+                          <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-zinc-300">
+                            <Phone className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                            <a href={`tel:${f.phone}`} className="font-semibold hover:text-amber-600 dark:hover:text-amber-400 transition-colors">
+                              {f.phone}
+                            </a>
                           </div>
                         )}
 
@@ -1721,12 +1791,28 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
                       {/* Entity & Rep */}
                       <td className="py-3 px-4">
                         {f.entity_name ? (
-                          <div className="font-semibold text-slate-700 dark:text-zinc-200 truncate">
-                            {f.entity_name}
-                            <span className="text-[10px] text-slate-400 ml-1 font-normal capitalize">({f.entity_type})</span>
-                          </div>
+                          f.lead_id || f.client_id ? (
+                            <Link
+                              href={f.client_id ? `/admin/clients/${f.client_id}?tab=followups` : `/leads/${f.lead_id}?tab=followups`}
+                              className="font-semibold text-slate-700 dark:text-zinc-200 hover:text-amber-600 dark:hover:text-amber-400 truncate block transition-colors"
+                            >
+                              {f.entity_name}
+                              <span className="text-[10px] text-slate-400 ml-1 font-normal capitalize">({f.entity_type})</span>
+                            </Link>
+                          ) : (
+                            <div className="font-semibold text-slate-700 dark:text-zinc-200 truncate">
+                              {f.entity_name}
+                              <span className="text-[10px] text-slate-400 ml-1 font-normal capitalize">({f.entity_type})</span>
+                            </div>
+                          )
                         ) : (
                           <span className="text-slate-400 italic">—</span>
+                        )}
+                        {f.phone && (
+                          <div className="text-[11px] text-sky-600 dark:text-sky-400 font-semibold flex items-center gap-1 mt-0.5">
+                            <Phone className="w-3 h-3 shrink-0" />
+                            <a href={`tel:${f.phone}`} className="hover:underline">{f.phone}</a>
+                          </div>
                         )}
                         {f.owner_name && (
                           <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 mt-0.5">

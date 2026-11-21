@@ -46,6 +46,13 @@ const TEXT_FIELDS: { key: string; label: string; placeholder?: string }[] = [
   { key: "default_dial_code", label: "Default phone code", placeholder: "+91" },
 ];
 const SELECT_KEYS = ["locale", "country", "industry"];
+const TEXT_FIELDS_VOICE: { key: string; label: string; placeholder?: string }[] = [
+  { key: "voice_agent_name", label: "AI caller name", placeholder: "e.g. Sarah from Acme" },
+  { key: "voice_agent_offer", label: "What the caller offers", placeholder: "e.g. local SEO and lead generation for dentists" },
+  { key: "voice_agent_tone", label: "Caller tone", placeholder: "warm, professional and friendly" },
+];
+const VOICE_KEYS = [...TEXT_FIELDS_VOICE.map((f) => f.key), "voice_agent_voice", "voice_agent_accent"];
+const BOOL_SETTING_KEYS = ["auto_call_bulk_imports"];
 
 function Switch({ checked, onChange, disabled, label }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; label: string }) {
   return (
@@ -80,7 +87,8 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
       const c: Config = await call(`/superadmin/tenants/${tenantId}/config`);
       setCfg(c);
       setDraftFeatures(c.features);
-      setDraftSettings(Object.fromEntries([...TEXT_FIELDS.map((f) => f.key), ...SELECT_KEYS, "primary_color"].map((k) => [k, c.settings[k] ?? ""])));
+      const settingKeys = [...TEXT_FIELDS.map((f) => f.key), ...TEXT_FIELDS_VOICE.map((f) => f.key), ...SELECT_KEYS, ...VOICE_KEYS, ...BOOL_SETTING_KEYS, "primary_color"];
+      setDraftSettings(Object.fromEntries(settingKeys.map((k) => [k, c.settings[k] == null ? "" : String(c.settings[k])])));
       call(`/superadmin/tenants/${tenantId}/demos`).then((d) => setDemos(d.demos || [])).catch(() => setDemos([]));
     } catch (e: any) {
       error("Could not load this client", e.message);
@@ -101,7 +109,7 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
   }, [id, load]);
 
   const featuresDirty = !!cfg && JSON.stringify(draftFeatures) !== JSON.stringify(cfg.features);
-  const settingsDirty = !!cfg && Object.entries(draftSettings).some(([k, v]) => (v || "") !== (cfg.settings[k] ?? ""));
+  const settingsDirty = !!cfg && Object.entries(draftSettings).some(([k, v]) => String(v || "") !== String(cfg.settings[k] ?? ""));
   const on = countModules(catalog, draftFeatures);
   const total = countModules(catalog);
 
@@ -153,7 +161,9 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
   const applyPreset = () => applyPresetDirect(presetChoice);
 
   const saveSettings = () => run("settings", async () => {
-    const settings = Object.fromEntries(Object.entries(draftSettings).map(([k, v]) => [k, (v || "").trim() || null]));
+    const settings = Object.fromEntries(Object.entries(draftSettings).map(([k, v]) => [
+      k, BOOL_SETTING_KEYS.includes(k) ? v === "true" : (v || "").trim() || null,
+    ]));
     const c: Config = await call(`/superadmin/tenants/${id}/settings`, { method: "PUT", body: JSON.stringify({ settings }) });
     setCfg(c);
     success("Branding saved", `${name}'s documents, emails and menu use the new details.`);
@@ -260,7 +270,7 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-slate-600 dark:text-zinc-400">{settingsDirty ? <span className="font-medium text-amber-600">{t("Unsaved changes")}</span> : "The client's own admin can also edit most of this."}</p>
         <div className="flex gap-2">
-          {settingsDirty && cfg && <button className={ghostBtn} onClick={() => setDraftSettings(Object.fromEntries(Object.keys(draftSettings).map((k) => [k, cfg.settings[k] ?? ""])))}><RotateCcw className="w-4 h-4" /> {t("Discard")}</button>}
+          {settingsDirty && cfg && <button className={ghostBtn} onClick={() => setDraftSettings(Object.fromEntries(Object.keys(draftSettings).map((k) => [k, cfg.settings[k] == null ? "" : String(cfg.settings[k])])))}><RotateCcw className="w-4 h-4" /> {t("Discard")}</button>}
           <button className={primaryBtn} onClick={saveSettings} disabled={!settingsDirty || busy === "settings"}>
             {busy === "settings" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {t("Save branding")}{" "}</button>
         </div>
@@ -565,11 +575,15 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
                         <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900 dark:text-zinc-100">
                           {f.label}
                           {f.locked && <Badge tone="slate">{t("Always on")}</Badge>}
+                          {(f.parent_key || dashboardParent(f.key)) && <Badge tone="slate">{t("Sub-option")}</Badge>}
                           {!f.gated_on_server && !f.locked && !dashboardParent(f.key) && <span className="text-[11px] font-medium text-slate-400 dark:text-zinc-500" title={t("Switching this off hides it from the menu. The API is not blocked for this module.")}>{t("menu only")}</span>}
                         </p>
                         {f.description && <p className="mt-0.5 line-clamp-2 text-xs text-slate-500 dark:text-zinc-400">{f.description}</p>}
                       </div>
-                      <Switch label={t(f.label)} checked={!!draftFeatures[f.key]} disabled={f.locked || (!!dashboardParent(f.key) && !draftFeatures[dashboardParent(f.key)!])} onChange={(v) => setDraftFeatures((d) => ({ ...d, [f.key]: v }))} />
+                      {(() => {
+                        const parent = f.parent_key || dashboardParent(f.key);
+                        return <Switch label={t(f.label)} checked={!!draftFeatures[f.key]} disabled={f.locked || (!!parent && !draftFeatures[parent])} onChange={(v) => setDraftFeatures((d) => ({ ...d, [f.key]: v }))} />;
+                      })()}
                     </li>
                   ))}
                 </ul>
@@ -718,6 +732,42 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
                 <option value="">{t("Not set")}</option>
                 {regions.industries.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
               </select>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50 space-y-3">
+            <div>
+              <p className="font-semibold text-slate-900 dark:text-white">{t("AI voice caller")}</p>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">{t("Used by Calls and by automatic calling on new leads. The caller always represents this client, never the platform.")}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {TEXT_FIELDS_VOICE.map((f) => (
+                <div key={f.key} className={f.key === "voice_agent_offer" ? "sm:col-span-2" : ""}>
+                  <label className={labelCls}>{t(f.label)}</label>
+                  <input className={inputCls} placeholder={f.placeholder} value={draftSettings[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />
+                </div>
+              ))}
+              <div>
+                <label className={labelCls}>{t("Default voice")}</label>
+                <select className={inputCls} value={draftSettings.voice_agent_voice ?? ""} onChange={(e) => set("voice_agent_voice", e.target.value)}>
+                  <option value="">{t("Default (Nova)")}</option>
+                  {["alloy", "echo", "fable", "onyx", "nova", "shimmer"].map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>{t("Default accent")}</label>
+                <select className={inputCls} value={draftSettings.voice_agent_accent ?? ""} onChange={(e) => set("voice_agent_accent", e.target.value)}>
+                  <option value="">{t("Default (American)")}</option>
+                  {["american", "british", "australian", "indian", "canadian", "irish", "south_african", "mexican", "spain", "us_latino", "argentine", "colombian"].map((a) => <option key={a} value={a}>{a.replace(/_/g, " ")}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-3 dark:border-zinc-800">
+              <div>
+                <p className="text-sm font-medium text-slate-800 dark:text-zinc-100">{t("Auto-call bulk imports")}</p>
+                <p className="text-xs text-slate-500 dark:text-zinc-400">{t("Off by default. Applies to CSV imports and campaign-created leads when the Calls module and automatic calling are on.")}</p>
+              </div>
+              <Switch label={t("Auto-call bulk imports")} checked={draftSettings.auto_call_bulk_imports === "true"} onChange={(v) => set("auto_call_bulk_imports", String(v))} />
             </div>
           </div>
           <p className="flex items-start gap-2 text-xs text-slate-500 dark:text-zinc-400"><ImageIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {t("Lead statuses, invoice wording and the company mailbox are managed by the client&apos;s own admin on their Branding &amp; Settings page.")}</p>

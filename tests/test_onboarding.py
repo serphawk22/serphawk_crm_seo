@@ -62,7 +62,7 @@ class RecommendUnit(unittest.TestCase):
     def test_standard_preset_is_brand_neutral_and_complete(self):
         p = presets.PRESETS["standard"]
         self.assertEqual(p["settings"], {})
-        for key in ("leads", "clients", "inbox", "followups", "billing", "proposals", "email_agent"):
+        for key in ("leads", "clients", "inbox", "followups", "billing", "proposals", "email_agent", "calls"):
             self.assertIn(key, p["features"])
         self.assertNotIn("voice_agent", p["features"])
         self.assertNotIn("institute", p["features"])
@@ -165,7 +165,8 @@ class Registration(OnboardingBase):
         self.assertEqual(body["preset"], "standard")
         feats = self.client.get("/me/features", headers={"X-User-ID": str(body["user"]["id"])}).json()["features"]
         self.assertTrue(feats["leads"] and feats["billing"] and feats["inbox"])
-        self.assertFalse(feats["voice_agent"] or feats["institute"] or feats["finance_suite"])
+        self.assertNotIn("voice_agent", feats)
+        self.assertFalse(feats["institute"] or feats["finance_suite"])
 
     def test_new_tenant_sees_none_of_the_other_tenants_data(self):
         self.verified_email("owner@newco.test")

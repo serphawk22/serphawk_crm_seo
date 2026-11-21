@@ -21,6 +21,9 @@ from modules.tenant_scope import current_tenant_id
 from modules.api_tracker import current_salesperson_id
 
 BUDGETS = {"ai": 5, "calls": 2}
+# Distinct from None ("unresolved"): False means this request/call was already verified as
+# non-demo so outbound AI/TTS HTTP calls never re-open a DB session just to re-check it.
+UNRESTRICTED = False
 demo_context = ContextVar("demo_paid_service_tenant", default=None)
 PAID_HOSTS = {"api.openai.com", "api.anthropic.com", "generativelanguage.googleapis.com",
               "api.groq.com", "api.deepseek.com", "api.elevenlabs.io", "google.serper.dev",
@@ -184,9 +187,12 @@ def _charge(url):
     if urlparse(str(url)).hostname not in PAID_HOSTS:
         return
     tid = demo_context.get()
-    if not tid:
+    if tid is UNRESTRICTED:
+        return
+    if tid is None:
         with Session(database.engine) as session:
             tid = restricted_tenant(session)
+        demo_context.set(tid if tid else UNRESTRICTED)
     if tid:
         consume(tid, "ai")
 

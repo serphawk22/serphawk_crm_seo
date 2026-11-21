@@ -6,7 +6,7 @@ import React from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle, Bot, Building2, CalendarClock, CheckCircle2, Clock, Mail, MessageCircle, MoreHorizontal, Phone,
-  Send, Target, Users, XCircle, type LucideIcon,
+  Presentation, Send, Target, Users, XCircle, type LucideIcon,
 } from 'lucide-react';
 import type { Channel, FollowUp, FollowUpState } from '@/lib/followupsApi';
 
@@ -25,6 +25,9 @@ export const CHANNEL_META: Record<Channel, { label: string; icon: LucideIcon }> 
   call: { label: 'Call', icon: Phone },
   meeting: { label: 'Meeting', icon: Users },
   whatsapp: { label: 'WhatsApp', icon: MessageCircle },
+  webinar: { label: 'Webinar', icon: Presentation },
+  'walk-in': { label: 'Walk-in', icon: Building2 },
+  'normal follow-up': { label: 'Normal Follow-up', icon: CalendarClock },
   other: { label: 'Other', icon: MoreHorizontal },
 };
 
