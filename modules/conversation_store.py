@@ -115,10 +115,14 @@ def analyze_and_detect(session, conv, actor_id=None, record_label="", existing_s
         .order_by(ConversationReply.created_at)).all()
     content = "\n".join(part for part in [conv.description, conv.transcript,
                          *[r.content for r in replies]] if part)
+    conv_at = conv.conversation_at or conv.created_at
+    conv_tid = conv.tenant_id
+    # Release any open read transaction before calling OpenAI so DB connections are never held idle.
+    session.commit()
     try:
         analysis = followup_ai.analyze_conversation(
-            content, conv.conversation_at or conv.created_at, record_label=record_label,
-            existing_summary=existing_summary, tenant_id=conv.tenant_id)
+            content, conv_at, record_label=record_label,
+            existing_summary=existing_summary, tenant_id=conv_tid)
     except Exception as exc:
         conv.ai_status, conv.ai_error = "failed", str(exc)
         session.add(conv)
@@ -134,18 +138,20 @@ def analyze_and_detect(session, conv, actor_id=None, record_label="", existing_s
     session.commit()
     fu, created = _followup(session, conv), False
     suggestion = analysis.get("follow_up") or {}
-    if suggestion.get("should_follow_up") and features.is_enabled(conv.tenant_id, "followups"):
+    followups_on = features.is_enabled(conv.tenant_id, "followups") or features.is_enabled(conv.tenant_id, "followup_board")
+    if suggestion.get("should_follow_up") and followups_on:
         due, status = resolve_due_at(conv, suggestion.get("due_date"), suggestion.get("due_time"),
                                     bool(suggestion.get("ambiguous") or suggestion.get("condition")
                                          or suggestion.get("requested_window")))
         if not fu:
             info = core.record_info(session, conv.lead_id, conv.client_id) or {}
+            tz_name = followup_ai._crm_tz(conv.tenant_id)[1]
             fu = FollowUp(
                 tenant_id=conv.tenant_id, lead_id=conv.lead_id, client_id=conv.client_id,
                 title=suggestion.get("title") or "Follow up", notes=suggestion.get("reason"),
                 ai_reason=suggestion.get("quote") or suggestion.get("reason"),
                 channel=suggestion.get("channel") or "email", priority=suggestion.get("priority") or "medium",
-                follow_up_type=suggestion.get("follow_up_type"), due_at=due, remind_at=due,
+                follow_up_type=suggestion.get("follow_up_type"), due_at=due, remind_at=due, timezone=tz_name,
                 source="ai_auto", source_ref=f"conv-{conv.id}", idempotency_key=f"conv-{conv.id}",
                 conversation_id=conv.id, ai_detected=True, schedule_status=status,
                 requested_window=suggestion.get("requested_window"), condition=suggestion.get("condition"),
@@ -206,12 +212,94 @@ def save_call_conversation(call_id, tenant_id=None, session=None):
             transcript=transcript, conversation_at=call.ended_at or call.created_at,
             author_id=call.started_by, tenant_id=call.tenant_id, source="ai_call", source_ref=f"ai_call:{call.id}")
         session.commit()
+        created_fu = False
         if created or conv.ai_status != "completed":
             analysis = analyze_and_detect(session, conv, actor_id=call.started_by,
                                           record_label=call.entity_name or "", existing_summary=call.summary or "")
             fu = analysis.get("follow_up")
+            created_fu = bool(analysis.get("follow_up_created"))
         else:
             fu = _followup(session, conv)
+
+        followups_on = features.is_enabled(conv.tenant_id, "followups") or features.is_enabled(conv.tenant_id, "followup_board")
+        if followups_on and (call.follow_up_needed or call.followup_needed or call.outcome == "meeting_booked"):
+            if not fu:
+                fu = core._find_by_keys(session, conv.tenant_id, [f"conv-{conv.id}", f"ai_call:{call.id}"])
+            reason_text = (call.follow_up_reason or call.important_notes or call.next_steps or "").strip()
+            is_meeting = core.is_meeting_intent(
+                call.follow_up_reason, call.important_notes, call.next_steps, call.summary,
+                outcome=call.outcome,
+            )
+            if not fu:
+                tz, tz_name = followup_ai._crm_tz(conv.tenant_id)
+                if call.follow_up_at:
+                    due_utc = core.as_utc(call.follow_up_at)
+                    sched_status = "confirmed"
+                else:
+                    base_local = core.as_utc(call.ended_at or call.created_at or core.utcnow()).astimezone(tz)
+                    due_utc = (base_local.replace(hour=10, minute=0, second=0, microsecond=0) + timedelta(days=3)).astimezone(timezone.utc)
+                    sched_status = "needs_confirmation"
+                label = call.entity_name or (lead.company_name if lead else None) or call.to_number
+                channel = "meeting" if is_meeting else "call"
+                fu_title = f"Meeting with {label}" if is_meeting else f"Follow-up call with {label}"
+                fu, created_fu = core.upsert_source_followup(
+                    session,
+                    tenant_id=conv.tenant_id,
+                    idempotency_key=f"conv-{conv.id}",
+                    source="ai_auto",
+                    source_ref=f"ai_call:{call.id}",
+                    fallback_keys=(f"ai_call:{call.id}",),
+                    lead_id=lead.id if lead else None,
+                    client_id=client_id,
+                    title=fu_title,
+                    notes=reason_text or call.summary,
+                    ai_reason=reason_text or None,
+                    channel=channel,
+                    priority="high" if is_meeting else "medium",
+                    follow_up_type="Meeting" if is_meeting else "Call",
+                    due_at=due_utc,
+                    created_by=call.started_by,
+                    conversation_id=conv.id,
+                    ai_detected=True,
+                    schedule_status=sched_status,
+                    timezone_name=tz_name,
+                )
+                if fu:
+                    conv.follow_up_date = fu.due_at
+                    session.add(conv)
+                    mark = session.exec(select(FollowUpNoteScan).where(
+                        FollowUpNoteScan.source_key == f"conv-{conv.id}")).first()
+                    if mark:
+                        mark.follow_up_id = fu.id
+                        session.add(mark)
+                    else:
+                        try:
+                            with session.begin_nested():
+                                session.add(FollowUpNoteScan(
+                                    tenant_id=conv.tenant_id, source_key=f"conv-{conv.id}", follow_up_id=fu.id))
+                                session.flush()
+                        except IntegrityError:
+                            pass
+                    session.commit()
+            elif created_fu:
+                changed_fu = False
+                if call.follow_up_at and call.followup_date:
+                    explicit_due = core.as_utc(call.follow_up_at)
+                    if core.as_utc(fu.due_at) != explicit_due:
+                        fu.due_at = explicit_due
+                        fu.remind_at = explicit_due
+                        fu.schedule_status = "confirmed"
+                        conv.follow_up_date = explicit_due
+                        changed_fu = True
+                if is_meeting and fu.channel != "meeting":
+                    fu.channel = "meeting"
+                    fu.follow_up_type = "Meeting"
+                    changed_fu = True
+                if changed_fu:
+                    fu.updated_at = core.utcnow()
+                    session.add(fu)
+                    session.add(conv)
+                    session.commit()
         return {"ok": True, "conversation_id": conv.id, "follow_up_id": fu.id if fu else None}
     finally:
         current_tenant_id.reset(token)

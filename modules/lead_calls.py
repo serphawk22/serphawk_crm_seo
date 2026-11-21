@@ -32,14 +32,21 @@ def latest_call_info(session, lead_ids):
 
 def sync_task_state(session, fu, deleted=False):
     """Keep a call and its latest lead banner aligned when either follow-up UI edits the task."""
-    if not fu.conversation_id:
-        return
-    conv = session.get(ConversationLog, fu.conversation_id)
-    if not conv or conv.tenant_id != fu.tenant_id or not (conv.source_ref or "").startswith("ai_call:"):
-        return
-    try:
-        call_id = int(conv.source_ref.split(":", 1)[1])
-    except ValueError:
+    conv = None
+    call_id = None
+    if fu.conversation_id:
+        conv = session.get(ConversationLog, fu.conversation_id)
+        if conv and conv.tenant_id == fu.tenant_id and (conv.source_ref or "").startswith("ai_call:"):
+            try:
+                call_id = int(conv.source_ref.split(":", 1)[1])
+            except ValueError:
+                call_id = None
+    if call_id is None and (fu.source_ref or "").startswith("ai_call:"):
+        try:
+            call_id = int(fu.source_ref.split(":", 1)[1])
+        except ValueError:
+            call_id = None
+    if call_id is None:
         return
     call = session.get(AICall, call_id)
     if not call or call.tenant_id != fu.tenant_id:
@@ -47,11 +54,12 @@ def sync_task_state(session, fu, deleted=False):
     needed = not deleted and fu.status in ("Pending", "In Progress")
     call.follow_up_needed = call.followup_needed = needed
     call.follow_up_at = fu.due_at if needed else None
-    call.followup_date = as_utc(fu.due_at).isoformat() if needed else None
+    call.followup_date = as_utc(fu.due_at).isoformat() if (needed and fu.due_at) else None
     call.follow_up_reason = (fu.ai_reason or fu.notes) if needed else None
     session.add(call)
-    conv.follow_up_date = call.follow_up_at
-    session.add(conv)
+    if conv:
+        conv.follow_up_date = call.follow_up_at
+        session.add(conv)
     lead = session.get(Lead, call.lead_id) if call.lead_id else None
     if lead and lead.tenant_id == call.tenant_id:
         latest = latest_call_info(session, [lead.id]).get(lead.id, {})
@@ -280,6 +288,12 @@ def apply_call_result(session: Session, call: AICall, lead: Optional[Lead] = Non
             contact_time_utc = as_utc(contact_time)
             if not lead.last_contact_at or contact_time_utc > as_utc(lead.last_contact_at):
                 lead.last_contact_at = contact_time_utc
+        # A completed AI call is a first contact. Never move a lead backwards from a later stage.
+        _later_stages = {"converted", "won", "closed won", "client", "qualified", "proposal",
+                         "negotiation", "meeting", "meeting booked", "demo", "booked"}
+        if (call.status == "completed" and not lead.is_converted
+                and (lead.status or "").strip().lower() not in _later_stages):
+            lead.status = "Contacted"
         session.add(lead)
         session.add(call)
 

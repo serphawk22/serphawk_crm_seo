@@ -116,7 +116,7 @@ export default function AddFollowUpModal({ open, onClose, target, onSuccess }: A
       const endpoint = board ? '/follow-ups' : '/followups';
       const body = board ? payload : {
         title: payload.title, notes: payload.notes, lead_id: payload.lead_id, client_id: payload.client_id,
-        channel: channel.toLowerCase(), priority: priority.toLowerCase(), due_at: utcIso,
+        channel: channel.toLowerCase(), priority: priority.toLowerCase(), due_at: utcIso.toISOString(),
         remind_at: new Date(utcIso.getTime() - (remindOneHourBefore ? 3600000 : 0)).toISOString(),
       };
       let res = await fetch(`${API_BASE_URL}${endpoint}`, {

@@ -97,9 +97,9 @@ _LEGACY_PRESETS: Dict[str, dict] = {
         "settings": {},
     },
     "agency-voice": {
-        "label": "Digital agency CRM + AI voice caller",
-        "description": "The agency preset plus the outbound AI voice agent.",
-        "features": _CRM_BASE | {"billing", "invoices", "proposals", "voice_agent"},
+        "label": "Digital agency CRM (legacy voice bundle)",
+        "description": "Legacy name kept for existing clients; AI voice calling is now part of the Calls module.",
+        "features": _CRM_BASE | {"billing", "invoices", "proposals"},
         "settings": {},
     },
     "institute": {
@@ -154,6 +154,9 @@ def apply_preset(session: Session, tenant_id: int, name: str, settings_override:
             return "dashboard_b2c" in preset["features"]
         if key.startswith("dashboard_"):
             return "dashboard" in preset["features"]
+        # New automation is opt-in even on the voice preset; an admin turns it on per client.
+        if key == "auto_call_new_leads":
+            return False
         return key in preset["features"]
     applied = features.set_features(session, tenant_id, {k: included(k) for k in features.FEATURES}, commit=commit)
     merged = dict(preset["settings"])
