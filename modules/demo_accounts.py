@@ -63,19 +63,15 @@ def signup_mail_ready() -> bool:
 
 
 # ── Creation ─────────────────────────────────────────────────────────────────
-def create_self_service_demo(session: Session, *, name: str, email: str, password_hash: str, model: str = "b2b",
-                             company_name: Optional[str] = None) -> dict:
+def create_self_service_demo(session: Session, *, name: str, email: str, password_hash: str, model: str = "b2b") -> dict:
     """Create a trial workspace with the selected model and the existing demo limits."""
     email = email.strip()
     name = (name or "").strip() or email.split("@")[0]
-    cleaned_company = (company_name or "").strip()
-    effective_company = cleaned_company or f"{name} (demo)"
-    effective_tenant_name = cleaned_company or f"Demo Tenant {email.lower()}"
     out = onboarding.create_workspace(
-        session, company_name=effective_company, admin_name=name, admin_email=email, password_hash=password_hash,
-        preset=DEMO_MODELS[model], is_trial=True, limits=DEMO_LIMITS, tenant_name=effective_tenant_name,
+        session, company_name=f"{name} (demo)", admin_name=name, admin_email=email, password_hash=password_hash,
+        preset=DEMO_MODELS[model], is_trial=True, limits=DEMO_LIMITS, tenant_name=f"Demo Tenant {email.lower()}",
         admin_role="Demo")
-    onboarding.notify_operators(session, "New demo signup", f"{name} ({email}) created a demo workspace for {effective_company}.",
+    onboarding.notify_operators(session, "New demo signup", f"{name} ({email}) created a demo workspace.",
                                 link="/admin/telemetry")
     return out
 

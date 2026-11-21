@@ -53,9 +53,8 @@ export default function AuthThemeToggle() {
   return (
     <button
       onClick={toggle}
-      className="p-2 rounded-xl transition-all duration-200 text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 shadow-sm dark:text-slate-300 dark:hover:text-white dark:bg-[#0c1427]/80 dark:hover:bg-[#111c38] dark:border-slate-700/70 z-[99] group cursor-pointer"
+      className="p-2.5 rounded-full transition-all duration-300 text-slate-500 hover:text-slate-900 bg-white/50 hover:bg-white shadow-sm border border-slate-200/60 backdrop-blur-md dark:text-zinc-400 dark:hover:text-zinc-100 dark:bg-zinc-900/50 dark:hover:bg-zinc-800/80 dark:border-zinc-800/60 z-[99] group"
       title="Toggle Theme"
-      aria-label="Toggle Theme"
     >
       {actualTheme === "dark" ? (
         <Sun className="w-4 h-4 transition-transform group-hover:rotate-45" />

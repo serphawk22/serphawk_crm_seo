@@ -124,16 +124,16 @@ export function AdminTopbar() {
   const { theme, toggleTheme } = useTheme();
   const pathname = usePathname();
   const router = useRouter();
-
+  
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
-
+  
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
-
+  
   // Unread count + recent notifications now come from the shared
   // NotificationContext (already polling every 15s) instead of this
   // component running its own independent 30s poll of the same endpoint —
@@ -215,18 +215,16 @@ export function AdminTopbar() {
 
   return (
     <header className="fixed top-0 left-0 right-0 h-16 z-50 flex items-center px-4 md:px-6 justify-between shadow-sm" style={{ background: "var(--topbar-bg)", borderBottom: "1px solid var(--border)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}>
-
+      
       {/* ── Left: Logo & Nav Menus ── */}
       <div className="flex items-center gap-6" ref={navRef}>
-
+        
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 group">
           <BrandMark size={36} fallback={
-            <img
-              src="/Serp%20Hawk%20Logo.png"
-              alt="Serp Hawk Logo"
-              className="w-9 h-9 object-contain shrink-0"
-            />
+            <div className="btn-glow-indigo w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-xs shrink-0">
+              SH
+            </div>
           } />
           <div className="hidden md:flex flex-col">
             <span className="font-black text-slate-800 dark:text-zinc-100 text-sm leading-tight tracking-tight group-hover:text-indigo-600 transition-colors">{brandName}</span>
@@ -244,11 +242,11 @@ export function AdminTopbar() {
           {getTranslatedNavMenus(t).map((menu) => {
             const allowedItems = menu.items.filter(i => i.roles.includes(role as Role));
             if (allowedItems.length === 0) return null;
-
+            
             const isActive = allowedItems.some(i => pathname === i.href || (i.href !== "/" && pathname.startsWith(i.href)));
 
             return (
-              <div
+              <div 
                 key={menu.label}
                 className="relative"
                 onMouseEnter={() => setActiveDropdown(menu.label)}
@@ -288,10 +286,10 @@ export function AdminTopbar() {
                               "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group",
                               isItemActive ? "text-indigo-700" : "hover:text-slate-700 dark:text-zinc-200"
                             )}
-                              style={isItemActive
-                                ? { background: "var(--accent-subtle)", color: "var(--accent)" }
-                                : { color: "var(--text-secondary)" }
-                              }>
+                            style={isItemActive
+                              ? { background: "var(--accent-subtle)", color: "var(--accent)" }
+                              : { color: "var(--text-secondary)" }
+                            }>
                               <item.icon className={cn("w-4 h-4 shrink-0 transition-colors", isItemActive ? "text-indigo-600" : "text-slate-400 group-hover:text-indigo-500")} />
                               <span className="text-sm font-semibold">{item.name}</span>
                             </div>
@@ -309,7 +307,7 @@ export function AdminTopbar() {
 
       {/* ── Right Controls ── */}
       <div className="flex items-center gap-2 md:gap-3">
-
+        
         {/* Search Bar Trigger */}
         <motion.button
           onClick={() => setSearchOpen(true)}
@@ -402,7 +400,7 @@ export function AdminTopbar() {
                     </span>
                   </div>
                 </div>
-
+                
                 <div className="py-2">
                   <button onClick={() => { setUserMenuOpen(false); router.push("/profile"); }} className="flex items-center gap-3 w-full px-4 py-2 text-[13px] font-medium text-slate-600 dark:text-zinc-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all">
                     <User className="w-4 h-4" /> {t("common.profile")}
@@ -411,7 +409,7 @@ export function AdminTopbar() {
                     <Settings className="w-4 h-4" /> {t("common.settings")}
                   </button>
                 </div>
-
+                
                 <div className="py-2" style={{ borderTop: "1px solid var(--border)", background: "var(--bg-secondary)" }}>
                   <button
                     onClick={() => { logout(); setUserMenuOpen(false); }}
@@ -494,13 +492,13 @@ export function AdminTopbar() {
                         className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 dark:bg-zinc-950 transition-all group">
                         <span className="text-[13px] font-semibold text-slate-600 dark:text-zinc-300 group-hover:text-indigo-600 transition-colors capitalize">
                           {(() => {
-                            const k = PAGE_TITLE_KEYS[href];
-                            if (k) {
-                              const v = t(k);
-                              if (v !== k) return v;
-                            }
-                            return PAGE_TITLES[href] || href;
-                          })()}
+                          const k = PAGE_TITLE_KEYS[href];
+                          if (k) {
+                            const v = t(k);
+                            if (v !== k) return v;
+                          }
+                          return PAGE_TITLES[href] || href;
+                        })()}
                         </span>
                       </button>
                     ))}

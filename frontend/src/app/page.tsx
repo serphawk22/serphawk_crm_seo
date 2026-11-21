@@ -302,12 +302,12 @@ function Dashboard() {
               <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.8)]" />
             </motion.div>
             <div className="absolute inset-0 flex items-center justify-center">
-              <motion.div animate={{ scale: [1, 1.07, 1] }} transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }} className="w-12 h-12 flex items-center justify-center">
-                <img
-                  src="/Serp%20Hawk%20Logo.png"
-                  alt="Serp Hawk Logo"
-                  className="w-10 h-10 object-contain"
-                />
+              <motion.div animate={{ scale: [1, 1.07, 1], boxShadow: ["0 0 0px rgba(37,99,235,0.3)", "0 0 28px rgba(37,99,235,0.55)", "0 0 0px rgba(37,99,235,0.3)"] }} transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }} className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #2563eb 0%, #6366f1 100%)" }}>
+                <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
+                  <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="white" fillOpacity="0.9" />
+                  <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="white" fillOpacity="0.45" />
+                  <circle cx="12" cy="12" r="2" fill="white" />
+                </svg>
               </motion.div>
             </div>
           </div>

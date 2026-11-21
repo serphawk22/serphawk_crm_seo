@@ -56,7 +56,6 @@ class DemoSignupRequest(BaseModel):
     email: str
     password: str
     model: Literal["b2b", "b2c"] = "b2b"
-    company_name: Optional[str] = None
 
 
 @router.post("/demo/signup")
@@ -80,8 +79,7 @@ def demo_signup(body: DemoSignupRequest, request: Request, session: Session = De
     otp.require_verified(session, email, "signup")
     try:
         out = demo_accounts.create_self_service_demo(session, name=name, email=email,
-                                                     password_hash=_hash_password(body.password), model=body.model,
-                                                     company_name=(body.company_name or "").strip() or None)
+                                                     password_hash=_hash_password(body.password), model=body.model)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     otp.consume(session, email, "signup")
