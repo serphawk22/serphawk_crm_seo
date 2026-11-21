@@ -176,16 +176,13 @@ export function GlobalLoader() {
                 ],
               }}
               transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-              className="w-14 h-14 rounded-2xl flex items-center justify-center"
-              style={{
-                background: "linear-gradient(135deg, #2563eb 0%, #6366f1 100%)",
-              }}
+              className="w-14 h-14 flex items-center justify-center"
             >
-              <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="white" fillOpacity="0.9" />
-                <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="white" fillOpacity="0.5" />
-                <circle cx="12" cy="12" r="2" fill="white" />
-              </svg>
+              <img
+                src="/Serp%20Hawk%20Logo.png"
+                alt="Serp Hawk Logo"
+                className="w-full h-full object-contain"
+              />
             </motion.div>
           </div>
         </div>

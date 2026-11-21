@@ -55,6 +55,8 @@ function mountCard({ legacyToken, readStatus = 200 } = {}) {
     if (name === '@/context/LanguageContext') return { useLanguage: () => ({ t: key => key, language: 'en' }) };
     if (name === '@/config') return { API_BASE_URL: 'https://api.test.invalid' };
     if (name === '@/lib/apiRequest') return apiModule.exports;
+    if (name === '@/lib/authRoutes') return {};
+    if (name === '@/components/CompanyBoundary') return {};
     if (name === '@/lib/emailConfirm') return { emailTriggerInfo: () => null };
     if (name === 'next/navigation') return {};
     if (name === 'framer-motion') return { motion: new Proxy({}, { get: (_, key) => `motion.${String(key)}` }), AnimatePresence: 'AnimatePresence' };

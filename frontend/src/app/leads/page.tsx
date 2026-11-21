@@ -1,10 +1,13 @@
 "use client";
-import LeadTransferDialog from "@/components/LeadTransferDialog";
 import LocalizedText from "@/components/LocalizedText";
+import BulkLeadTransferModal from "@/components/BulkLeadTransferModal";
+import TransferredLeadsModal from "@/components/TransferredLeadsModal";
+import OCRScannerModal, { OCRResult } from "@/components/OCRScannerModal";
+import DuplicateLeadModal, { DuplicateLeadInfo, DuplicateDiff } from "@/components/DuplicateLeadModal";
 import { API_BASE_URL } from "@/config";
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, Filter, MoreVertical, Building2, Globe, Mail, Phone, PhoneCall, MapPin, Sparkles, Upload, Download, X, Loader2, ChevronDown, ArrowUpRight, CheckCircle2, Clock, Zap, Edit2, Trash2, Tag, CalendarClock, UserCheck, Calendar } from "lucide-react";
+import { Search, Plus, Filter, MoreVertical, Building2, Globe, Mail, Phone, PhoneCall, MapPin, Sparkles, Upload, Download, X, Loader2, ChevronDown, ArrowUpRight, CheckCircle2, Clock, Zap, Edit2, Trash2, Tag, CalendarClock, UserCheck, Calendar, ArrowRightLeft, History, User, Briefcase, UserPlus, FileScan } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ViewSwitcher, ViewType } from "@/components/ViewSwitcher";
@@ -116,7 +119,13 @@ const STATUS_STYLE: Record<string, string> = {
 
 const emptyForm = {
   company_name: "", website: "", industry: "", email: "", course_interest_id: "", gpa: "", education_level: "", academic_background: "", career_goal: "",
-  phone: "", address: "", source: "Website", status: "New", notes: ""
+  phone: "", address: "", source: "Website", status: "New", notes: "",
+  add_contact: false,
+  contact_name: "",
+  contact_designation: "Key Decision Maker",
+  contact_email: "",
+  contact_phone: "",
+  contact_department: "Executive",
 };
 import { useRole } from "@/context/RoleContext";
 import { useTenantConfig } from "@/context/TenantConfigContext";
@@ -173,6 +182,29 @@ export default function LeadsPage() {
   const [autofillUrl, setAutofillUrl] = useState("");
   const [autofilling, setAutofilling] = useState(false);
   const [autofillSuccess, setAutofillSuccess] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [showTransfersHistoryModal, setShowTransfersHistoryModal] = useState(false);
+  const [isOCRModalOpen, setIsOCRModalOpen] = useState(false);
+  const [duplicateMatch, setDuplicateMatch] = useState<{ existing: DuplicateLeadInfo; diff?: DuplicateDiff | null; incoming: any } | null>(null);
+
+  const handleOCRExtracted = (data: OCRResult) => {
+    setForm(f => ({
+      ...f,
+      company_name: data.company_name || f.company_name,
+      email: data.email || f.email,
+      phone: data.mobile || f.phone,
+      website: data.website || f.website,
+      address: data.address || f.address,
+      add_contact: Boolean(data.name) || f.add_contact,
+      contact_name: data.name || f.contact_name,
+      contact_designation: data.designation || f.contact_designation || "Key Decision Maker",
+      contact_email: data.email || f.contact_email,
+      contact_phone: data.mobile || f.contact_phone,
+    }));
+    if (data.website) setAutofillUrl(data.website);
+    setEditLead(null);
+    setShowModal(true);
+  };
 
   const handleAutofillFromWebsite = async (targetUrl?: string) => {
     const rawUrl = (targetUrl || autofillUrl || form.website || "").trim();
@@ -202,6 +234,9 @@ export default function LeadsPage() {
             industry: d.industry && INDUSTRIES.includes(d.industry) ? d.industry : (f.industry || "Other"),
             address: d.address || f.address,
             notes: d.notes || f.notes,
+            contact_name: d.contact_name || f.contact_name,
+            contact_designation: d.contact_designation || f.contact_designation,
+            add_contact: Boolean(d.contact_name) || f.add_contact,
           }));
           setAutofillUrl(d.website || rawUrl);
           setAutofillSuccess(true);
@@ -419,6 +454,7 @@ export default function LeadsPage() {
     setAutofillUrl(lead.website || "");
     setAutofillSuccess(false);
     setForm({
+      ...emptyForm,
       company_name: lead.company_name,
       website: lead.website || "",
       industry: lead.industry || "",
@@ -513,6 +549,39 @@ export default function LeadsPage() {
         if (stage) setSchedule({ lead: editLead, stage });
         fetchLeads();
       } else {
+        // Check for duplicate lead by email or phone before saving
+        if (form.email.trim() || form.phone.trim()) {
+          try {
+            const token = localStorage.getItem("crm_token");
+            const dupRes = await fetch(`${API_BASE_URL}/leads/check-duplicate`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {})
+              },
+              body: JSON.stringify({
+                email: form.email.trim(),
+                phone: form.phone.trim(),
+                incoming: { ...form, ...instituteFields }
+              })
+            });
+            if (dupRes.ok) {
+              const dupData = await dupRes.json();
+              if (dupData.has_duplicate && dupData.duplicates?.length > 0) {
+                setDuplicateMatch({
+                  existing: dupData.duplicates[0],
+                  diff: dupData.diff,
+                  incoming: { ...form, ...instituteFields }
+                });
+                setSaving(false);
+                return;
+              }
+            }
+          } catch (dupErr) {
+            console.error("Duplicate check error:", dupErr);
+          }
+        }
+
         if (!isAdmin) {
           // Salesperson creates lead: automatically assign to themselves
           const stage = scheduleStage(form.status, institute);
@@ -590,6 +659,18 @@ export default function LeadsPage() {
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Could not delete lead");
     }
+  };
+
+  const handleOpenFollowUp = (lead: Lead, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFollowUpTarget({
+      type: "lead",
+      id: lead.id,
+      name: lead.company_name,
+      email: lead.email,
+      phone: lead.phone,
+      salespersonName: lead.salesperson_name || lead.owner_name
+    });
   };
 
   const handleConvert = async (id: number, e: React.MouseEvent) => {
@@ -703,6 +784,15 @@ export default function LeadsPage() {
               <Upload className="w-3.5 h-3.5" /> {t("leads.import")}
             </Link>
             <button
+              type="button"
+              onClick={() => setIsOCRModalOpen(true)}
+              title={language === 'es' ? "Escanear tarjeta de negocio con cámara o foto (OCR)" : "Scan business card with live camera or photo (OCR)"}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 transition-colors shadow-xs cursor-pointer active:scale-95"
+            >
+              <FileScan className="w-3.5 h-3.5" />
+              <span>{language === 'es' ? "Escanear Tarjeta" : "OCR Scan"}</span>
+            </button>
+            <button
               id="add-lead-btn"
               onClick={openCreate}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:opacity-95 shadow-xs transition-all active:scale-95"
@@ -757,7 +847,26 @@ export default function LeadsPage() {
           )}
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap max-w-full overflow-x-auto scrollbar-none pb-0.5 sm:pb-0">
-          {institute && <LeadTransferDialog leads={leads} people={employees} admin={isAdmin} onTransferred={fetchLeads} />}
+          <button
+            type="button"
+            onClick={() => setShowTransferModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition cursor-pointer"
+            title="Bulk transfer leads across salespeople"
+          >
+            <ArrowRightLeft className="w-3.5 h-3.5" />
+            <span>{language === 'es' ? "Transferir Leads" : "Transfer Leads"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowTransfersHistoryModal(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 border border-slate-200/60 dark:border-white/5 transition cursor-pointer"
+            title="View Transferred Leads Audit Log"
+          >
+            <History className="w-3.5 h-3.5 text-indigo-500" />
+            <span>{language === 'es' ? "Historial" : "History"}</span>
+          </button>
+
           <ViewSwitcher currentView={currentView} onViewChange={setCurrentView} />
 
           <select
@@ -932,10 +1041,148 @@ export default function LeadsPage() {
             </table>
           </div>
         ) : (
-          <div className="w-full p-3 sm:p-4 space-y-2 overflow-x-auto scrollbar-thin">
-            <div className="min-w-[1160px] space-y-2">
+          <div className="w-full p-2.5 sm:p-4 space-y-3">
+            {/* ── MOBILE / TABLET CARDS VIEW (Clean, touch-friendly, no horizontal scrolling) ── */}
+            <div className="block lg:hidden space-y-2.5">
+              <AnimatePresence>
+                {filtered.map((lead, idx) => (
+                  <motion.div
+                    key={`mob-${lead.id}`}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: Math.min(idx * 0.02, 0.25) }}
+                    onClick={() => router.push(`/leads/${lead.id}`)}
+                    className="rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#111111]/90 p-3.5 shadow-xs hover:border-blue-500/60 transition-all cursor-pointer space-y-3"
+                  >
+                    {/* Top: Avatar + Company Name + Stage Select */}
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-xs">
+                          {lead.company_name[0]?.toUpperCase() || "L"}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-bold text-sm text-slate-900 dark:text-white truncate flex items-center gap-1">
+                            <span className="truncate">{lead.company_name}</span>
+                            <ArrowUpRight className="w-3 h-3 text-blue-500 shrink-0" />
+                          </h4>
+                          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-zinc-400 truncate mt-0.5">
+                            {lead.city || lead.country || lead.address ? (
+                              <span className="flex items-center gap-1 truncate">
+                                <MapPin className="w-3 h-3 text-rose-500 shrink-0" />
+                                <span className="truncate">{lead.city || (lead.address ? lead.address.split(',')[0] : '—')}</span>
+                              </span>
+                            ) : lead.industry ? (
+                              <span className="truncate">{lead.industry}</span>
+                            ) : null}
+                            {lead.source && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 font-medium truncate">
+                                {lead.source}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div onClick={e => e.stopPropagation()} className="shrink-0">
+                        <select
+                          value={lead.is_converted ? "Converted" : lead.status}
+                          onChange={e => handleStatusChange(lead.id, e.target.value)}
+                          className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold uppercase tracking-wide border cursor-pointer focus:outline-none transition-all shadow-xs whitespace-nowrap ${STATUS_STYLE[lead.is_converted ? "Converted" : lead.status] || STATUS_STYLE.New}`}
+                        >
+                          {STATUSES.map(st => (
+                            <option key={st} value={st} className="bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100">
+                              {st}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Middle: Contact Quick Actions (Call, Email, Website) */}
+                    {(lead.phone || lead.email || lead.website) && (
+                      <div className="flex items-center gap-2 flex-wrap text-xs pt-1 border-t border-slate-100 dark:border-white/5" onClick={e => e.stopPropagation()}>
+                        {lead.phone && (
+                          <a
+                            href={`tel:${lead.phone}`}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-200/60 dark:border-emerald-800/40 text-[11px]"
+                          >
+                            <Phone className="w-3 h-3 text-emerald-600" />
+                            <span className="truncate max-w-[130px]">{lead.phone}</span>
+                          </a>
+                        )}
+                        {lead.email && (
+                          <a
+                            href={`mailto:${lead.email}`}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-semibold border border-blue-200/60 dark:border-blue-800/40 text-[11px]"
+                          >
+                            <Mail className="w-3 h-3 text-blue-600" />
+                            <span className="truncate max-w-[140px]">{lead.email}</span>
+                          </a>
+                        )}
+                        {lead.website && (
+                          <a
+                            href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 font-semibold border border-slate-200/60 dark:border-zinc-700 text-[11px]"
+                          >
+                            <Globe className="w-3 h-3 text-slate-500" />
+                            <span className="truncate max-w-[110px]">{lead.website.replace(/^https?:\/\//, '')}</span>
+                          </a>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Bottom Bar: Salesperson + Action Icons */}
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-white/5" onClick={e => e.stopPropagation()}>
+                      <div className="min-w-0 flex items-center gap-1.5 text-xs text-slate-600 dark:text-zinc-400 truncate">
+                        <UserCheck className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                        <span className="truncate font-medium">{lead.salesperson_name || lead.owner_name || (language === 'es' ? 'Sin asignar' : 'Unassigned')}</span>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={e => handleManualAnalyze(lead.id, e)}
+                          title="360° AI Analysis"
+                          className="p-1.5 rounded-lg border border-slate-200/80 dark:border-white/10 hover:bg-purple-50 hover:text-purple-600 text-slate-400"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                        </button>
+                        <Link
+                          href={`/meetings?new=true&lead_id=${lead.id}&title=${encodeURIComponent(`Meeting with ${lead.company_name}`)}`}
+                          title="Schedule Meeting"
+                          className="p-1.5 rounded-lg border border-slate-200/80 dark:border-white/10 hover:bg-indigo-50 hover:text-indigo-600 text-slate-400"
+                        >
+                          <Calendar className="w-3.5 h-3.5" />
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={e => handleOpenFollowUp(lead, e)}
+                          title="Follow-up"
+                          className="p-1.5 rounded-lg border border-slate-200/80 dark:border-white/10 hover:bg-amber-50 hover:text-amber-600 text-slate-400"
+                        >
+                          <CalendarClock className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={e => openEdit(lead, e)}
+                          title={t("leads.edit_lead")}
+                          className="p-1.5 rounded-lg border border-slate-200/80 dark:border-white/10 hover:bg-blue-50 hover:text-blue-600 text-slate-400"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+
+            {/* ── DESKTOP TABLE VIEW (Full wide table for lg: screens and up) ── */}
+            <div className="hidden lg:block overflow-x-auto scrollbar-thin">
+              <div className="min-w-[1360px] space-y-2">
             {/* Subtle column headers for desktop */}
-            <div className="hidden lg:grid grid-cols-[minmax(220px,2.2fr)_minmax(160px,1.6fr)_minmax(160px,1.6fr)_minmax(130px,1.2fr)_minmax(120px,1fr)_minmax(310px,auto)] gap-3 px-4 py-1 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider items-center">
+            <div className="hidden lg:grid grid-cols-[minmax(220px,2fr)_minmax(180px,1.4fr)_minmax(160px,1.2fr)_minmax(130px,1.1fr)_minmax(130px,1fr)_minmax(140px,1.1fr)_minmax(200px,1.5fr)] gap-4 px-4 py-1 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider items-center">
               <div className="cursor-pointer hover:text-blue-500 truncate" onClick={() => setSortOption(s => s === 'name' ? 'recent' : 'name')}>
                 <LocalizedText text={institute ? "Student & course" : "Company"} /> {sortOption === 'name' ? '↑' : ''}
               </div>
@@ -946,7 +1193,12 @@ export default function LeadsPage() {
               </div>
               <div className="truncate"><LocalizedText text={"Salesperson"} /></div>
               <div className="truncate"><LocalizedText text={"Source"} /></div>
-              <div className="text-right truncate"><LocalizedText text={institute ? "Stage & Actions" : "Status & Actions"} /></div>
+              <div className="truncate font-bold text-slate-400 dark:text-zinc-400 tracking-wider">
+                {language === 'es' ? "ETAPAS" : "STAGES"}
+              </div>
+              <div className="text-right truncate font-bold text-slate-400 dark:text-zinc-400 tracking-wider">
+                {language === 'es' ? "ACCIONES" : "ACTIONS"}
+              </div>
             </div>
 
             <AnimatePresence>
@@ -959,7 +1211,7 @@ export default function LeadsPage() {
                   onClick={() => router.push(`/leads/${lead.id}`)}
                   className="group rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#111111]/90 p-3 sm:px-4 sm:py-2.5 shadow-xs hover:border-blue-500/60 dark:hover:border-blue-500/50 hover:shadow-md transition-all duration-150 cursor-pointer"
                 >
-                  <div className="grid grid-cols-[minmax(220px,2.2fr)_minmax(160px,1.6fr)_minmax(160px,1.6fr)_minmax(130px,1.2fr)_minmax(120px,1fr)_minmax(310px,auto)] gap-3 items-center">
+                  <div className="grid grid-cols-[minmax(220px,2fr)_minmax(180px,1.4fr)_minmax(160px,1.2fr)_minmax(130px,1.1fr)_minmax(130px,1fr)_minmax(140px,1.1fr)_minmax(200px,1.5fr)] gap-4 items-center">
                     {/* Company & Website */}
                     <div className="min-w-0 flex items-center gap-2.5">
                       <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-xs">
@@ -1105,18 +1357,18 @@ export default function LeadsPage() {
                     </div>
 
                     {/* Source */}
-                    <div className="min-w-0">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-200/60 dark:border-white/5 truncate max-w-[115px]" title={lead.source || "Unknown"}>
+                    <div className="min-w-0 overflow-hidden">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-200/60 dark:border-white/5 truncate max-w-full" title={lead.source || "Unknown"}>
                         {lead.source || "Unknown"}
                       </span>
                     </div>
 
-                    {/* Status & Actions */}
-                    <div className="flex items-center justify-end gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+                    {/* Stages (Status) */}
+                    <div className="min-w-0" onClick={e => e.stopPropagation()}>
                       <select
                         value={lead.is_converted ? "Converted" : lead.status}
                         onChange={e => handleStatusChange(lead.id, e.target.value)}
-                        className={`inline-flex items-center px-2 py-1 rounded-md text-[11px] font-bold uppercase tracking-wide border cursor-pointer focus:outline-none transition-all shadow-xs whitespace-nowrap ${STATUS_STYLE[lead.is_converted ? "Converted" : lead.status] || STATUS_STYLE.New}`}
+                        className={`inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wide border cursor-pointer focus:outline-none transition-all shadow-xs whitespace-nowrap shrink-0 max-w-full ${STATUS_STYLE[lead.is_converted ? "Converted" : lead.status] || STATUS_STYLE.New}`}
                         title="Change lead stage"
                       >
                         {STATUSES.map(st => (
@@ -1125,7 +1377,10 @@ export default function LeadsPage() {
                           </option>
                         ))}
                       </select>
+                    </div>
 
+                    {/* Actions */}
+                    <div className="flex items-center justify-end gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
                         {isOn('calls') && (
                           <button
@@ -1220,6 +1475,7 @@ export default function LeadsPage() {
                 </motion.div>
               ))}
             </AnimatePresence>
+            </div>
             </div>
           </div>
         )}
@@ -1334,7 +1590,7 @@ export default function LeadsPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div>
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.email")}</label>
                     <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="info@company.com"
@@ -1361,7 +1617,7 @@ export default function LeadsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   {!institute && <div>
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.industry")}</label>
                     <select value={form.industry} onChange={e => setForm(f => ({ ...f, industry: e.target.value }))}
@@ -1379,7 +1635,7 @@ export default function LeadsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   {!institute && <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest block">{t("leads.website")}</label>
@@ -1433,6 +1689,166 @@ export default function LeadsPage() {
                     }`}
                   >
                     {formError.duplicate ? `Duplicate lead: ${formError.message}` : formError.message}
+                  </div>
+                )}
+
+                {/* ── Add Contact Person / Save to Contacts & Lead Contacts ── */}
+                {!editLead && (
+                  <div className="p-4 rounded-2xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-3.5 transition-all">
+                    <label className="flex items-start gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={form.add_contact}
+                        onChange={e => setForm(f => ({ ...f, add_contact: e.target.checked }))}
+                        className="mt-0.5 w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-zinc-700 cursor-pointer"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <UserPlus className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                          <span className="text-xs font-bold text-slate-900 dark:text-white">
+                            {language === 'es' ? "Agregar Persona de Contacto" : "Add a Contact Person"}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                            {language === 'es' ? "Contactos + Lead" : "Contacts + Lead"}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                          {language === 'es'
+                            ? "Guarda este contacto tanto en el Directorio General de Contactos como en los Contactos vinculados a este Lead."
+                            : "Saves this contact to both the global Contacts directory and linked Lead Contacts."}
+                        </p>
+                      </div>
+                    </label>
+
+                    {form.add_contact && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="space-y-3 pt-2 border-t border-indigo-100 dark:border-indigo-900/40"
+                      >
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* Contact Person Name */}
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-300 uppercase tracking-wider mb-1 block">
+                              {language === 'es' ? "Nombre del Contacto *" : "Contact Full Name *"}
+                            </label>
+                            <div className="relative">
+                              <User className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                              <input
+                                type="text"
+                                value={form.contact_name}
+                                onChange={e => setForm(f => ({ ...f, contact_name: e.target.value }))}
+                                placeholder="e.g. Carlos Mendoza / Jane Doe"
+                                className="w-full pl-8 pr-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Contact Heading / Role / Designation */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-300 uppercase tracking-wider block">
+                                {language === 'es' ? "Encabezado / Cargo *" : "Heading / Role *"}
+                              </label>
+                              <span className="text-[10px] text-indigo-500 font-semibold">{language === 'es' ? "Editable" : "Editable"}</span>
+                            </div>
+                            <div className="relative">
+                              <Briefcase className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                              <input
+                                type="text"
+                                value={form.contact_designation}
+                                onChange={e => setForm(f => ({ ...f, contact_designation: e.target.value }))}
+                                placeholder="e.g. CEO / Founder / Decision Maker"
+                                className="w-full pl-8 pr-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs font-semibold"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Quick Heading Preset Pills */}
+                        <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                          <span className="text-[10px] font-medium text-slate-400">{language === 'es' ? "Sugerencias:" : "Heading presets:"}</span>
+                          {[
+                            "Key Decision Maker",
+                            "CEO / Founder",
+                            "Managing Director",
+                            "VP of Sales",
+                            "Commercial Director",
+                            "Procurement Lead",
+                            "Technical Lead"
+                          ].map(preset => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => setForm(f => ({ ...f, contact_designation: preset }))}
+                              className={`text-[10px] px-2 py-0.5 rounded-lg border transition-all cursor-pointer ${
+                                form.contact_designation === preset
+                                  ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                                  : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-400 border-slate-200 dark:border-zinc-700 hover:border-indigo-400'
+                              }`}
+                            >
+                              {preset}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Contact Email & Phone */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-300 uppercase tracking-wider mb-1 block">
+                              {language === 'es' ? "Correo Directo" : "Direct Email"}
+                            </label>
+                            <div className="relative">
+                              <Mail className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                              <input
+                                type="email"
+                                value={form.contact_email}
+                                onChange={e => setForm(f => ({ ...f, contact_email: e.target.value }))}
+                                placeholder={form.email || "carlos@company.com"}
+                                className="w-full pl-8 pr-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-300 uppercase tracking-wider mb-1 block">
+                              {language === 'es' ? "Teléfono / Móvil" : "Direct Phone / Mobile"}
+                            </label>
+                            <div className="relative">
+                              <Phone className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                              <input
+                                type="text"
+                                value={form.contact_phone}
+                                onChange={e => setForm(f => ({ ...f, contact_phone: e.target.value }))}
+                                placeholder={form.phone || "+52 55 1234 5678"}
+                                className="w-full pl-8 pr-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Department */}
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-300 uppercase tracking-wider mb-1 block">
+                            {language === 'es' ? "Departamento / Área" : "Department"}
+                          </label>
+                          <select
+                            value={form.contact_department}
+                            onChange={e => setForm(f => ({ ...f, contact_department: e.target.value }))}
+                            className="w-full px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs cursor-pointer"
+                          >
+                            <option value="Executive">Executive / Management</option>
+                            <option value="Sales">Sales & Business Development</option>
+                            <option value="Technology">Technology & Engineering</option>
+                            <option value="Marketing">Marketing & Growth</option>
+                            <option value="Operations">Operations</option>
+                            <option value="Procurement">Procurement</option>
+                            <option value="Finance">Finance</option>
+                          </select>
+                        </div>
+                      </motion.div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1543,6 +1959,116 @@ export default function LeadsPage() {
         notify={notify}
         onCallStarted={fetchLeads}
       />
+
+      {/* Bulk Lead Transfer Modal */}
+      <BulkLeadTransferModal
+        isOpen={showTransferModal}
+        onClose={() => setShowTransferModal(false)}
+        leads={leads}
+        employees={employees}
+        isAdmin={isAdmin}
+        currentUserId={user?.id}
+        onTransferred={fetchLeads}
+        onViewHistory={() => {
+          setShowTransferModal(false);
+          setShowTransfersHistoryModal(true);
+        }}
+      />
+
+      {/* Transferred Leads Audit Log Modal */}
+      <TransferredLeadsModal
+        isOpen={showTransfersHistoryModal}
+        onClose={() => setShowTransfersHistoryModal(false)}
+      />
+
+      {/* OCR Scanner with Live Camera & Photo Upload */}
+      <OCRScannerModal
+        isOpen={isOCRModalOpen}
+        onClose={() => setIsOCRModalOpen(false)}
+        onExtracted={handleOCRExtracted}
+        targetEntity="lead"
+      />
+
+      {/* Duplicate Lead Detection & Resolution Modal */}
+      {duplicateMatch && (
+        <DuplicateLeadModal
+          isOpen={true}
+          onClose={() => setDuplicateMatch(null)}
+          existingLead={duplicateMatch.existing}
+          incomingLead={duplicateMatch.incoming}
+          diff={duplicateMatch.diff}
+          onMerge={async () => {
+            const token = localStorage.getItem("crm_token");
+            const res = await fetch(`${API_BASE_URL}/leads/resolve-duplicate`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {})
+              },
+              body: JSON.stringify({
+                action: "merge",
+                existing_lead_id: duplicateMatch.existing.id,
+                lead_data: duplicateMatch.incoming
+              })
+            });
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              throw new Error(data.detail || "Failed to merge with existing lead");
+            }
+            setDuplicateMatch(null);
+            setShowModal(false);
+            setForm({ ...emptyForm });
+            fetchLeads();
+          }}
+          onReplace={async () => {
+            const token = localStorage.getItem("crm_token");
+            const res = await fetch(`${API_BASE_URL}/leads/resolve-duplicate`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {})
+              },
+              body: JSON.stringify({
+                action: "replace",
+                existing_lead_id: duplicateMatch.existing.id,
+                lead_data: duplicateMatch.incoming
+              })
+            });
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              throw new Error(data.detail || "Failed to replace existing lead");
+            }
+            setDuplicateMatch(null);
+            setShowModal(false);
+            setForm({ ...emptyForm });
+            fetchLeads();
+          }}
+          onCreateAnyway={async () => {
+            setDuplicateMatch(null);
+            if (!isAdmin) {
+              const stage = scheduleStage(duplicateMatch.incoming.status, institute);
+              const payload = { ...duplicateMatch.incoming, status: stage ? 'New' : duplicateMatch.incoming.status, owner_id: user?.id || null };
+              const response = await fetch(`${API_BASE_URL}/leads`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              });
+              if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(typeof data.detail === 'string' ? data.detail : 'Could not create lead');
+              }
+              const created = await response.json();
+              setShowModal(false);
+              setForm({ ...emptyForm });
+              if (stage) setSchedule({ lead: created, stage });
+              fetchLeads();
+            } else {
+              setPendingLeadForm({ ...duplicateMatch.incoming });
+              setShowModal(false);
+              setShowSalesAssign(true);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

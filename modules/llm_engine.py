@@ -516,15 +516,17 @@ def analyze_document(image_bytes):
     prompt = (
         "You are an expert at reading business cards and ID cards. "
         "Examine this image carefully and extract every piece of contact information visible.\n"
-        "Look for: full names, company/organization names, phone numbers, mobile numbers, "
-        "email addresses, and website URLs.\n"
+        "Look for: full names, job titles/designations, company/organization names, phone numbers, mobile numbers, "
+        "email addresses, website URLs, and address or city.\n"
         "Return ONLY a valid JSON object with exactly these keys:\n"
         '{\n'
         '  \"name\": \"Full name of the person (empty string if not found)\",\n'
+        '  \"designation\": \"Job title or role (e.g. CEO, Director, Sales Lead) (empty string if not found)\",\n'
         '  \"company_name\": \"Company or organization name (empty string if not found)\",\n'
         '  \"mobile\": \"Phone or mobile number (empty string if not found)\",\n'
         '  \"email\": \"Email address (empty string if not found)\",\n'
-        '  \"website\": \"Website URL (empty string if not found)\"\n'
+        '  \"website\": \"Website URL (empty string if not found)\",\n'
+        '  \"address\": \"Street address, city, state, or country (empty string if not found)\"\n'
         '}\n'
         "Do not add any other fields or explanations. Return only the JSON."
     )
@@ -560,10 +562,12 @@ def analyze_document(image_bytes):
 
             # Ensure all required fields exist
             result.setdefault("name", "")
+            result.setdefault("designation", "")
             result.setdefault("company_name", "")
             result.setdefault("mobile", "")
             result.setdefault("email", "")
             result.setdefault("website", "")
+            result.setdefault("address", "")
 
             print(f"OCR Success ({model}): {result}")
             return result
@@ -575,10 +579,12 @@ def analyze_document(image_bytes):
                 return {
                     "error": f"OCR failed: {str(e)}",
                     "name": "",
+                    "designation": "",
                     "company_name": "",
                     "mobile": "",
                     "email": "",
-                    "website": ""
+                    "website": "",
+                    "address": ""
                 }
             continue
 

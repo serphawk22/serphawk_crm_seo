@@ -428,8 +428,9 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
             );
           })}
           {id && (
-            <div className="pt-4 border-t border-slate-200 dark:border-zinc-800">
+            <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-zinc-800">
               <SalesAccessSettings tenantId={id} />
+              {cfg?.features.institute && <SalesAccessSettings tenantId={id} admissions />}
             </div>
           )}
         </div>

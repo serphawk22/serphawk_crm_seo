@@ -1,9 +1,11 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { API_BASE_URL } from '@/config';
 import { isInternalApi } from '@/lib/apiRequest';
+import { isPublicPage, loginError } from '@/lib/authRoutes';
+import { useCompanyBrand } from '@/components/CompanyBoundary';
 
 export type Role = 'SuperAdmin' | 'Admin' | 'Employee' | 'Client' | 'Intern' | 'SalesManager' | 'Supplier' | 'Demo' | 'ProjectMember' | 'Developer' | 'Student' | 'Instructor' | 'Sales' | 'Admissions';
 
@@ -22,7 +24,7 @@ interface RoleContextType {
   email: string;
   isAuthenticated: boolean;
   user: User | null;
-  login: (email: string, pass: string) => Promise<{ success: boolean; message?: string; is_new_user?: boolean }>;
+  login: (email: string, pass: string) => Promise<{ success: boolean; message?: string; wrongCompany?: boolean }>;
   logout: () => void;
   updateProfile: (profile: { name: string; phone?: string | null }) => void;
   loading: boolean;
@@ -116,7 +118,8 @@ if (typeof window !== 'undefined' && !(window as any)._fetchPatched) {
     }
     
     // If we get a 401 from an internal API (other than the login endpoint itself)
-    if (response.status === 401 && internal && typeof resource === 'string' && !resource.endsWith('/login')) {
+    if (response.status === 401 && saved && token && internal && typeof resource === 'string' && !resource.endsWith('/login')
+      && localStorage.getItem('crm_token') === token) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('crm_user');
         localStorage.removeItem('crm_token');
@@ -143,21 +146,36 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const signingOut = useRef(false);
+  const { company } = useCompanyBrand();
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('crm_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-      setIsAuthenticated(true);
+    try {
+      const savedUser = localStorage.getItem('crm_user');
+      const token = localStorage.getItem('crm_token');
+      if (savedUser && token) {
+        const user = JSON.parse(savedUser);
+        if (user?.id) {
+          setUser(user);
+          setIsAuthenticated(true);
+        }
+      }
+    } catch {
+      localStorage.removeItem('crm_user');
+      localStorage.removeItem('crm_token');
     }
     setLoading(false);
   }, []);
 
   useEffect(() => {
     if (!loading) {
-      if (!isAuthenticated && pathname !== '/login' && pathname !== '/forgot-password' && pathname !== '/signup' && pathname !== '/register' && pathname !== '/' && !pathname?.startsWith('/demo_showcase') && pathname !== '/reset-password' && !pathname?.startsWith('/p/')) {
+      if (!isAuthenticated && signingOut.current) {
+        if (pathname === '/login') signingOut.current = false;
+      } else if (!isAuthenticated && pathname === '/') {
+        window.location.replace('/showcase');
+      } else if (!isAuthenticated && !isPublicPage(pathname)) {
         router.replace('/login');
       } else if (isAuthenticated && (pathname === '/login' || pathname === '/signup' || pathname === '/register')) {
         if (user?.role === 'Supplier') {
@@ -173,7 +191,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         }
       }
     }
-  }, [isAuthenticated, pathname, loading, router]);
+  }, [isAuthenticated, pathname, loading, router, user?.role, company]);
 
   const login = async (email: string, pass: string) => {
     try {
@@ -194,7 +212,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       if (res.status === 503 && (data.status === 'network_error' || data.ok === false)) {
         return { success: false, message: `Unable to connect to the CRM API at ${API_BASE_URL}. Please check that the backend is reachable and try again.` };
       }
-      return { success: false, message: data.detail || 'Invalid credentials. Please try again.' };
+      return { success: false, ...loginError(data.detail, 'Invalid credentials. Please try again.') };
     } catch (err) {
       console.error('Login request failed', err);
       return {
@@ -205,6 +223,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    signingOut.current = true;
     setUser(null);
     setIsAuthenticated(false);
     localStorage.removeItem('crm_user');

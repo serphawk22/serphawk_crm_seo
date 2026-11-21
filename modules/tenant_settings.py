@@ -164,13 +164,18 @@ def _role_policy(v):
     return v
 
 
-def _sales_modules(v):
+def _module_overrides(v):
     from modules.features import FEATURES
     if v is None:
         return None
     if not isinstance(v, dict) or any(k not in FEATURES or not isinstance(value, bool) for k, value in v.items()):
         raise ValueError("must map known module keys to true or false")
-    if v.get("teams"):
+    return v
+
+
+def _sales_modules(v):
+    v = _module_overrides(v)
+    if v and v.get("teams"):
         raise ValueError("Team Directory is available to Admins only")
     return v
 
@@ -201,11 +206,45 @@ def _published_lead_form(value):
         clean["course_choices"] = choices
     return clean
 
+
+def _notification_recipients(value):
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("notification_email_recipients must be a list")
+    clean_list = []
+    import uuid
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        email = str(item.get("email", "")).strip().lower()
+        if not email or "@" not in email:
+            continue
+        events = item.get("events") if isinstance(item.get("events"), dict) else {}
+        clean_list.append({
+            "id": str(item.get("id") or str(uuid.uuid4())[:8]),
+            "email": email,
+            "name": str(item.get("name", "")).strip()[:120],
+            "active": bool(item.get("active", True)),
+            "events": {
+                "lead_added": bool(events.get("lead_added", True)),
+                "client_added_or_converted": bool(events.get("client_added_or_converted", True)),
+                "followup_created": bool(events.get("followup_created", True)),
+                "followup_reminder": bool(events.get("followup_reminder", True)),
+                "meeting_synopsis": bool(events.get("meeting_synopsis", True)),
+            },
+            "reminder_advance_minutes": int(item.get("reminder_advance_minutes", 60)),
+        })
+    return clean_list
+
+
 # key -> (validator, default). A default of None means "no override: keep the built-in behaviour".
 SCHEMA: Dict[str, tuple] = {
+    "notification_email_recipients": (_notification_recipients, []),
     "lead_form_draft": (_lead_form, None),
     "lead_form_published": (_published_lead_form, None),
     "sales_module_access": (_sales_modules, None),
+    "admissions_module_access": (_module_overrides, None),
     "brand_name": (_str(120), None),
     "brand_logo_url": (_str(500), None),
     "brand_tagline": (_str(120), None),

@@ -120,9 +120,12 @@ from sqlmodel import Session, select, SQLModel
 from sqlalchemy import func, or_
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Depends, FastAPI, HTTPException, Query, Form, UploadFile, File, Body
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 from datetime import datetime, timedelta, date, timezone
 import re
+
+def _utcnow():
+    return datetime.now(timezone.utc)
 
 """
 CRM V2 – SerpHawk  |  FastAPI Backend
@@ -2397,17 +2400,25 @@ class SendLeadRequest(BaseModel):
 # The DB enum 'taskstatus' was created with lowercase values.
 # Frontend sends 'Todo', 'InProgress', 'Done' — map them correctly.
 _TASK_STATUS_MAP: dict = {
-    "todo": "todo",
-    "Todo": "todo",
-    "TODO": "todo",
-    "inprogress": "inprogress",
-    "InProgress": "inprogress",
-    "INPROGRESS": "inprogress",
-    "in_progress": "inprogress",
-    "In Progress": "inprogress",
-    "done": "done",
-    "Done": "done",
-    "DONE": "done",
+    "todo": "Todo",
+    "Todo": "Todo",
+    "TODO": "Todo",
+    "pending": "Todo",
+    "inprogress": "In Progress",
+    "InProgress": "In Progress",
+    "INPROGRESS": "In Progress",
+    "in_progress": "In Progress",
+    "In Progress": "In Progress",
+    "inqa": "In QA",
+    "InQA": "In QA",
+    "in_qa": "In QA",
+    "In QA": "In QA",
+    "qa": "In QA",
+    "QA": "In QA",
+    "done": "Done",
+    "Done": "Done",
+    "DONE": "Done",
+    "completed": "Done",
 }
 
 
@@ -3637,9 +3648,9 @@ def login(body: LoginRequest, session: Session = Depends(get_session)):
     if not _verify_password(body.password, user):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     from modules.company_domains import check_user
-    check_user(user)
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account has been switched off. Contact your administrator.")
+    check_user(user, login=True)
     result = _user_dict(user)
     if user.role == "Client":
         cp = session.exec(select(ClientProfile).where(
@@ -3736,6 +3747,8 @@ def reset_password(body: ResetPasswordRequest, session: Session = Depends(get_se
 
 class GoogleAuthRequest(BaseModel):
     access_token: str
+    model: Literal["b2b", "b2c"] = "b2b"
+    company_name: Optional[str] = None
 
 
 @app.post("/auth/google")
@@ -3760,17 +3773,18 @@ def auth_google(body: GoogleAuthRequest, session: Session = Depends(get_session)
     if request_company.get() and not user:
         raise HTTPException(403, detail="Ask this company's administrator for an account")
     if user:
-        check_user(user)
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="This account has been switched off. Contact your administrator.")
+        check_user(user, login=True)
 
     if not user:
         # a new Google user gets the same self-service demo workspace as /signup (managed in Demo Account Data)
         from modules import demo_accounts
         is_new_user = True
         out = demo_accounts.create_self_service_demo(session, name=name or email, email=email,
-                                                     password_hash=_hash_password(os.urandom(16).hex()))
+                                                     password_hash=_hash_password(os.urandom(16).hex()), model=body.model,
+                                                     company_name=(body.company_name or "").strip() or None)
         user = session.exec(select(User).where(User.id == out["admin_user_id"]).execution_options(skip_tenant=True)).first()
-    elif not user.is_active:
-        raise HTTPException(status_code=403, detail="This account has been switched off. Contact your administrator.")
 
     result = _user_dict(user)
     if user.role == "Client":
@@ -4813,6 +4827,27 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
         )
     except Exception as e:
         print(f"AutoResearch trigger error for client {client_ref['id']}: {e}")
+
+    # ── EMAIL NOTIFICATION TO CONFIGURED RECEIVERS ──
+    try:
+        from modules.notification_dispatcher import dispatch_event_notification
+        dispatch_event_notification(
+            event_key="client_added_or_converted",
+            subject=f"🎉 New Client Added: {cp.companyName}",
+            headline=f"New Client: {cp.companyName}",
+            details={
+                "Company Name": cp.companyName,
+                "Phone": cp.phone or "—",
+                "Address": cp.address or "—",
+                "Status": cp.status or "Active",
+                "Website": cp.websiteUrl or "—"
+            },
+            tenant_id=cp.tenant_id,
+            action_url=f"/clients/{cp.id}",
+            action_label="View Client Profile"
+        )
+    except Exception as ce:
+        print("[CreateClient] Notification error:", ce)
 
     return {"client": _client_dict(cp, session)}
 
@@ -9381,6 +9416,7 @@ def update_task(task_id: int, body: TaskUpdateRequest, session: Session = Depend
     t = session.get(Task, task_id)
     if not t:
         raise HTTPException(status_code=404, detail="Task not found")
+    old_status = t.status
     updates = body.model_dump(exclude_unset=True)
     if "status" in updates:
         updates["status"] = _normalize_task_status(updates["status"])
@@ -9390,6 +9426,75 @@ def update_task(task_id: int, body: TaskUpdateRequest, session: Session = Depend
     session.add(t)
     session.commit()
     session.refresh(t)
+
+    # ── STAGE TRANSITION NOTIFICATIONS ──
+    # When moving to each stage, notify admin and the assigned sales rep
+    if updates.get("status") and updates.get("status") != old_status:
+        new_status = updates["status"]
+        entity_name = None
+        salesperson_id = None
+
+        if t.lead_id:
+            lead = session.get(Lead, t.lead_id)
+            if lead:
+                entity_name = lead.company_name
+                salesperson_id = lead.owner_id
+        elif t.client_id:
+            client = session.get(ClientProfile, t.client_id)
+            if client:
+                entity_name = client.companyName
+                salesperson_id = client.assignedEmployeeId
+
+        actor_name = "Team member"
+        try:
+            actor = _current_user(session)
+            if actor:
+                actor_name = actor.name or actor.email
+        except Exception:
+            pass
+
+        target_link = f"/leads/{t.lead_id}?tab=tasks" if t.lead_id else f"/admin/clients/{t.client_id}?tab=tasks" if t.client_id else "/tasks"
+        notif_msg = f"{actor_name} moved task '{t.title}' to '{new_status}'" + (f" for {entity_name}" if entity_name else "")
+
+        # 1. Notify Admins
+        try:
+            _notify_admins(
+                session,
+                t.tenant_id or current_tenant_id.get(),
+                title=f"📋 Task Stage: {new_status}",
+                message=notif_msg,
+                notif_type="info",
+                link=target_link
+            )
+        except Exception:
+            pass
+
+        # 2. Notify assigned salesperson
+        if salesperson_id and salesperson_id != current_salesperson_id.get():
+            try:
+                session.add(Notification(
+                    user_id=salesperson_id,
+                    title=f"📋 Task Stage: {new_status}",
+                    message=notif_msg,
+                    type="info",
+                    link=target_link
+                ))
+            except Exception:
+                pass
+
+        # 3. Record ActivityLog
+        try:
+            session.add(ActivityLog(
+                tenant_id=t.tenant_id or current_tenant_id.get(),
+                user_id=current_salesperson_id.get(),
+                action=f"Task moved to {new_status}: {t.title}",
+                details=notif_msg,
+                lead_id=t.lead_id,
+                client_id=t.client_id
+            ))
+            session.commit()
+        except Exception:
+            pass
 
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -13367,6 +13472,15 @@ class LeadCreateRequest(BaseModel):
     status: str = "New"
     notes: Optional[str] = None
     do_not_call: bool = False  # keeps automatic calling from dialing this lead
+    # ── Optional Contact person creation ──
+    add_contact: Optional[bool] = False
+    contact_name: Optional[str] = None
+    contact_first_name: Optional[str] = None
+    contact_last_name: Optional[str] = None
+    contact_designation: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_department: Optional[str] = None
 
 
 class AccountCreateRequest(BaseModel):
@@ -13670,6 +13784,95 @@ def export_leads_csv(owner_id: Optional[int] = None, session: Session = Depends(
     )
 
 
+# ─── DUPLICATE LEAD DETECTION & RESOLUTION ──────────────────────────────────────
+class DuplicateLeadCheckRequest(BaseModel):
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    exclude_id: Optional[int] = None
+    incoming: Optional[Dict[str, Any]] = None
+
+
+@app.post("/leads/check-duplicate")
+def check_duplicate_lead_endpoint(body: DuplicateLeadCheckRequest, session: Session = Depends(get_session)):
+    from modules.lead_duplicates import find_duplicate_leads, calculate_lead_diff
+    tenant_id = current_tenant_id.get()
+    matches = find_duplicate_leads(session, tenant_id, body.email, body.phone, body.exclude_id)
+    diff = None
+    if matches and body.incoming:
+        diff = calculate_lead_diff(matches[0], body.incoming)
+    return {
+        "has_duplicate": len(matches) > 0,
+        "duplicates": matches,
+        "diff": diff
+    }
+
+
+class ResolveDuplicateLeadRequest(BaseModel):
+    action: str  # "merge", "replace", "create_anyway"
+    existing_lead_id: Optional[int] = None
+    lead_data: Dict[str, Any]
+
+
+@app.post("/leads/resolve-duplicate")
+def resolve_duplicate_lead_endpoint(body: ResolveDuplicateLeadRequest, session: Session = Depends(get_session)):
+    from modules.lead_duplicates import merge_into_existing_lead, replace_existing_lead
+    actor_id = current_salesperson_id.get()
+    session.info["skip_duplicate_validation"] = True
+
+    if body.action == "merge":
+        if not body.existing_lead_id:
+            raise HTTPException(status_code=400, detail="existing_lead_id is required for merge")
+        merged = merge_into_existing_lead(session, body.existing_lead_id, body.lead_data, actor_id)
+        return {"ok": True, "action": "merged", "lead": merged}
+
+    elif body.action == "replace":
+        if not body.existing_lead_id:
+            raise HTTPException(status_code=400, detail="existing_lead_id is required for replace")
+        replaced = replace_existing_lead(session, body.existing_lead_id, body.lead_data, actor_id)
+        return {"ok": True, "action": "replaced", "lead": replaced}
+
+    elif body.action == "create_anyway":
+        req = LeadCreateRequest(**body.lead_data)
+        created = create_lead(req, session)
+        return {"ok": True, "action": "created", "lead": created}
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {body.action}")
+
+
+# ─── NOTIFICATION TEST DISPATCH ─────────────────────────────────────────────────
+class NotificationTestRequest(BaseModel):
+    email: str
+    event_key: Optional[str] = "lead_added"
+
+
+@app.post("/settings/notifications/test")
+def test_notification_email_endpoint(body: NotificationTestRequest, session: Session = Depends(get_session)):
+    from modules.notification_dispatcher import dispatch_event_notification
+    tenant_id = current_tenant_id.get()
+    email = body.email.strip()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid recipient email address")
+
+    dispatch_event_notification(
+        event_key=body.event_key or "lead_added",
+        subject=f"🔔 Test Notification: {body.event_key or 'lead_added'}",
+        headline="Test CRM Notification",
+        details={
+            "Recipient": email,
+            "Event Subscribed": body.event_key or "lead_added",
+            "Dispatched At": datetime.now(timezone.utc).strftime("%b %d, %Y %I:%M %p UTC"),
+            "System Status": "Configured & Active",
+            "Message": "This test notification confirms your email receiver configuration is working properly."
+        },
+        tenant_id=tenant_id,
+        action_url="/settings?tab=notifications",
+        action_label="Open Notification Settings",
+        force_recipient_email=email
+    )
+    return {"ok": True, "message": f"Test notification dispatched to {email}"}
+
+
 @app.post("/leads")
 def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)):
     from modules import sales_access
@@ -13687,7 +13890,10 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
             if current_count >= tenant.limit_clients:
                 raise HTTPException(
                     status_code=403, detail=f"Lead limit reached. Maximum allowed: {tenant.limit_clients}")
-    lead_data = body.dict()
+    lead_data = body.dict(exclude={
+        "add_contact", "contact_name", "contact_first_name", "contact_last_name",
+        "contact_designation", "contact_email", "contact_phone", "contact_department"
+    })
     raw_phone = (lead_data.get("phone") or "").strip()
     if not raw_phone:
         lead_data["phone"] = None
@@ -13719,6 +13925,61 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
     session.commit()
     session.refresh(lead)
 
+    # ── OPTIONAL: CREATE CONTACT & LINK TO LEAD ──
+    if body.add_contact or (body.contact_name and body.contact_name.strip()):
+        try:
+            raw_name = (body.contact_name or "").strip()
+            first_name = (body.contact_first_name or "").strip()
+            last_name = (body.contact_last_name or "").strip()
+            if not first_name and raw_name:
+                parts = raw_name.split(None, 1)
+                first_name = parts[0]
+                last_name = parts[1] if len(parts) > 1 else ""
+            if not first_name:
+                first_name = lead.company_name or "Primary Contact"
+
+            full_name = raw_name or f"{first_name} {last_name}".strip()
+            contact_email = (body.contact_email or lead.email or "").strip() or None
+            contact_phone = (body.contact_phone or lead.phone or "").strip() or None
+            designation = (body.contact_designation or "Primary Contact").strip()
+            department = (body.contact_department or "Management").strip()
+
+            contact = Contact(
+                tenant_id=lead.tenant_id,
+                first_name=first_name,
+                last_name=last_name or None,
+                full_name=full_name,
+                designation=designation,
+                department=department,
+                email=contact_email,
+                mobile_number=contact_phone,
+                lead_id=lead.id,
+                owner_id=lead.owner_id,
+            )
+            session.add(contact)
+            session.flush()
+
+            link = ContactLeadLink(
+                tenant_id=lead.tenant_id,
+                contact_id=contact.id,
+                lead_id=lead.id,
+                role_at_company=designation,
+                is_primary=True
+            )
+            session.add(link)
+
+            session.add(ActivityLog(
+                tenant_id=lead.tenant_id,
+                user_id=lead.owner_id,
+                action=f"Contact Added: {full_name}",
+                details=f"Contact {full_name} ({designation}) created and linked to lead {lead.company_name}",
+                lead_id=lead.id
+            ))
+            session.commit()
+            print(f"[CreateLead] Successfully created contact {contact.id} ({full_name}) linked to lead {lead.id}")
+        except Exception as ce:
+            print(f"[CreateLead] Error creating contact for lead: {ce}")
+
     try:
         _notify_admins(
             session, current_tenant_id.get(),
@@ -13729,6 +13990,30 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
         )
     except Exception:
         pass
+
+    # ── EMAIL NOTIFICATION TO CONFIGURED RECEIVERS ──
+    try:
+        from modules.notification_dispatcher import dispatch_event_notification
+        dispatch_event_notification(
+            event_key="lead_added",
+            subject=f"🎯 New Lead Added: {lead.company_name}",
+            headline=f"New Lead: {lead.company_name}",
+            details={
+                "Company Name": lead.company_name,
+                "Email": lead.email or "—",
+                "Phone": lead.phone or "—",
+                "Lead Stage": lead.status,
+                "Lead Source": lead.source or "Website",
+                "Address": lead.address or "—",
+                "Industry": lead.industry or "—",
+                "Notes": lead.notes or "—"
+            },
+            tenant_id=lead.tenant_id,
+            action_url=f"/leads/{lead.id}",
+            action_label="View Lead in CRM"
+        )
+    except Exception as ne:
+        print("[CreateLead] Notification dispatch error:", ne)
 
     # ── WHATSAPP NOTIFICATION (background thread so POST /leads returns immediately) ──
     try:
@@ -13809,6 +14094,235 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
         print(f"CheapLeadInit trigger error for lead {lead.id}: {e}")
 
     return lead
+
+
+# ─── BULK LEAD TRANSFERS & AUDITED HISTORY ───────────────────────────────
+
+class BulkLeadTransferRequest(BaseModel):
+    lead_ids: Optional[List[int]] = None
+    stage: Optional[str] = None
+    count: Optional[int] = None
+    source_employee_id: Optional[int] = None  # None or 0 = Unassigned
+    employee_id: int                          # Destination salesperson
+    reason: str
+
+
+@app.get("/leads/transfer-counts")
+def get_leads_transfer_counts(
+    source_employee_id: Optional[int] = Query(None),
+    stage: Optional[str] = Query(None),
+    session: Session = Depends(get_session)
+):
+    """Returns the count of leads matching filter criteria for transfer preview."""
+    actor = _current_user(session)
+    if not actor:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    is_admin = actor.role in ("Admin", "SuperAdmin", "Demo", "SalesManager")
+    query = select(func.count(Lead.id))
+    if current_tenant_id.get():
+        query = query.where(Lead.tenant_id == current_tenant_id.get())
+
+    if not is_admin:
+        query = query.where(Lead.owner_id == actor.id)
+    elif source_employee_id is not None and source_employee_id > 0:
+        query = query.where(Lead.owner_id == source_employee_id)
+    elif source_employee_id == 0 or source_employee_id is None:
+        query = query.where(Lead.owner_id == None)
+
+    if stage and stage.lower() not in ("all", ""):
+        query = query.where(Lead.status.ilike(stage))
+
+    count = session.exec(query).one()
+    return {"count": count}
+
+
+@app.post("/leads/transfer")
+@app.post("/leads/bulk-transfer")
+def bulk_transfer_leads(
+    body: BulkLeadTransferRequest,
+    session: Session = Depends(get_session)
+):
+    actor = _current_user(session)
+    if not actor:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    is_admin = actor.role in ("Admin", "SuperAdmin", "Demo", "SalesManager")
+    reason = (body.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="A transfer reason is required")
+
+    destination = session.get(User, body.employee_id)
+    if not destination or not destination.is_active:
+        raise HTTPException(status_code=422, detail="Active destination salesperson not found")
+
+    target_leads = []
+    # 1. Explicit lead IDs
+    if body.lead_ids and len(body.lead_ids) > 0:
+        query = select(Lead).where(Lead.id.in_(body.lead_ids))
+        if current_tenant_id.get():
+            query = query.where(Lead.tenant_id == current_tenant_id.get())
+        if not is_admin:
+            query = query.where(Lead.owner_id == actor.id)
+        elif body.source_employee_id is not None and body.source_employee_id > 0:
+            query = query.where(Lead.owner_id == body.source_employee_id)
+        elif body.source_employee_id == 0:
+            query = query.where(Lead.owner_id == None)
+        target_leads = session.exec(query).all()
+    else:
+        # 2. Filter-based bulk transfer
+        query = select(Lead)
+        if current_tenant_id.get():
+            query = query.where(Lead.tenant_id == current_tenant_id.get())
+
+        if not is_admin:
+            query = query.where(Lead.owner_id == actor.id)
+        elif body.source_employee_id is not None and body.source_employee_id > 0:
+            query = query.where(Lead.owner_id == body.source_employee_id)
+        elif body.source_employee_id == 0 or body.source_employee_id is None:
+            query = query.where(Lead.owner_id == None)
+
+        if body.stage and body.stage.lower() not in ("all", ""):
+            query = query.where(Lead.status.ilike(body.stage))
+
+        query = query.order_by(Lead.created_at.desc())
+        if body.count and body.count > 0:
+            query = query.limit(body.count)
+
+        target_leads = session.exec(query).all()
+
+    if not target_leads:
+        raise HTTPException(status_code=404, detail="No matching leads found to transfer")
+
+    # Authorize transfer in session info for any SQLAlchemy event interceptors
+    session.info["authorized_lead_transfers"] = {
+        l.id: (l.owner_id, destination.id) for l in target_leads
+    }
+
+    from addons.institute.models import LeadTransferHistory
+    transferred_count = len(target_leads)
+
+    for l in target_leads:
+        prev_owner = l.owner_id
+        l.owner_id = destination.id
+        session.add(l)
+
+        # Audit in LeadTransferHistory
+        th = LeadTransferHistory(
+            tenant_id=current_tenant_id.get() or l.tenant_id,
+            lead_id=l.id,
+            from_user_id=prev_owner,
+            to_user_id=destination.id,
+            transferred_by=actor.id,
+            lead_stage=l.status or "New",
+            reason=reason,
+            transferred_at=_utcnow()
+        )
+        session.add(th)
+
+        # Record ActivityLog
+        session.add(ActivityLog(
+            tenant_id=current_tenant_id.get() or l.tenant_id,
+            user_id=actor.id,
+            action=f"Lead transferred to {destination.name or destination.email}",
+            details=f"Transferred from {('Salesperson #' + str(prev_owner)) if prev_owner else 'Unassigned'} to {destination.name or destination.email}. Stage: {l.status}. Reason: {reason}",
+            lead_id=l.id
+        ))
+
+    # Notify destination salesperson
+    dest_notif = Notification(
+        user_id=destination.id,
+        title=f"📥 {transferred_count} Lead(s) Transferred to You",
+        message=f"{actor.name or actor.email} transferred {transferred_count} lead(s) to you. Reason: {reason}",
+        type="info",
+        link="/leads"
+    )
+    session.add(dest_notif)
+    session.commit()
+
+    return {
+        "ok": True,
+        "transferred": transferred_count,
+        "destination": destination.name or destination.email,
+        "destination_id": destination.id,
+        "message": f"Successfully transferred {transferred_count} lead(s) to {destination.name or destination.email}"
+    }
+
+
+@app.get("/leads/transfers")
+def get_leads_transfers_history(
+    search: Optional[str] = Query(None),
+    limit: int = Query(150, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    session: Session = Depends(get_session)
+):
+    from addons.institute.models import LeadTransferHistory
+    query = select(LeadTransferHistory).order_by(LeadTransferHistory.transferred_at.desc())
+    if current_tenant_id.get():
+        query = query.where(LeadTransferHistory.tenant_id == current_tenant_id.get())
+
+    records = session.exec(query.offset(offset).limit(limit)).all()
+    if not records:
+        return {"transfers": [], "total": 0}
+
+    # Batch fetch user names and lead names
+    user_ids = set()
+    lead_ids = set()
+    for r in records:
+        if r.from_user_id: user_ids.add(r.from_user_id)
+        if r.to_user_id: user_ids.add(r.to_user_id)
+        if r.transferred_by: user_ids.add(r.transferred_by)
+        if r.lead_id: lead_ids.add(r.lead_id)
+
+    users_map = {}
+    if user_ids:
+        u_rows = session.exec(select(User.id, User.name, User.email).where(User.id.in_(list(user_ids)))).all()
+        users_map = {u[0]: (u[1] or u[2]) for u in u_rows}
+
+    leads_map = {}
+    if lead_ids:
+        l_rows = session.exec(select(Lead.id, Lead.company_name, Lead.email, Lead.phone).where(Lead.id.in_(list(lead_ids)))).all()
+        leads_map = {l[0]: {"company_name": l[1], "email": l[2], "phone": l[3]} for l in l_rows}
+
+    results = []
+    for r in records:
+        ld = leads_map.get(r.lead_id, {})
+        from_name = users_map.get(r.from_user_id, "Unassigned") if r.from_user_id else "Unassigned"
+        to_name = users_map.get(r.to_user_id, f"User #{r.to_user_id}")
+        by_name = users_map.get(r.transferred_by, f"User #{r.transferred_by}")
+
+        item = {
+            "id": r.id,
+            "lead_id": r.lead_id,
+            "lead_name": ld.get("company_name", f"Lead #{r.lead_id}"),
+            "lead_email": ld.get("email"),
+            "lead_phone": ld.get("phone"),
+            "from_user_id": r.from_user_id,
+            "from_user_name": from_name,
+            "to_user_id": r.to_user_id,
+            "to_user_name": to_name,
+            "transferred_by_id": r.transferred_by,
+            "transferred_by_name": by_name,
+            "lead_stage": r.lead_stage,
+            "reason": r.reason,
+            "transferred_at": r.transferred_at.isoformat() if r.transferred_at else None
+        }
+
+        if search and search.strip():
+            s = search.strip().lower()
+            if not (
+                s in item["lead_name"].lower() or
+                s in (item["lead_email"] or "").lower() or
+                s in from_name.lower() or
+                s in to_name.lower() or
+                s in by_name.lower() or
+                s in (r.reason or "").lower()
+            ):
+                continue
+
+        results.append(item)
+
+    return {"transfers": results, "total": len(results)}
 
 
 @app.get("/leads/{lead_id}")
@@ -14898,7 +15412,31 @@ def convert_lead_to_client(lead_id: int, session: Session = Depends(get_session)
     session.add(lead)
     session.commit()
 
+    # ── EMAIL NOTIFICATION TO CONFIGURED RECEIVERS ──
+    try:
+        from modules.notification_dispatcher import dispatch_event_notification
+        dispatch_event_notification(
+            event_key="client_added_or_converted",
+            subject=f"🎉 Lead Converted to Client: {client.companyName}",
+            headline=f"Lead Converted: {client.companyName}",
+            details={
+                "Company Name": client.companyName,
+                "Phone": client.phone or "—",
+                "Address": client.address or "—",
+                "Original Lead": lead.company_name,
+                "Status": "Converted to Client"
+            },
+            tenant_id=lead.tenant_id,
+            action_url=f"/clients/{client.id}",
+            action_label="View Client Profile"
+        )
+    except Exception as ce:
+        print("[ConvertLead] Notification error:", ce)
+
     return {"message": "Lead converted successfully", "client_id": client.id, "account_id": account.id}
+
+
+
 
 # ---- ACCOUNTS API ----
 
@@ -15891,6 +16429,42 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
             notif_type="info",
             link=f"/meetings"
         )
+
+        # Notify assigned salesperson if distinct from current user
+        assigned_sp_id = None
+        target_name = None
+        if m.lead_id:
+            lead_obj = session.get(Lead, m.lead_id)
+            if lead_obj:
+                target_name = lead_obj.company_name
+                assigned_sp_id = lead_obj.owner_id
+        elif m.client_id:
+            client_obj = session.get(ClientProfile, m.client_id)
+            if client_obj:
+                target_name = client_obj.companyName
+                assigned_sp_id = client_obj.assignedEmployeeId
+        if not assigned_sp_id and m.host_id:
+            assigned_sp_id = m.host_id
+
+        if assigned_sp_id and assigned_sp_id != current_salesperson_id.get():
+            session.add(Notification(
+                user_id=assigned_sp_id,
+                title=f"📅 Meeting Scheduled: {m.title}",
+                message=f"Time: {dt_str} | Status: {m.status}" + (f" for {target_name}" if target_name else ""),
+                type="info",
+                link=f"/meetings"
+            ))
+
+        # Record ActivityLog
+        session.add(ActivityLog(
+            tenant_id=current_tenant_id.get(),
+            user_id=current_salesperson_id.get(),
+            action=f"Meeting scheduled: {m.title}",
+            details=f"Scheduled for {dt_str}. Type: {m.meeting_type}" + (f" with {target_name}" if target_name else ""),
+            lead_id=m.lead_id,
+            client_id=m.client_id
+        ))
+        session.commit()
     except Exception:
         pass
 
@@ -16032,7 +16606,224 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
     except Exception as e:
         print("WhatsApp Error:", e)
 
+    # ── EMAIL NOTIFICATION TO CONFIGURED NOTIFICATION RECEIVERS ──
+    try:
+        from modules.notification_dispatcher import dispatch_event_notification
+        target_name = None
+        if m.lead_id:
+            lead_obj = session.get(Lead, m.lead_id)
+            if lead_obj:
+                target_name = lead_obj.company_name
+        elif m.client_id:
+            client_obj = session.get(ClientProfile, m.client_id)
+            if client_obj:
+                target_name = client_obj.companyName
+
+        dispatch_event_notification(
+            event_key="followup_created",
+            subject=f"📅 New Follow-up / Meeting: {m.title}",
+            headline=f"Scheduled Meeting: {m.title}",
+            details={
+                "Meeting Title": m.title,
+                "Target / Company": target_name or "—",
+                "Scheduled Time": dt_str,
+                "Type": m.meeting_type or "Call",
+                "Status": m.status or "Scheduled",
+                "Notes / Agenda": m.notes or "—"
+            },
+            tenant_id=m.tenant_id,
+            action_url="/meetings",
+            action_label="View Meetings Schedule"
+        )
+    except Exception as ne:
+        print("[CreateMeeting] Notification dispatch error:", ne)
+
     return {"meeting": _meeting_dict(m, session)}
+
+
+# ─── MEETING REMINDERS & POST-MEETING OUTCOME REVIEW ─────────────────────
+
+class MeetingCompleteRequest(BaseModel):
+    outcome: str
+    notes: Optional[str] = None
+    create_followup: bool = False
+    followup_date: Optional[str] = None
+    followup_title: Optional[str] = None
+    followup_type: str = "Follow-up"
+
+
+class MeetingRescheduleRequest(BaseModel):
+    scheduled_at: str
+    reason: str
+
+
+class MeetingCancelRequest(BaseModel):
+    reason: str
+
+
+@app.get("/meetings/check-reminders")
+def check_meeting_reminders(session: Session = Depends(get_session)):
+    """
+    Checks upcoming meetings and follow-up calls in the next 10-135 minutes.
+    Sends reminders (15m, 30m, 1h, 2h) to Admin, assigned salesperson,
+    and configured notification email receivers.
+    """
+    now = _utcnow()
+    window_start = now
+    window_end = now + timedelta(minutes=135)
+
+    # 1. Upcoming meetings
+    m_query = select(Meeting).where(
+        Meeting.scheduled_at >= window_start,
+        Meeting.scheduled_at <= window_end,
+        Meeting.status.ilike("scheduled")
+    )
+    if current_tenant_id.get():
+        m_query = m_query.where(Meeting.tenant_id == current_tenant_id.get())
+
+    upcoming_meetings = session.exec(m_query).all()
+    reminders_sent = 0
+
+    REMINDER_INTERVALS = [
+        (15, 10, 25, "15-Minute"),
+        (30, 20, 40, "30-Minute"),
+        (60, 45, 75, "1-Hour"),
+        (120, 105, 135, "2-Hour"),
+    ]
+
+    for m in upcoming_meetings:
+        if not m.scheduled_at:
+            continue
+        m_dt = m.scheduled_at if m.scheduled_at.tzinfo else m.scheduled_at.replace(tzinfo=timezone.utc)
+        diff_minutes = (m_dt - now).total_seconds() / 60
+
+        for interval, min_m, max_m, label in REMINDER_INTERVALS:
+            if not (min_m <= diff_minutes <= max_m):
+                continue
+
+            time_str = _meeting_time_label(m, "%I:%M %p")
+            title = f"⏰ {label} Reminder: Meeting '{m.title}'"
+            target_name = None
+            salesperson_id = None
+
+            if m.lead_id:
+                l = session.get(Lead, m.lead_id)
+                if l:
+                    target_name = l.company_name
+                    salesperson_id = l.owner_id
+            elif m.client_id:
+                c = session.get(ClientProfile, m.client_id)
+                if c:
+                    target_name = c.companyName
+                    salesperson_id = c.assignedEmployeeId
+            if not salesperson_id and m.host_id:
+                salesperson_id = m.host_id
+
+            msg = f"Meeting '{m.title}'" + (f" with {target_name}" if target_name else "") + f" starts at {time_str}."
+
+            # Check if already notified for this interval
+            existing = session.exec(
+                select(Notification).where(
+                    Notification.title == title,
+                    Notification.link == "/meetings"
+                )
+            ).first()
+
+            if not existing:
+                # Notify admins
+                try:
+                    _notify_admins(
+                        session,
+                        m.tenant_id or current_tenant_id.get(),
+                        title=title,
+                        message=msg,
+                        notif_type="warning",
+                        link="/meetings"
+                    )
+                except Exception:
+                    pass
+
+                # Notify assigned salesperson
+                if salesperson_id:
+                    session.add(Notification(
+                        user_id=salesperson_id,
+                        title=title,
+                        message=msg,
+                        type="warning",
+                        link="/meetings"
+                    ))
+
+                # ── EMAIL NOTIFICATION TO CONFIGURED RECEIVERS MATCHING ADVANCE TIME ──
+                try:
+                    from modules.notification_dispatcher import dispatch_event_notification
+                    dispatch_event_notification(
+                        event_key="followup_reminder",
+                        subject=f"⏰ {label} Reminder: Meeting '{m.title}'",
+                        headline=f"Meeting Starting in {label}: {m.title}",
+                        details={
+                            "Meeting Title": m.title,
+                            "Target / Company": target_name or "—",
+                            "Starts At": time_str,
+                            "Notice Window": label,
+                            "Location / Link": m.location or "—",
+                            "Agenda": m.description or "—"
+                        },
+                        tenant_id=m.tenant_id,
+                        action_url="/meetings",
+                        action_label="Open Meetings",
+                        advance_minutes=interval
+                    )
+                except Exception as ex:
+                    print(f"[ReminderNotification] {label} error:", ex)
+
+                reminders_sent += 1
+
+    session.commit()
+    return {"ok": True, "reminders_sent": reminders_sent}
+
+
+@app.get("/meetings/pending-outcomes")
+def get_pending_meeting_outcomes(session: Session = Depends(get_session)):
+    """
+    Returns meetings whose scheduled time has passed and are still marked 'Scheduled'.
+    Used for daily popup prompts asking if the meeting was completed.
+    """
+    actor = _current_user(session)
+    now = _utcnow()
+    query = select(Meeting).where(
+        Meeting.scheduled_at <= now,
+        Meeting.status.ilike("scheduled")
+    ).order_by(Meeting.scheduled_at.desc())
+
+    if current_tenant_id.get():
+        query = query.where(Meeting.tenant_id == current_tenant_id.get())
+
+    # If actor is salesperson (non-admin), show meetings assigned to them or hosted by them
+    if actor and actor.role not in ("Admin", "SuperAdmin", "Demo", "SalesManager"):
+        user_lead_ids = select(Lead.id).where(Lead.owner_id == actor.id)
+        query = query.where(
+            or_(
+                Meeting.host_id == actor.id,
+                Meeting.created_by == actor.id,
+                Meeting.lead_id.in_(user_lead_ids)
+            )
+        )
+
+    meetings = session.exec(query.limit(20)).all()
+    out = []
+    for m in meetings:
+        d = _meeting_dict(m, session)
+        target_name = None
+        if m.lead_id:
+            l = session.get(Lead, m.lead_id)
+            if l: target_name = l.company_name
+        elif m.client_id:
+            c = session.get(ClientProfile, m.client_id)
+            if c: target_name = c.companyName
+        d["company_name"] = target_name
+        out.append(d)
+
+    return {"pending_meetings": out}
 
 
 @app.get("/meetings/{meeting_id}")
@@ -16071,6 +16862,38 @@ def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session
             "Meeting Updated", _meeting_dict(m, session), f"{base_url}/meetings")
     except Exception as e:
         print("WhatsApp Error:", e)
+
+    # ── EMAIL NOTIFICATION TO CONFIGURED NOTIFICATION RECEIVERS ──
+    try:
+        from modules.notification_dispatcher import dispatch_event_notification
+        target_name = None
+        if m.lead_id:
+            lead_obj = session.get(Lead, m.lead_id)
+            if lead_obj:
+                target_name = lead_obj.company_name
+        elif m.client_id:
+            client_obj = session.get(ClientProfile, m.client_id)
+            if client_obj:
+                target_name = client_obj.companyName
+
+        dispatch_event_notification(
+            event_key="followup_created",
+            subject=f"📅 New Follow-up / Meeting: {m.title}",
+            headline=f"Scheduled Meeting: {m.title}",
+            details={
+                "Meeting Title": m.title,
+                "Target / Company": target_name or "—",
+                "Scheduled Time": dt_str,
+                "Type": m.meeting_type or "Call",
+                "Status": m.status or "Scheduled",
+                "Notes / Agenda": m.notes or "—"
+            },
+            tenant_id=m.tenant_id,
+            action_url="/meetings",
+            action_label="View Meetings Schedule"
+        )
+    except Exception as ne:
+        print("[CreateMeeting] Notification dispatch error:", ne)
 
     return {"meeting": _meeting_dict(m, session)}
 
@@ -16115,6 +16938,167 @@ async def import_meetings(file: UploadFile = File(...), session: Session = Depen
             pass
     session.commit()
     return {"imported": imported}
+
+
+@app.post("/meetings/{meeting_id}/complete")
+def complete_meeting(
+    meeting_id: int,
+    body: MeetingCompleteRequest,
+    session: Session = Depends(get_session)
+):
+    m = _get_visible_meeting(session, meeting_id)
+    actor = _current_user(session)
+    actor_id = actor.id if actor else current_salesperson_id.get()
+
+    m.status = "Completed"
+    m.outcome = body.outcome
+    if body.notes:
+        existing_notes = m.notes or ""
+        m.notes = (existing_notes + "\n\n" + body.notes).strip()
+    m.updated_at = _utcnow()
+    session.add(m)
+
+    target_name = None
+    if m.lead_id:
+        l = session.get(Lead, m.lead_id)
+        if l: target_name = l.company_name
+    elif m.client_id:
+        c = session.get(ClientProfile, m.client_id)
+        if c: target_name = c.companyName
+
+    # Record ActivityLog
+    session.add(ActivityLog(
+        tenant_id=m.tenant_id or current_tenant_id.get(),
+        user_id=actor_id,
+        action=f"Meeting completed: {m.title}",
+        details=f"Outcome: {body.outcome}. " + (f"Notes: {body.notes}" if body.notes else "") + (f" with {target_name}" if target_name else ""),
+        lead_id=m.lead_id,
+        client_id=m.client_id
+    ))
+
+    # Optional immediate follow-up creation
+    followup_created = None
+    if body.create_followup and body.followup_date:
+        f_scheduled = _meeting_to_utc(body.followup_date, m.timezone)
+        new_f = Meeting(
+            tenant_id=m.tenant_id or current_tenant_id.get(),
+            created_by=actor_id,
+            host_id=m.host_id or actor_id,
+            lead_id=m.lead_id,
+            client_id=m.client_id,
+            contact_id=m.contact_id,
+            title=body.followup_title or f"Follow-up: {m.title}",
+            meeting_type=body.followup_type or "Follow-up",
+            status="Scheduled",
+            scheduled_at=f_scheduled,
+            duration_minutes=30,
+            notes=f"Created from completed meeting outcome on {m.scheduled_at}: {body.outcome}"
+        )
+        session.add(new_f)
+        session.commit()
+        session.refresh(new_f)
+        followup_created = _meeting_dict(new_f, session)
+
+        # ActivityLog for follow-up
+        session.add(ActivityLog(
+            tenant_id=m.tenant_id or current_tenant_id.get(),
+            user_id=actor_id,
+            action=f"Follow-up scheduled: {new_f.title}",
+            details=f"Scheduled for {body.followup_date} based on outcome of '{m.title}'",
+            lead_id=m.lead_id,
+            client_id=m.client_id
+        ))
+
+    # ── EMAIL NOTIFICATION FOR MEETING SYNOPSIS & OUTCOME ──
+    try:
+        from modules.notification_dispatcher import dispatch_event_notification
+        actor_name = getattr(actor, "name", "Sales Rep") if actor else "Sales Rep"
+        dispatch_event_notification(
+            event_key="meeting_synopsis",
+            subject=f"📝 Meeting Synopsis & Outcome: {m.title}",
+            headline=f"Outcome for Meeting: {m.title}",
+            details={
+                "Meeting Title": m.title,
+                "Target / Company": target_name or "—",
+                "Outcome": body.outcome,
+                "Synopsis & Notes": body.notes or "No notes provided",
+                "Next Follow-up": str(body.followup_date) if body.create_followup and body.followup_date else "None",
+                "Recorded By": actor_name
+            },
+            tenant_id=m.tenant_id,
+            action_url="/meetings",
+            action_label="View Meeting Details"
+        )
+    except Exception as ne:
+        print("[CompleteMeeting] Synopsis notification error:", ne)
+
+    session.commit()
+    return {
+        "ok": True,
+        "meeting": _meeting_dict(m, session),
+        "followup": followup_created,
+        "message": f"Meeting '{m.title}' marked as completed" + (" and follow-up scheduled!" if followup_created else "!")
+    }
+
+
+@app.post("/meetings/{meeting_id}/reschedule")
+def reschedule_meeting(
+    meeting_id: int,
+    body: MeetingRescheduleRequest,
+    session: Session = Depends(get_session)
+):
+    m = _get_visible_meeting(session, meeting_id)
+    actor = _current_user(session)
+    actor_id = actor.id if actor else current_salesperson_id.get()
+
+    old_date = _meeting_time_label(m, "%b %d, %I:%M %p")
+    new_utc = _meeting_to_utc(body.scheduled_at, m.timezone)
+    m.scheduled_at = new_utc
+    m.status = "Scheduled"
+    reason_note = f"Rescheduled on {_utcnow().strftime('%Y-%m-%d')} (Reason: {body.reason})"
+    m.notes = ((m.notes or "") + "\n" + reason_note).strip()
+    m.updated_at = _utcnow()
+    session.add(m)
+
+    session.add(ActivityLog(
+        tenant_id=m.tenant_id or current_tenant_id.get(),
+        user_id=actor_id,
+        action=f"Meeting rescheduled: {m.title}",
+        details=f"Moved from {old_date} to {body.scheduled_at}. Reason: {body.reason}",
+        lead_id=m.lead_id,
+        client_id=m.client_id
+    ))
+    session.commit()
+
+    return {"ok": True, "meeting": _meeting_dict(m, session), "message": f"Meeting rescheduled to {body.scheduled_at}"}
+
+
+@app.post("/meetings/{meeting_id}/cancel")
+def cancel_meeting(
+    meeting_id: int,
+    body: MeetingCancelRequest,
+    session: Session = Depends(get_session)
+):
+    m = _get_visible_meeting(session, meeting_id)
+    actor = _current_user(session)
+    actor_id = actor.id if actor else current_salesperson_id.get()
+
+    m.status = "Cancelled"
+    m.outcome = f"Cancelled: {body.reason}"
+    m.updated_at = _utcnow()
+    session.add(m)
+
+    session.add(ActivityLog(
+        tenant_id=m.tenant_id or current_tenant_id.get(),
+        user_id=actor_id,
+        action=f"Meeting cancelled: {m.title}",
+        details=f"Reason: {body.reason}",
+        lead_id=m.lead_id,
+        client_id=m.client_id
+    ))
+    session.commit()
+
+    return {"ok": True, "meeting": _meeting_dict(m, session), "message": "Meeting cancelled"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

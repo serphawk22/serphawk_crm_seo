@@ -32,7 +32,9 @@ import { GlobalLimitModal } from "@/components/GlobalLimitModal";
 import { NotificationProvider } from "@/context/NotificationContext";
 import GlobalFooter from "@/components/GlobalFooter";
 import CompanyBoundary from "@/components/CompanyBoundary";
+import { isPublicPage } from "@/lib/authRoutes";
 import WebsiteLeadSummary from "@/components/WebsiteLeadSummary";
+import MeetingOutcomePromptModal from "@/components/MeetingOutcomePromptModal";
 
 function AdminMainContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
@@ -42,7 +44,7 @@ function AdminMainContent({ children }: { children: React.ReactNode }) {
   return (
     <main className={`relative z-10 min-h-screen transition-[margin-left] duration-200 ease-in-out motion-reduce:transition-none ${collapsed ? "ml-[72px]" : "ml-[280px]"}`}>
       <TopRightControls />
-      <div className={isClientDetail ? "w-full h-full pr-4 sm:pr-20" : "pt-[76px] px-4 sm:px-6 md:px-8 pb-6 md:pb-8 pr-4 sm:pr-20 md:pr-24 max-w-[1600px] mx-auto h-full"}>
+      <div className={isClientDetail ? "w-full h-full px-2 sm:px-4 sm:pr-20" : "pt-[68px] sm:pt-[76px] px-2.5 sm:px-6 md:px-8 pb-6 md:pb-8 pr-2.5 sm:pr-20 md:pr-24 max-w-[1600px] mx-auto h-full"}>
         {children}
       </div>
     </main>
@@ -64,11 +66,11 @@ function ClientLayout({ children }: { children: React.ReactNode }) {
 const inter = Inter({ subsets: ["latin"], preload: false });
 
 function AppContent({ children }: { children: React.ReactNode }) {
-  const { role, loading } = useRole();
+  const { role, loading, isAuthenticated, logout } = useRole();
   const pathname = usePathname();
   const isClient = role === "Client";
   const isDeveloper = role === "ProjectMember";
-  const isAdminOrEmployee = role === "SuperAdmin" || role === "Admin" || role === "Employee" || role === "Intern" || role === "SalesManager" || role === "Demo";
+  const isAdminOrEmployee = ["SuperAdmin", "Admin", "Employee", "Intern", "SalesManager", "Demo", "Admissions"].includes(role);
   const showChatbot = !!role && role !== "Client"; // Show for ALL roles except unauthenticated Client
 
   useEffect(() => {
@@ -118,8 +120,11 @@ function AppContent({ children }: { children: React.ReactNode }) {
     return <GlobalLoader />;
   }
 
-  if (pathname === "/login" || pathname === "/forgot-password" || pathname === "/signup" || pathname === "/register" || pathname === "/demo_showcase" || pathname === "/reset-password" || pathname?.startsWith("/demo_showcase") || pathname?.startsWith("/p/")) {
+  if (pathname !== "/" && isPublicPage(pathname)) {
     return <main className="h-screen w-full">{children}</main>;
+  }
+  if (!isAuthenticated) {
+    return pathname === "/" ? <>{children}</> : <GlobalLoader />;
   }
 
   // A page whose module the company does not have is closed, whatever address it was opened from.
@@ -150,9 +155,9 @@ function AppContent({ children }: { children: React.ReactNode }) {
             </div>
             <span className="font-bold text-slate-800 dark:text-white text-sm"><LocalizedText text={"Supplier Portal"} /></span>
           </div>
-          <a href="/" onClick={() => { localStorage.removeItem("crm_user"); localStorage.removeItem("crm_token"); }}
+          <button type="button" onClick={logout}
             className="text-xs font-semibold text-slate-500 hover:text-red-500 transition-colors">
-            <LocalizedText text={"Sign Out"} /> </a>
+            <LocalizedText text={"Sign Out"} /> </button>
         </nav>
         <main>{gated}</main>
         <Chatbot />
@@ -273,6 +278,7 @@ export default function RootLayout({
                     <QuickAddFab />
                     <GlobalLimitModal />
                     <ModuleNotice />
+                    <MeetingOutcomePromptModal />
                   </NotificationProvider>
                   </TenantConfigProvider>
                 </RoleProvider>

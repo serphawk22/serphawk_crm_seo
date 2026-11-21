@@ -61,7 +61,8 @@ def public_brand(session=Depends(get_session)):
     with using_tenant(tid):
         tenant = session.get(Tenant, tid)
         settings = tenant_settings.get_settings(tid)
-        return {"company": True, "brand_name": settings.get("brand_name") or tenant.business_name or tenant.name,
+        brand_name = settings.get("brand_name") or (tenant.business_name if tenant else None) or (tenant.name if tenant else None) or "Company"
+        return {"company": True, "brand_name": brand_name,
                 **{k: settings.get(k) for k in ("brand_logo_url", "primary_color", "locale")}}
 
 

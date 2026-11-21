@@ -11,7 +11,8 @@ import SMTPSettingsTab from "@/app/admin/settings/components/SMTPSettingsTab";
 import SalesAccessSettings from "@/components/SalesAccessSettings";
 import SettingsRedirect from "@/components/SettingsRedirect";
 import { logoSrc } from "@/lib/brandLogo";
-import { Palette, Loader2, Check, Upload, Trash2, ArrowUp, ArrowDown, Plus, Sparkles, Mail, ListChecks, Receipt, PartyPopper } from "lucide-react";
+import Link from "next/link";
+import { Palette, Loader2, Check, Upload, Trash2, ArrowUp, ArrowDown, Plus, Sparkles, Mail, ListChecks, Receipt, PartyPopper, Bell, ChevronRight } from "lucide-react";
 
 type Field = { key: string; label: string; hint?: string; multiline?: boolean; type?: "color" | "select"; options?: { value: string; label: string }[] };
 
@@ -521,6 +522,20 @@ export function CompanySettingsPanel({ embedded = false }: { embedded?: boolean 
         <p className="text-xs text-gray-500">
           {t("Connect the email account your company sends from (quotes, invoices, proposals and the Inbox). Each person can also connect their own mailbox under Email Agent → Settings. The password is stored encrypted and is never shown again.")}{" "}</p>
         <SMTPSettingsTab />
+      </section>
+
+      <section id="notifications" className="space-y-3 pt-6 border-t border-gray-200 dark:border-gray-800">
+        <h2 className="text-lg font-bold flex items-center gap-2"><Bell className="w-5 h-5 text-indigo-600" /> {t("Notification Email Receivers")}</h2>
+        <p className="text-xs text-gray-500">
+          {t("Configure team members or administrators who should receive email alerts when leads are added, clients converted, follow-ups scheduled, or meeting reminders are due.")}
+        </p>
+        <Link
+          href="/settings?tab=notifications"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/40 text-xs font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+        >
+          <span>Manage Notification Receivers</span>
+          <ChevronRight className="w-3.5 h-3.5" />
+        </Link>
       </section>
     </div>
   );

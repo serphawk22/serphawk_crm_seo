@@ -71,6 +71,28 @@ class DemoBase(TenantIsolationBase):
 
 
 class Signup(DemoBase):
+    def test_b2c_signup_enables_the_institute_bundle_and_keeps_trial_limits(self):
+        email = "institute@demo.test"
+        self.verify(email)
+        response = self.client.post("/demo/signup", json={"name": "Institute Demo", "email": email,
+            "password": PASSWORD, "model": "b2c"})
+        self.assertEqual(response.status_code, 200, response.text)
+        token = response.json()["token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        config = self.client.get("/me/features", headers=headers).json()
+        self.assertEqual(config["preset"], "institute")
+        self.assertTrue(config["features"]["institute"])
+        self.assertTrue(config["features"]["dashboard_b2c"])
+        self.assertFalse(config["features"]["command_center"])
+        self.assertEqual(self.client.get("/dashboard-b2c/stats", headers=headers).status_code, 200)
+        tenant = self.tenant(response.json()["user"]["tenant_id"])
+        self.assertEqual((tenant.limit_clients, tenant.limit_emails, tenant.limit_calls), (5, 5, 2))
+
+    def test_signup_cannot_select_an_arbitrary_preset(self):
+        response = self.client.post("/demo/signup", json={"name": "Demo", "email": "test@demo.test",
+            "password": PASSWORD, "model": "full"})
+        self.assertEqual(response.status_code, 422)
+
     def test_creates_a_configured_demo_workspace(self):
         r = self.signup()
         self.assertEqual(r.status_code, 200, r.text)
