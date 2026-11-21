@@ -42,7 +42,7 @@ def _f(*a, **kw) -> Feature:
 
 
 _FEATURES: List[Feature] = [
-    _f("dashboard", "Command Center (previous dashboard)", "Work", "Previous role-specific CRM overview, retained for review.", path_prefixes=("/dashboard-stats",)),
+    _f("dashboard", "Command Center (previous dashboard)", "Work", "Previous role-specific CRM overview, retained for review.", default_on=False, path_prefixes=("/dashboard-stats",)),
     _f("dashboard_b2c", "Dashboard B2C", "Work", "Institute command center: admissions, fees, courses and lead stages.", default_on=False, path_prefixes=("/dashboard-b2c",)),
     # CRM / Work. Switching a module off closes it, not only its menu entry:
     #   * the page is closed in the app (frontend/src/lib/moduleRoutes.ts + components/ModuleGate.tsx), and
@@ -132,7 +132,7 @@ _FEATURES: List[Feature] = [
 
 # Section entitlements sit alongside the Dashboard switch in module management.
 from modules.dashboard import SECTIONS, SECTION_MODULES
-_FEATURES.extend(_f(f"dashboard_{key}", label, "Command Center sections", parent_key="dashboard") for key, label in SECTIONS.items())
+_FEATURES.extend(_f(f"dashboard_{key}", label, "Command Center sections", default_on=False, parent_key="dashboard") for key, label in SECTIONS.items())
 from modules.dashboard_variants import B2B_SECTIONS, B2C_SECTIONS
 _FEATURES.extend(_f(f"command_center_{key}", label, "Dashboard B2B sections", default_on=False, parent_key="command_center") for key, label in B2B_SECTIONS.items())
 _FEATURES.extend(_f(f"dashboard_b2c_{key}", label, "Dashboard B2C sections", default_on=False, parent_key="dashboard_b2c") for key, label in B2C_SECTIONS.items())
@@ -275,7 +275,8 @@ def catalog() -> List[dict]:
              "locked": f.locked, "default_on": f.default_on, "parent_key": f.parent_key,
              "gated_on_server": bool(f.path_prefixes or f.path_regexes),
              "requires_any": list(SECTION_MODULES.get(f.key.removeprefix("dashboard_"), ())) if f.key.startswith("dashboard_") else []}
-            for f in _FEATURES]
+            for f in _FEATURES
+            if f.key != "dashboard" and f.parent_key != "dashboard"]
 
 
 def keys() -> Iterable[str]:
@@ -285,4 +286,4 @@ def keys() -> Iterable[str]:
 def module_count(enabled: Optional[Dict[str, bool]] = None) -> int:
     """Count product modules, never their dashboard/sales/other section switches."""
     return sum(1 for key, feature in FEATURES.items()
-               if not feature.parent_key and (enabled is None or enabled.get(key, False)))
+               if key != "dashboard" and not feature.parent_key and (enabled is None or enabled.get(key, False)))

@@ -12,7 +12,7 @@ from sqlmodel import Session
 
 from modules import features, tenant_settings
 
-_CRM_BASE = {"dashboard", "leads", "contacts", "clients", "work_queue", "projects", "task_sheet", "reports",
+_CRM_BASE = {"leads", "contacts", "clients", "work_queue", "projects", "task_sheet", "reports",
              "meetings", "calls", "teams", "leaderboard", "inbox", "followups", "email_agent", "support", "cases"}
 
 # The business-suite modules the SerpHawk flagship ships to its own users (ported from the SCM BPO deployment).
@@ -29,6 +29,27 @@ PRESETS: Dict[str, dict] = {
         "settings": {"sales_scoping": True,
                      "lead_statuses": ["New", "Contacted", "Not Responded", "Neutral", "Positive", "Negative", "Converted"]},
     },
+    "institute": {
+        "label": "Institute (students, courses, batches)",
+        "description": "SCM HB-style: leads and admissions tracking, students, courses, batches, enrollments and fees, "
+                       "attendance, portals, reports, inbox, follow-ups and email agent.",
+        "features": {"dashboard_b2c", "cases", "leads", "work_queue", "task_sheet", "reports", "calls", "teams", "leaderboard", "inbox",
+                     "followups", "email_agent", "support", "institute", "ai_reports", "lead_sources", "lead_source_analytics"},
+        "settings": {"default_currency": "INR", "timezone": "Asia/Kolkata", "lead_assignment": "revenue",
+                     "sales_scoping": True, "home_dashboard": "dashboard_b2c",
+                     "lead_statuses": ["New", "Contacted", "Not Responded", "Follow-up", "Webinar Scheduled",
+                                       "Webinar Attended", "Webinar Not Attended", "Walk-in Scheduled",
+                                       "Walk-in Attended", "Walk-in Not Attended", "Converted", "Lost"]},
+    },
+    "full": {
+        "label": "Everything",
+        "description": "Every module switched on. What existing tenants had before feature entitlements.",
+        "features": {k for k, f in features.FEATURES.items() if k != "dashboard" and f.parent_key != "dashboard"},
+        "settings": {},
+    },
+}
+
+_LEGACY_PRESETS: Dict[str, dict] = {
     "standard": {
         "label": "Standard CRM",
         "description": "The CRM every business starts from: leads, contacts, clients, projects and tasks, reports, "
@@ -47,15 +68,6 @@ PRESETS: Dict[str, dict] = {
                      "lead_auto_assign": True, "lead_assignment": "workload", "sales_scoping": True,
                      "lead_statuses": ["New", "Contacted", "Not Responded", "Neutral", "Positive", "Negative", "Converted"]},
     },
-    "full": {
-        "label": "Everything",
-        "description": "Every module switched on. What existing tenants had before feature entitlements.",
-        "features": set(features.FEATURES),
-        "settings": {},
-    },
-}
-
-_LEGACY_PRESETS: Dict[str, dict] = {
     "agency": {
         "label": "Digital agency CRM",
         "description": "SerpHawk-style CRM: leads, clients, projects, inbox, follow-ups, email agent, billing, proposals.",
@@ -72,7 +84,7 @@ _LEGACY_PRESETS: Dict[str, dict] = {
         "label": "Training institute",
         "description": "SCM HB-style: leads and admissions tracking, students, courses, batches, enrollments and fees, "
                        "attendance, portals, reports, inbox, follow-ups and email agent.",
-        "features": {"dashboard", "dashboard_b2c", "cases", "leads", "work_queue", "task_sheet", "reports", "calls", "teams", "leaderboard", "inbox",
+        "features": {"dashboard_b2c", "cases", "leads", "work_queue", "task_sheet", "reports", "calls", "teams", "leaderboard", "inbox",
                      "followups", "email_agent", "support", "institute", "ai_reports", "lead_sources", "lead_source_analytics"},
         "settings": {"default_currency": "INR", "timezone": "Asia/Kolkata", "lead_assignment": "revenue",
                      "sales_scoping": True, "home_dashboard": "dashboard_b2c",
