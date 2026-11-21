@@ -3,6 +3,7 @@ import LocalizedText from "@/components/LocalizedText";
 
 import React, { useEffect, useState } from 'react';
 import { Bot, CalendarPlus, CheckCircle2, Loader2, Mail, Save, Send, Sparkles } from 'lucide-react';
+import { API_BASE_URL } from '@/config';
 import { errorText } from '@/lib/inboxApi';
 import {
   followupsApi, wasCancelled,
@@ -48,6 +49,9 @@ export function FollowUpFormDialog({ initial, record, defaults, onClose, onSaved
   });
   const [showEmail, setShowEmail] = useState(!!(f.email_body || f.auto_send));
   const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
+  const [linked, setLinked] = useState('');
+  const [leads, setLeads] = useState<{ id: number; company_name?: string; email?: string; owner_id?: number | null }[]>([]);
+  const [clients, setClients] = useState<{ id: number; companyName?: string; projectName?: string; contact_person?: string; assignedEmployeeId?: number | null }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
@@ -56,11 +60,53 @@ export function FollowUpFormDialog({ initial, record, defaults, onClose, onSaved
     followupsApi.assignees().then((r) => setUsers(r.users)).catch(() => setUsers([]));
   }, []);
 
+  useEffect(() => {
+    if (record || editing) return;
+    const safe = (u: string): Promise<any> => fetch(`${API_BASE_URL}${u}`).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+    Promise.all([safe('/leads'), safe('/clients?per_page=1000')]).then(([l, c]) => {
+      setLeads(Array.isArray(l?.leads) ? l.leads : []);
+      setClients(Array.isArray(c?.clients) ? c.clients : []);
+    });
+  }, [record, editing]);
+
+  const handleLinkedChange = (val: string) => {
+    setLinked(val);
+    if (!val) return;
+    const [kind, idStr] = val.split(':');
+    const id = Number(idStr);
+    if (kind === 'lead') {
+      const lead = leads.find((l) => l.id === id);
+      if (lead) {
+        setF((p) => ({
+          ...p,
+          company_name: lead.company_name || p.company_name,
+          contact_email: lead.email || p.contact_email,
+          assigned_to: lead.owner_id ?? p.assigned_to,
+        }));
+      }
+    } else if (kind === 'client') {
+      const client = clients.find((c) => c.id === id);
+      if (client) {
+        setF((p) => ({
+          ...p,
+          company_name: client.companyName || client.projectName || p.company_name,
+          contact_name: client.contact_person || p.contact_name,
+          assigned_to: client.assignedEmployeeId ?? p.assigned_to,
+        }));
+      }
+    }
+  };
+
   const save = async () => {
     setError('');
+    const [linkKind, linkIdStr] = linked ? linked.split(':') : ['', ''];
+    const linkedLeadId = record?.kind === 'lead' ? record.id : linkKind === 'lead' ? Number(linkIdStr) : null;
+    const linkedClientId = record?.kind === 'client' ? record.id : linkKind === 'client' ? Number(linkIdStr) : null;
     if (!f.title.trim()) return setError('Give the follow-up a title.');
     if (!f.due) return setError('Pick a follow-up date.');
-    if (!record && !editing && !f.contact_email.trim()) return setError('Add the contact’s email address.');
+    if (!record && !editing && !linkedLeadId && !linkedClientId && !f.contact_email.trim()) {
+      return setError('Select a lead/client or add the contact’s email address.');
+    }
     if (f.auto_send && (!f.email_subject.trim() || !f.email_body.trim() || !f.contact_email.trim())) {
       return setError('The due email batch needs the contact’s email plus an email subject and body.');
     }
@@ -78,8 +124,8 @@ export function FollowUpFormDialog({ initial, record, defaults, onClose, onSaved
       } else {
         saved = (await followupsApi.create({
           ...payload,
-          lead_id: record?.kind === 'lead' ? record.id : null,
-          client_id: record?.kind === 'client' ? record.id : null,
+          lead_id: linkedLeadId,
+          client_id: linkedClientId,
           company_name: f.company_name.trim() || null,
           source: defaults?.source ?? 'manual', source_ref: defaults?.source_ref ?? null, ai_reason: defaults?.ai_reason ?? null,
         })).item;
@@ -137,7 +183,10 @@ export function FollowUpFormDialog({ initial, record, defaults, onClose, onSaved
             <div>
               <label className={label}><LocalizedText text={"Priority"} /></label>
               <select className={input} value={f.priority} onChange={(e) => set('priority', e.target.value as Priority)}>
-                <option value="high"><LocalizedText text={"High"} /></option><option value="medium"><LocalizedText text={"Medium"} /></option><option value="low"><LocalizedText text={"Low"} /></option>
+                <option value="urgent"><LocalizedText text={"Urgent"} /></option>
+                <option value="high"><LocalizedText text={"High"} /></option>
+                <option value="medium"><LocalizedText text={"Medium"} /></option>
+                <option value="low"><LocalizedText text={"Low"} /></option>
               </select>
             </div>
           </div>
@@ -156,6 +205,28 @@ export function FollowUpFormDialog({ initial, record, defaults, onClose, onSaved
             <label className={label}><LocalizedText text={"Contact email"} /></label>
             <input type="email" className={input} value={f.contact_email} onChange={(e) => set('contact_email', e.target.value)} placeholder="jane@company.com" />
           </div>
+          {!record && !editing && (leads.length > 0 || clients.length > 0) && (
+            <div className="sm:col-span-2">
+              <label className={label}>Link to Lead / Client</label>
+              <select className={input} value={linked} onChange={(e) => handleLinkedChange(e.target.value)}>
+                <option value="">None (contact email only)</option>
+                {leads.length > 0 && (
+                  <optgroup label="Leads">
+                    {leads.map((l) => (
+                      <option key={`lead:${l.id}`} value={`lead:${l.id}`}>{l.company_name || `Lead #${l.id}`}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {clients.length > 0 && (
+                  <optgroup label="Clients">
+                    {clients.map((c) => (
+                      <option key={`client:${c.id}`} value={`client:${c.id}`}>{c.companyName || c.projectName || c.contact_person || `Client #${c.id}`}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+          )}
           {!record && !editing && (
             <div>
               <label className={label}><LocalizedText text={"Company"} /></label>

@@ -2,15 +2,23 @@
 import { createVisiblePoll } from "@/lib/visiblePoll";
 import LocalizedText from "@/components/LocalizedText";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Phone, Plus, X, Clock, Loader2, Check, PhoneCall, PhoneOff, Zap,
   CalendarClock, ChevronDown, ChevronUp, Trash2, Calendar, User,
-  Mail, CheckCircle, Bell, Bot, AlertCircle
+  Mail, CheckCircle, Bell, Bot, AlertCircle, Mic, AudioLines, MessageCircleQuestion,
+  BookOpen, Activity, Target, Radio, ArrowRight
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import QuickCallPanel from "@/components/voice-agent/QuickCallPanel";
+import PitchStudio from "@/components/voice-agent/PitchStudio";
+import CallConsole from "@/components/voice-agent/CallConsole";
+import FollowUps from "@/components/voice-agent/FollowUps";
+import KnowledgeBase from "@/components/voice-agent/KnowledgeBase";
+import {
+  voiceAgentApi, errorText, EntityType, VoiceAgentOptions, VoiceAgentStats, VoicePitch,
+} from "@/lib/voiceAgentApi";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/context/LanguageContext";
 
@@ -354,6 +362,11 @@ function CallCard({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-bold text-slate-900 dark:text-white text-xs truncate">{call.entity_name || call.phone_number}</span>
             {call.entity_name && <span className="text-[11px] text-slate-400 dark:text-zinc-500 font-mono">({call.phone_number})</span>}
+            <span className={cn("text-[10px] font-bold px-2 py-0.2 rounded-full uppercase tracking-wider border",
+              isAiCall ? "bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-500/20"
+                       : "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/20")}>
+              {isAiCall ? t("calls.badge_ai") : t("calls.badge_crm")}
+            </span>
             {interested && <span className="text-[10px] bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 font-bold px-2 py-0.2 rounded-full uppercase tracking-wider">{t("calls.badge_interested")}</span>}
             {!call.summary && <span className="text-[10px] bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 font-bold px-2 py-0.2 rounded-full uppercase tracking-wider animate-pulse">{t("calls.needs_summary")}</span>}
             {call.followup_needed && <span className="text-[10px] bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/20 font-bold px-2 py-0.2 rounded-full uppercase tracking-wider">{t("calls.followup_badge")}</span>}
@@ -384,9 +397,13 @@ function CallCard({
   );
 }
 
+type WorkspaceTab = "history" | "studio" | "voice-calling" | "live" | "followups" | "knowledge" | "dashboard";
+type HistoryTab = "all" | "logged" | "scheduled" | "ai-calls";
+
 export default function CallsPage() {
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<"logged" | "scheduled" | "ai-calls">("logged");
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("history");
+  const [activeTab, setActiveTab] = useState<HistoryTab>("all");
   const [calls, setCalls] = useState<CallEntry[]>([]);
   const [scheduledCalls, setScheduledCalls] = useState<ScheduledCall[]>([]);
   const [aiCallLogs, setAiCallLogs] = useState<AiCallLog[]>([]);
@@ -413,8 +430,23 @@ export default function CallsPage() {
   const [selectedCallIds, setSelectedCallIds] = useState<Set<number>>(new Set());
   const [selectedAiCallIds, setSelectedAiCallIds] = useState<Set<number>>(new Set());
 
-  // Manually logged calls only — AI voice agent calls live in the AI Calls tab.
+  // AI Calling state (the embedded voice-agent workspace).
+  const [voiceOptions, setVoiceOptions] = useState<VoiceAgentOptions | null>(null);
+  const [voiceStats, setVoiceStats] = useState<VoiceAgentStats | null>(null);
+  const [voicePitches, setVoicePitches] = useState<VoicePitch[]>([]);
+  const [voiceError, setVoiceError] = useState("");
+  const [requestedPitch, setRequestedPitch] = useState<VoicePitch | null>(null);
+  const [voiceEntityType, setVoiceEntityType] = useState<EntityType>("lead");
+  const [voiceEntityId, setVoiceEntityId] = useState("");
+  const [voicePitchText, setVoicePitchText] = useState("");
+  const [selectedVoicePitchId, setSelectedVoicePitchId] = useState("");
+
+  // Manually logged calls only — the combined history adds AICall records beside them.
   const loggedCalls = calls.filter((c) => !isAiGeneratedCall(c));
+  const allHistoryCalls = useMemo(() => [
+    ...loggedCalls.map((c) => ({ ...c, source: "crm" as const, rowKey: `crm-${c.id}` })),
+    ...aiCallLogs.map((c) => ({ ...c, source: "ai" as const, rowKey: `ai-${c.id}` })),
+  ].sort((a, b) => new Date(b.received_at || 0).getTime() - new Date(a.received_at || 0).getTime()), [loggedCalls, aiCallLogs]);
 
   // Keep multi-select limited to what is visible in the Calls Logged list.
   useEffect(() => {
@@ -437,6 +469,48 @@ export default function CallsPage() {
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), duration);
   };
   const removeToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
+
+  const loadVoiceStats = useCallback(async () => {
+    try { setVoiceStats(await voiceAgentApi.stats()); } catch { /* polling; keep last value */ }
+  }, []);
+  const loadVoicePitches = useCallback(async () => {
+    try { setVoicePitches((await voiceAgentApi.pitches()).pitches); } catch { /* keep last value */ }
+  }, []);
+  const recheckWebhook = useCallback(async () => {
+    try { setVoiceOptions(await voiceAgentApi.options(true)); } catch { /* keep last result */ }
+  }, []);
+  const refreshVoiceData = useCallback(async () => {
+    await Promise.all([loadVoiceStats(), loadVoicePitches()]);
+  }, [loadVoiceStats, loadVoicePitches]);
+
+  useEffect(() => {
+    voiceAgentApi.options()
+      .then(setVoiceOptions)
+      .catch((e) => setVoiceError(errorText(e, "Failed to load AI calling options")));
+    refreshVoiceData();
+    const poll = createVisiblePoll(loadVoiceStats, 15000, false);
+    return () => poll.dispose();
+  }, [refreshVoiceData, loadVoiceStats]);
+
+  const webhookProblem = !!voiceOptions?.twilio?.webhook_problem;
+  useEffect(() => {
+    if (!webhookProblem) return;
+    const poll = createVisiblePoll(recheckWebhook, 8000, false);
+    return () => poll.dispose();
+  }, [webhookProblem, recheckWebhook]);
+
+  const useStudioPitch = (pitch: VoicePitch) => {
+    setVoicePitchText(pitch.pitch_text);
+    setSelectedVoicePitchId(String(pitch.id));
+    if (pitch.entity_type) setVoiceEntityType(pitch.entity_type);
+    if (pitch.entity_id) setVoiceEntityId(String(pitch.entity_id));
+    setWorkspaceTab("voice-calling");
+  };
+  const openRequestedPitchInConsole = (pitch: VoicePitch) => {
+    setRequestedPitch(pitch);
+    setWorkspaceTab("live");
+  };
+  const selectedVoicePitch = voicePitches.find((p) => String(p.id) === selectedVoicePitchId) || null;
 
   const authHeaders = () => {
     const headers: Record<string, string> = {};
@@ -701,6 +775,30 @@ export default function CallsPage() {
           </div>
         </motion.div>
 
+        {/* Unified Calls workspace — one module for normal and AI calling */}
+        <motion.div variants={itemVariants} className="flex gap-1.5 overflow-x-auto pb-1">
+          {([
+            { id: "history", label: t("calls.tab_history"), icon: PhoneCall },
+            { id: "studio", label: t("calls.tab_pitch_studio"), icon: Mic },
+            { id: "voice-calling", label: t("calls.tab_voice_calling"), icon: AudioLines },
+            { id: "live", label: t("calls.tab_live"), icon: Radio },
+            { id: "followups", label: t("calls.tab_followups"), icon: MessageCircleQuestion },
+            { id: "knowledge", label: t("calls.tab_knowledge"), icon: BookOpen },
+            { id: "dashboard", label: t("calls.tab_dashboard"), icon: Activity },
+          ] as const).map((tab) => (
+            <button key={tab.id} onClick={() => setWorkspaceTab(tab.id)}
+              className={cn("flex items-center gap-1.5 whitespace-nowrap px-3 py-2 rounded-xl font-bold text-xs transition",
+                workspaceTab === tab.id ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs" : "bg-white dark:bg-[#111111]/90 text-slate-500 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-white/5 border border-slate-200/90 dark:border-white/10")}>
+              <tab.icon className="w-3.5 h-3.5" /> {tab.label}
+              {tab.id === "live" && !!voiceStats?.active_calls && (
+                <span className="text-[10px] font-black bg-violet-600 text-white rounded-full px-1.5 py-0.5">{voiceStats.active_calls}</span>
+              )}
+            </button>
+          ))}
+        </motion.div>
+
+        {workspaceTab === "history" && (
+        <>
         {/* 4-KPI Metric Strip */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
           <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
@@ -749,7 +847,14 @@ export default function CallsPage() {
         </div>
 
         {/* Tabs Toolbar */}
-        <motion.div variants={itemVariants} className="flex items-center gap-1 bg-white dark:bg-[#111111]/90 p-1.5 rounded-xl border border-slate-200/90 dark:border-white/10 shadow-xs w-fit">
+        <motion.div variants={itemVariants} className="flex items-center gap-1 bg-white dark:bg-[#111111]/90 p-1.5 rounded-xl border border-slate-200/90 dark:border-white/10 shadow-xs w-fit overflow-x-auto max-w-full">
+          <button onClick={() => setActiveTab("all")}
+            className={cn("flex items-center gap-1.5 px-3 py-1 rounded-lg font-semibold text-xs transition",
+              activeTab === "all" ? "bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 shadow-xs" : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-white/5")}>
+            <AudioLines className="w-3.5 h-3.5" /> <span>{t("calls.tab_all")}</span>
+            <span className={cn("text-[10px] px-1.5 py-0.2 rounded-full font-bold",
+              activeTab === "all" ? "bg-white/20 text-white dark:bg-slate-900/10 dark:text-slate-900" : "bg-slate-200/70 dark:bg-white/10 text-slate-500 dark:text-zinc-400")}>{allHistoryCalls.length}</span>
+          </button>
           <button onClick={() => setActiveTab("logged")}
             className={cn("flex items-center gap-1.5 px-3 py-1 rounded-lg font-semibold text-xs transition",
               activeTab === "logged" ? "bg-amber-500 text-white shadow-xs" : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-white/5")}>
@@ -777,6 +882,34 @@ export default function CallsPage() {
 
         {/* Tab Content */}
         <AnimatePresence mode="wait">
+
+          {/* Combined Call History */}
+          {activeTab === "all" && (
+            <motion.div key="all" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="space-y-1.5">
+              {loading ? (
+                <div className="flex justify-center py-24"><Loader2 className="w-8 h-8 animate-spin text-slate-500" /></div>
+              ) : allHistoryCalls.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-28 text-slate-400 gap-4">
+                  <PhoneOff className="w-14 h-14 opacity-30" />
+                  <p className="font-bold text-lg">{t("calls.no_logged")}</p>
+                  <button onClick={() => setShowLogModal(true)} className="text-amber-600 font-bold hover:underline">{t("calls.log_first")}</button>
+                </div>
+              ) : (
+                allHistoryCalls.map((call) => (
+                  <CallCard
+                    key={call.rowKey}
+                    call={call}
+                    isAiCall={call.source === "ai"}
+                    expanded={(call.source === "ai" ? expandedAiId : expandedId) === call.id}
+                    onToggleExpand={() => call.source === "ai"
+                      ? setExpandedAiId(expandedAiId === call.id ? null : call.id)
+                      : setExpandedId(expandedId === call.id ? null : call.id)}
+                    onSave={fetchAll}
+                  />
+                ))
+              )}
+            </motion.div>
+          )}
 
           {/* Logged Calls */}
           {activeTab === "logged" && (
@@ -946,6 +1079,172 @@ export default function CallsPage() {
           )}
 
         </AnimatePresence>
+        </>
+        )}
+
+        {workspaceTab !== "history" && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+            {voiceError ? (
+              <div className="p-6 rounded-2xl bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 font-bold">{voiceError}</div>
+            ) : !voiceOptions ? (
+              <div className="py-20 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-violet-500" /></div>
+            ) : (
+              <>
+                {/* Keep the studio and console mounted so in-progress work survives tab switches. */}
+                <div className={workspaceTab === "studio" ? "" : "hidden"}>
+                  <PitchStudio options={voiceOptions} notify={addToast} onStartCall={useStudioPitch} onPitchesChanged={refreshVoiceData} />
+                </div>
+                <div className={workspaceTab === "live" ? "" : "hidden"}>
+                  <CallConsole options={voiceOptions} notify={addToast} requestedPitch={requestedPitch}
+                    onRequestHandled={() => setRequestedPitch(null)} onRecheck={recheckWebhook} />
+                </div>
+
+                {workspaceTab === "voice-calling" && (
+                  <div className="bg-white dark:bg-[#111111]/90 rounded-2xl border border-slate-200/90 dark:border-white/10 p-4 sm:p-6 space-y-5 shadow-xs">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                          <AudioLines className="w-5 h-5 text-violet-600" /> {t("calls.tab_voice_calling")}
+                        </h2>
+                        <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">{t("calls.voice_calling_desc")}</p>
+                      </div>
+                      <button onClick={() => setWorkspaceTab("studio")}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-500/20">
+                        <Mic className="w-3.5 h-3.5" /> {t("calls.tab_pitch_studio")}
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t("calls.type")}</label>
+                        <select value={voiceEntityType}
+                          onChange={(e) => { setVoiceEntityType(e.target.value as EntityType); setVoiceEntityId(""); setSelectedVoicePitchId(""); }}
+                          className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-sm font-bold text-slate-700 dark:text-zinc-200 outline-none">
+                          <option value="client"><LocalizedText text={"Client"} /></option>
+                          <option value="lead"><LocalizedText text={"Lead"} /></option>
+                          <option value="contact"><LocalizedText text={"Contact"} /></option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t("calls.select_entity").replace("{entity}", voiceEntityType)}</label>
+                        <select value={voiceEntityId} onChange={(e) => { setVoiceEntityId(e.target.value); setSelectedVoicePitchId(""); }}
+                          className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-sm font-bold text-slate-700 dark:text-zinc-200 outline-none">
+                          <option value="">{t("calls.manual_number_option")}</option>
+                          {voiceEntityType === "client" && clients.map((c) => <option key={c.id} value={c.id}>{c.companyName || c.projectName || c.email}</option>)}
+                          {voiceEntityType === "lead" && leads.map((l) => <option key={l.id} value={l.id}>{l.company_name || l.email}</option>)}
+                          {voiceEntityType === "contact" && contacts.map((c) => <option key={c.id} value={c.id}>{c.first_name} {c.last_name || ""}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-3">
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t("calls.voice_pitch")}</label>
+                        <textarea value={voicePitchText} onChange={(e) => { setVoicePitchText(e.target.value); setSelectedVoicePitchId(""); }}
+                          placeholder={t("calls.voice_pitch_placeholder")} rows={4}
+                          className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-sm font-medium text-slate-700 dark:text-zinc-200 outline-none resize-y" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t("calls.saved_pitches")}</label>
+                        <select value={selectedVoicePitchId}
+                          onChange={(e) => {
+                            setSelectedVoicePitchId(e.target.value);
+                            const p = voicePitches.find((pitch) => String(pitch.id) === e.target.value);
+                            if (p) {
+                              setVoicePitchText(p.pitch_text);
+                              if (p.entity_type) setVoiceEntityType(p.entity_type);
+                              if (p.entity_id) setVoiceEntityId(String(p.entity_id));
+                            }
+                          }}
+                          className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-sm font-bold text-slate-700 dark:text-zinc-200 outline-none">
+                          <option value="">{t("calls.select_pitch")}</option>
+                          {voicePitches.map((p) => <option key={p.id} value={p.id}>{p.title || `#${p.id}`}</option>)}
+                        </select>
+                        {selectedVoicePitch && (
+                          <button onClick={() => openRequestedPitchInConsole(selectedVoicePitch)}
+                            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-slate-900 dark:bg-white text-white dark:text-slate-900">
+                            {t("calls.open_live")} <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {!voicePitchText && <p className="text-[11px] text-slate-500">{t("calls.no_pitch")}</p>}
+                      </div>
+                    </div>
+
+                    <QuickCallPanel
+                      key={`voice-${voiceEntityType}-${voiceEntityId}-${selectedVoicePitchId}`}
+                      entityType={voiceEntityType}
+                      entityId={voiceEntityId}
+                      entityName={voiceEntityId ? getEntityName(voiceEntityType, voiceEntityId) : ""}
+                      defaultPhone={voiceEntityId ? getEntityPhone(voiceEntityType, voiceEntityId) : null}
+                      pitchText={voicePitchText}
+                      notify={addToast}
+                      onCallStarted={() => { fetchAll(); loadVoiceStats(); }}
+                    />
+                  </div>
+                )}
+
+                {workspaceTab === "followups" && <FollowUps notify={addToast} onChanged={() => { loadVoiceStats(); fetchAll(); }} />}
+                {workspaceTab === "knowledge" && <KnowledgeBase notify={addToast} />}
+
+                {workspaceTab === "dashboard" && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      {[
+                        { label: t("calls.total_ai_calls"), value: voiceStats?.total_calls ?? "—", icon: PhoneCall, cls: "bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300" },
+                        { label: t("calls.live_now"), value: voiceStats?.active_calls ?? "—", icon: Radio, cls: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300" },
+                        { label: t("calls.avg_interest"), value: voiceStats?.avg_interest != null ? `${voiceStats.avg_interest}%` : "—", icon: Target, cls: "bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300" },
+                        { label: t("calls.need_follow_up"), value: voiceStats ? voiceStats.open_follow_ups + voiceStats.escalated : "—", icon: AlertCircle, cls: "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300" },
+                      ].map((card) => (
+                        <div key={card.label} className="bg-white dark:bg-[#111111]/90 rounded-2xl border border-slate-200/90 dark:border-white/10 p-4 flex items-center gap-3 shadow-xs">
+                          <div className={cn("p-2.5 rounded-xl", card.cls)}><card.icon className="w-5 h-5" /></div>
+                          <div>
+                            <p className="text-2xl font-black text-slate-800 dark:text-white">{card.value}</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{card.label}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div className="bg-white dark:bg-[#111111]/90 rounded-2xl border border-slate-200/90 dark:border-white/10 p-5 shadow-xs">
+                        <h3 className="text-sm font-black text-slate-900 dark:text-white mb-3">{t("calls.recent_ai_calls")}</h3>
+                        {aiCallLogs.length === 0 ? (
+                          <p className="text-xs text-slate-500">{t("calls.no_ai_calls")}</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {aiCallLogs.slice(0, 5).map((log) => (
+                              <button key={log.id} onClick={() => { setExpandedAiId(log.id); setWorkspaceTab("history"); setActiveTab("ai-calls"); }}
+                                className="w-full flex items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-50 dark:bg-white/5 text-left hover:bg-slate-100 dark:hover:bg-white/10">
+                                <span className="text-xs font-bold text-slate-700 dark:text-zinc-200 truncate">{log.entity_name || log.phone_number}</span>
+                                <span className="text-[10px] font-bold text-violet-600 dark:text-violet-300 uppercase">{log.status}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="bg-white dark:bg-[#111111]/90 rounded-2xl border border-slate-200/90 dark:border-white/10 p-5 shadow-xs">
+                        <h3 className="text-sm font-black text-slate-900 dark:text-white mb-3">{t("calls.quick_actions")}</h3>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            { label: t("calls.tab_pitch_studio"), icon: Mic, tab: "studio" as const },
+                            { label: t("calls.tab_voice_calling"), icon: AudioLines, tab: "voice-calling" as const },
+                            { label: t("calls.tab_live"), icon: Radio, tab: "live" as const },
+                            { label: t("calls.tab_history"), icon: PhoneCall, tab: "history" as const },
+                          ].map((action) => (
+                            <button key={action.tab} onClick={() => setWorkspaceTab(action.tab)}
+                              className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-white/5 text-xs font-bold text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:hover:bg-white/10">
+                              <action.icon className="w-4 h-4 text-violet-600" /> {action.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </motion.div>
+        )}
 
         {/* Log Call Modal */}
         <AnimatePresence>

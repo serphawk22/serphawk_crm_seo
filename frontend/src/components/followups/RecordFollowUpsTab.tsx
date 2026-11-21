@@ -68,7 +68,7 @@ export default function RecordFollowUpsTab({ kind, recordId }: { kind: 'lead' | 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('all');
-  const [showHistory, setShowHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(true);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestion, setSuggestion] = useState<{ s: Suggestion; email: DraftEmail | null } | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -88,13 +88,24 @@ export default function RecordFollowUpsTab({ kind, recordId }: { kind: 'lead' | 
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    const sync = () => { if (document.visibilityState === 'visible') void load(); };
+    window.addEventListener('focus', sync);
+    document.addEventListener('visibilitychange', sync);
+    return () => {
+      window.removeEventListener('focus', sync);
+      document.removeEventListener('visibilitychange', sync);
+    };
+  }, [load]);
+
   const record: RecordContext | null = data ? {
     kind, id: data.record.id, name: data.record.name, contact_name: data.record.contact_name, contact_email: data.record.contact_email,
   } : null;
 
-  const pending = useMemo(() => (data?.followups || []).filter((f) => f.status === 'Pending')
+  const isOpenStatus = (status: string) => status === 'Pending' || status === 'In Progress';
+  const pending = useMemo(() => (data?.followups || []).filter((f) => isOpenStatus(f.status))
     .sort((a, b) => a.due_at.localeCompare(b.due_at)), [data]);
-  const closed = useMemo(() => (data?.followups || []).filter((f) => f.status !== 'Pending'), [data]);
+  const closed = useMemo(() => (data?.followups || []).filter((f) => !isOpenStatus(f.status)), [data]);
   const timeline = useMemo(() => {
     const f = FILTERS.find((x) => x.key === filter);
     return (data?.timeline || []).filter((e) => !f?.types || f.types.includes(e.type));

@@ -17,6 +17,7 @@ from sqlmodel import Session, select
 
 import database
 from database import TenantSettings
+from modules.tts_service import LANGUAGES, VOICE_IDS
 
 _TTL_SECONDS = 30.0
 _cache: Dict[int, tuple] = {}
@@ -123,6 +124,20 @@ def _bool(v):
     raise ValueError("must be true or false")
 
 
+def _voice(v):
+    v = _str(50)(v)
+    if v is not None and v not in VOICE_IDS:
+        raise ValueError("must be a supported voice")
+    return v
+
+
+def _accent(v):
+    v = _str(50)(v)
+    if v is not None and not any(v in lang["accents"] for lang in LANGUAGES.values()):
+        raise ValueError("must be a supported accent")
+    return v
+
+
 def _str_list(max_items=30, max_len=60):
     def check(v):
         if v is None:
@@ -223,6 +238,14 @@ SCHEMA: Dict[str, tuple] = {
     # AI triage persona ("...sales team of {ai_business_type}'s CRM ({ai_triage_notes})")
     "ai_business_type": (_str(200), None),
     "ai_triage_notes": (_str(300), None),
+    # AI voice agent persona. The calling stack resolves these once per call into a tenant profile;
+    # all defaults are None so a tenant without them keeps the previous generic behaviour.
+    "voice_agent_name": (_str(120), None),
+    "voice_agent_offer": (_str(1000), None),
+    "voice_agent_tone": (_str(300), None),
+    "voice_agent_voice": (_voice, None),
+    "voice_agent_accent": (_accent, None),
+    "auto_call_bulk_imports": (_bool, None),
     # Used when the AI is unavailable. Placeholders: {salutation} {company} {owner} {brand} {services}
     "outreach_fallback_subject": (_str(200), None),
     "outreach_fallback_en": (_str(4000), None),
@@ -240,7 +263,9 @@ SCHEMA: Dict[str, tuple] = {
 
 # Settings every signed-in user may read (branding and display). Everything else is admin-only.
 PUBLIC_KEYS = ("brand_name", "brand_tagline", "brand_logo_url", "primary_color", "website_url", "default_currency", "locale",
-               "timezone", "default_dial_code", "home_dashboard", "lead_statuses", "deal_stages", "client_statuses")
+               "timezone", "default_dial_code", "home_dashboard", "lead_statuses", "deal_stages", "client_statuses",
+               "voice_agent_name", "voice_agent_offer", "voice_agent_tone", "voice_agent_voice", "voice_agent_accent",
+               "auto_call_bulk_imports")
 
 
 def validate(patch: Dict[str, Any]) -> Dict[str, Any]:

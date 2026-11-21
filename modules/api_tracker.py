@@ -1,10 +1,13 @@
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from sqlmodel import Session
 from contextvars import ContextVar
 
 from database import engine, ApiRequest
+
+_TRACKER_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="api-tracker")
 
 PRICING = {
     "gpt-4o": {"input": 5.0, "output": 15.0},
@@ -128,6 +131,24 @@ def track_api_call(
     except Exception as e:
         print(f"Failed to track API call: {e}")
 
+def track_api_call_async(**kwargs):
+    """Persist OpenAI/API telemetry off the latency-critical request or live voice turn path."""
+    if kwargs.get("tenant_id") is None:
+        try:
+            from modules.tenant_scope import current_tenant_id
+            kwargs["tenant_id"] = current_tenant_id.get()
+        except Exception:
+            try:
+                from modules.tenant_context import current_tenant_id as _legacy_tid
+                kwargs["tenant_id"] = _legacy_tid.get()
+            except Exception:
+                kwargs["tenant_id"] = None
+    try:
+        _TRACKER_POOL.submit(track_api_call, **kwargs)
+    except RuntimeError:
+        track_api_call(**kwargs)
+
+
 _original_create = None
 
 def _patched_chat_completions_create(*args, **kwargs):
@@ -145,7 +166,7 @@ def _patched_chat_completions_create(*args, **kwargs):
     except Exception as e:
         success = False
         status_code = getattr(e, 'status_code', 500)
-        track_api_call(
+        track_api_call_async(
             endpoint=endpoint,
             model=model_used,
             input_tokens=0,
@@ -161,7 +182,7 @@ def _patched_chat_completions_create(*args, **kwargs):
     end_time = time.time()
     
     if hasattr(response, 'usage') and response.usage:
-        track_api_call(
+        track_api_call_async(
             endpoint=endpoint,
             model=model_used,
             input_tokens=response.usage.prompt_tokens or 0,

@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from database import ClientProfile, Contact, ConversationLog, FollowUp, Lead, User
+from database import AICall, CallLog, ClientProfile, Contact, ConversationLog, FollowUp, Lead, User
 from modules import branding, company_mailer, followup_ai
 from modules import followups_core as core
 from routers import followups as fu_api
@@ -142,11 +142,30 @@ def _contact_name(c: Contact) -> str:
 def _maps(session: Session, rows: List[FollowUp]) -> Dict[str, dict]:
     ids = lambda attr: {getattr(r, attr) for r in rows if getattr(r, attr)}  # noqa: E731
     leads, clients, contacts, users = ids("lead_id"), ids("client_id"), ids("contact_id"), ids("assigned_to")
+    conv_ids = ids("conversation_id")
+    ai_call_ids = set()
+    call_log_ids = set()
+    for r in rows:
+        src = r.source_ref or ""
+        if src.startswith("ai_call:") and src.split(":", 1)[1].isdigit():
+            ai_call_ids.add(int(src.split(":", 1)[1]))
+        elif src.startswith("call_log:") and src.split(":", 1)[1].isdigit():
+            call_log_ids.add(int(src.split(":", 1)[1]))
+    convs = {x.id: x for x in session.exec(select(ConversationLog).where(ConversationLog.id.in_(conv_ids))).all()} if conv_ids else {}
+    for cv in convs.values():
+        src = cv.source_ref or ""
+        if src.startswith("ai_call:") and src.split(":", 1)[1].isdigit():
+            ai_call_ids.add(int(src.split(":", 1)[1]))
+    ai_calls = {x.id: x for x in session.exec(select(AICall).where(AICall.id.in_(ai_call_ids)).execution_options(skip_tenant=True)).all()} if ai_call_ids else {}
+    call_logs = {x.id: x for x in session.exec(select(CallLog).where(CallLog.id.in_(call_log_ids)).execution_options(skip_tenant=True)).all()} if call_log_ids else {}
     return {
         "leads": {x.id: x for x in session.exec(select(Lead).where(Lead.id.in_(leads))).all()} if leads else {},
         "clients": {x.id: x for x in session.exec(select(ClientProfile).where(ClientProfile.id.in_(clients))).all()} if clients else {},
         "contacts": {x.id: x for x in session.exec(select(Contact).where(Contact.id.in_(contacts))).all()} if contacts else {},
         "users": {x.id: x for x in session.exec(select(User).where(User.id.in_(users))).all()} if users else {},
+        "convs": convs,
+        "ai_calls": ai_calls,
+        "call_logs": call_logs,
     }
 
 
@@ -166,6 +185,25 @@ def _dict(f: FollowUp, maps: Dict[str, dict], now: datetime) -> dict:
             local_str = due.astimezone(ZoneInfo(f.timezone)).strftime("%Y-%m-%dT%H:%M")
         except Exception:
             local_str = due.strftime("%Y-%m-%dT%H:%M")
+    call_phone = None
+    src = f.source_ref or ""
+    if src.startswith("ai_call:") and src.split(":", 1)[1].isdigit():
+        ac = maps.get("ai_calls", {}).get(int(src.split(":", 1)[1]))
+        call_phone = ac.to_number if ac else None
+    elif src.startswith("call_log:") and src.split(":", 1)[1].isdigit():
+        cl = maps.get("call_logs", {}).get(int(src.split(":", 1)[1]))
+        call_phone = cl.phone_number if cl else None
+    if not call_phone and f.conversation_id:
+        cv = maps.get("convs", {}).get(f.conversation_id)
+        cv_src = (cv.source_ref or "") if cv else ""
+        if cv_src.startswith("ai_call:") and cv_src.split(":", 1)[1].isdigit():
+            ac = maps.get("ai_calls", {}).get(int(cv_src.split(":", 1)[1]))
+            call_phone = ac.to_number if ac else None
+    client_phone = None
+    if client:
+        cf = client.customFields if isinstance(client.customFields, dict) else {}
+        client_phone = getattr(client, "phone", None) or cf.get("phone")
+    phone = (lead.phone if lead else None) or (contact.phone if contact else None) or client_phone or call_phone
     return {
         "id": f.id, "title": f.title, "notes": f.notes, "channel": _shown(f.channel, CHANNELS, "Email"),
         "priority": _shown(f.priority, PRIORITIES, "Medium"), "status": f.status, "bucket": _bucket(f, now),
@@ -174,7 +212,9 @@ def _dict(f: FollowUp, maps: Dict[str, dict], now: datetime) -> dict:
         "completed_at": _iso_z(f.completed_at), "completion_note": f.outcome,
         "minutes_until_due": int((due - now).total_seconds() // 60) if due else None,
         "lead_id": f.lead_id, "client_id": f.client_id, "contact_id": f.contact_id,
-        "entity_type": entity_type, "entity_name": entity_name,
+        "entity_type": entity_type, "entity_name": entity_name, "phone": phone,
+        "source": f.source, "ai_detected": bool(f.ai_detected), "ai_reason": f.ai_reason,
+        "conversation_id": f.conversation_id,
         "owner_id": f.assigned_to, "owner_name": (owner.name or owner.email) if owner else None,
         "last_email_at": _iso_z(f.last_email_at), "created_at": _iso_z(f.created_at), "updated_at": _iso_z(f.updated_at),
     }
@@ -269,6 +309,10 @@ class SendEmailBody(BaseModel):
 # ── reading ──────────────────────────────────────────────────────────────────
 @router.get("/follow-ups/summary")
 def summary(scope: Optional[str] = None, v: inbox.Viewer = Depends(get_viewer), session: Session = Depends(get_session)):
+    try:
+        core.sync_existing_call_followups(session, v.tenant_id)
+    except Exception:
+        session.rollback()
     now = core.utcnow()
     rows = _scoped(session, v, scope)
     counts = {"upcoming": 0, "pending": 0, "overdue": 0, "completed": 0}
@@ -287,6 +331,10 @@ def summary(scope: Optional[str] = None, v: inbox.Viewer = Depends(get_viewer), 
 def list_followups(bucket: Optional[str] = None, scope: Optional[str] = None, lead_id: Optional[int] = None,
                    client_id: Optional[int] = None, contact_id: Optional[int] = None, q: Optional[str] = None,
                    v: inbox.Viewer = Depends(get_viewer), session: Session = Depends(get_session)):
+    try:
+        core.sync_existing_call_followups(session, v.tenant_id, lead_id=lead_id)
+    except Exception:
+        session.rollback()
     now = core.utcnow()
     rows = _scoped(session, v, scope)
     if lead_id:
@@ -305,7 +353,7 @@ def list_followups(bucket: Optional[str] = None, scope: Optional[str] = None, le
     if q:
         needle = q.strip().lower()
         items = [i for i in items if needle in (i["title"] or "").lower() or needle in (i["entity_name"] or "").lower()
-                 or needle in (i["notes"] or "").lower()]
+                 or needle in (i["notes"] or "").lower() or needle in (i["phone"] or "").lower()]
     if bucket == "completed":
         items.sort(key=lambda i: i["completed_at"] or "", reverse=True)
     else:
