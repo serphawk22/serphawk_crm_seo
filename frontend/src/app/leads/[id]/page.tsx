@@ -24,6 +24,7 @@ import LeadHeader from './components/LeadHeader';
 import WebsiteLeadSummary from '@/components/WebsiteLeadSummary';
 import LeadSidebarPanel from './components/LeadSidebarPanel';
 import AiCopilotPanelLead from './components/AiCopilotPanelLead';
+import SalesNextSteps from '@/components/SalesNextSteps';
 import TimelineTab from './components/tabs/TimelineTab';
 import ConversationsTab from './components/tabs/ConversationsTab';
 import NotesTab from './components/tabs/NotesTab';
@@ -1116,6 +1117,7 @@ export default function LeadDetailsPage() {
 
           {/* ── RIGHT AI PANEL ──────────────────────────────────────── */}
           <aside className="space-y-4">
+            <SalesNextSteps key={id} kind="leads" id={Number(id)} email={lead.email} />
             <AiCopilotPanelLead leadId={id} lead={lead} />
 
             {/* Assign Salesperson Card */}

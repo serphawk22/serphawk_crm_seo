@@ -174,7 +174,7 @@ def request_policy(method, path):
         or (method == "POST" and path.startswith("/voice-agent/pitches"))
         or re.fullmatch(r"/voice-agent/calls/\d+/say", path)
         or re.search(r"/(ai-insights|auto-research|extract-services|generate-outbound-draft|simulate-call|extract-tasks|reply-draft|draft-email|email-draft|full-analysis|ai-categorize|regenerate|summary|analyze)$", path)
-        or path.endswith("/email-composer/draft") or path.endswith("/competitors/scan")
+        or path.endswith(("/email-composer/draft", "/competitors/scan", "/sales-next-steps"))
         or path.startswith("/reports/ai/")):
         return "ai"
     return None

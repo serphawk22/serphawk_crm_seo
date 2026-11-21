@@ -209,6 +209,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   const route = usePathname();
+  if (route === "/product-guide") {
+    return <html lang="en"><body className={inter.className} style={{ paddingBottom: 0 }}>{children}</body></html>;
+  }
   if (route === "/leadformpage") return <html lang="en"><body className={inter.className}><CompanyBoundary>{children}</CompanyBoundary></body></html>;
   return (
     <html lang="en" suppressHydrationWarning>
