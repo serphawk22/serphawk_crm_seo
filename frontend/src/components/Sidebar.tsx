@@ -773,15 +773,13 @@ function SidebarContent({ role }: SidebarProps) {
       >
         {/* ── TOP BRANDING ── */}
         <div className={cn("shrink-0 flex items-center py-3 border-b border-slate-200/80 dark:border-white/10", collapsed ? "justify-center px-2" : "px-3.5 gap-2.5")}>
-          <div className="shrink-0 w-8 h-8 rounded-lg border border-slate-200/90 dark:border-white/10 shadow-xs flex items-center justify-center overflow-hidden bg-white dark:bg-zinc-900">
+          <div className="shrink-0 w-8 h-8 flex items-center justify-center overflow-hidden">
             <BrandMark size={28} fallback={
-              <div className="w-full h-full bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center">
-                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4">
-                  <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="white" fillOpacity="0.9" />
-                  <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="white" fillOpacity="0.5" />
-                  <circle cx="12" cy="12" r="2" fill="white" />
-                </svg>
-              </div>
+              <img
+                src="/Serp%20Hawk%20Logo.png"
+                alt="Serp Hawk Logo"
+                className="w-full h-full object-contain"
+              />
             } />
           </div>
 

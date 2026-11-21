@@ -222,9 +222,11 @@ export function AdminTopbar() {
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 group">
           <BrandMark size={36} fallback={
-            <div className="btn-glow-indigo w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-xs shrink-0">
-              SH
-            </div>
+            <img
+              src="/Serp%20Hawk%20Logo.png"
+              alt="Serp Hawk Logo"
+              className="w-9 h-9 object-contain shrink-0"
+            />
           } />
           <div className="hidden md:flex flex-col">
             <span className="font-black text-slate-800 dark:text-zinc-100 text-sm leading-tight tracking-tight group-hover:text-indigo-600 transition-colors">{brandName}</span>

@@ -5,7 +5,7 @@ export const platformLogin = `${platformOrigin}/login`;
 
 export function isPublicPage(path: string | null | undefined) {
   return !!path && (
-    ["/", "/login", "/signup", "/register", "/forgot-password", "/reset-password", "/showcase", "/demo_showcase", "/leadformpage"].includes(path)
+    ["/", "/login", "/signup", "/register", "/forgot-password", "/reset-password", "/showcase", "/demo_showcase", "/leadformpage", "/demo", "/demo-account"].includes(path)
     || path.startsWith("/p/")
   );
 }
