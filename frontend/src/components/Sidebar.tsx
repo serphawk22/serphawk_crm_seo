@@ -310,11 +310,11 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
                 <GripVertical className="w-2.5 h-2.5 text-slate-400" />
               </div>
             )}
-            
+
             {isEditing && isEditMode ? (
               <div className="flex items-center gap-1 flex-1">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
                   className="bg-transparent text-[9px] font-bold tracking-[0.1em] uppercase text-slate-600 dark:text-slate-300 outline-none w-full border-b border-blue-500"
@@ -463,18 +463,18 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
                         title={isFav ? t("sidebar.remove_favourite") : t("sidebar.add_favourite")}
                         className={cn(
                           "p-0.5 rounded transition-all shrink-0 hover:scale-110 focus-visible:opacity-100",
-                          isFav 
-                            ? "opacity-100" 
+                          isFav
+                            ? "opacity-100"
                             : "opacity-0 group-hover:opacity-40 hover:!opacity-100"
                         )}
                       >
-                        <Star 
+                        <Star
                           className={cn(
                             "w-3.5 h-3.5 transition-colors",
-                            isFav 
-                              ? "fill-amber-400 text-amber-400" 
+                            isFav
+                              ? "fill-amber-400 text-amber-400"
                               : "text-slate-400 dark:text-slate-500 hover:text-amber-400"
-                          )} 
+                          )}
                         />
                       </button>
                     )}
@@ -506,7 +506,7 @@ function SidebarContent({ role }: SidebarProps) {
   const { collapsed, setCollapsed } = useSidebar();
   const { theme, toggleTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
-  
+
   const [sections, setSections] = useState<SidebarSection[]>(defaultSidebarSections);
   const navigationSections = pinDashboardNavigation(sections);
   const [favourites, setFavourites] = useState<string[]>(() => {
@@ -519,7 +519,7 @@ function SidebarContent({ role }: SidebarProps) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) return [...new Set(parsed.filter(value => typeof value === "string"))];
       }
-    } catch {}
+    } catch { }
     return [];
   });
   const [isEditMode, setIsEditMode] = useState(false);
@@ -537,7 +537,7 @@ function SidebarContent({ role }: SidebarProps) {
           const data = await res.json();
           if (alive && !signal.aborted) setInboxUnread(data.unread || 0);
         }
-      } catch {}
+      } catch { }
     };
     const poll = createVisiblePoll(load, 60000);
     const refresh = (event?: Event) => {
@@ -569,7 +569,7 @@ function SidebarContent({ role }: SidebarProps) {
           const parsed = JSON.parse(saved);
           if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return { ...initial, ...Object.fromEntries(Object.entries(parsed).filter(([, value]) => typeof value === "boolean").map(([key, value]) => [key, Boolean(value)])) };
         }
-      } catch {}
+      } catch { }
     }
     return initial;
   });
@@ -603,7 +603,7 @@ function SidebarContent({ role }: SidebarProps) {
   const toggleSection = (sectionId: string) => {
     setOpenSections(prev => {
       const next = { ...prev, [sectionId]: !prev[sectionId] };
-      try { localStorage.setItem(`crm_sections_open_${userId || 'default'}`, JSON.stringify(next)); } catch {}
+      try { localStorage.setItem(`crm_sections_open_${userId || 'default'}`, JSON.stringify(next)); } catch { }
       return next;
     });
   };
@@ -630,7 +630,7 @@ function SidebarContent({ role }: SidebarProps) {
               if (!ignore) setFavourites([...new Set<string>(data.sidebar_preferences.favourites.filter((value: unknown) => typeof value === "string"))]);
               try {
                 localStorage.setItem(localFavKey, JSON.stringify(data.sidebar_preferences.favourites));
-              } catch {}
+              } catch { }
             }
           }
         }
@@ -655,20 +655,20 @@ function SidebarContent({ role }: SidebarProps) {
     const localFavKey = `crm_favourites_${user?.id || 'default'}`;
     try {
       localStorage.setItem(localFavKey, JSON.stringify(favsToSave));
-    } catch {}
+    } catch { }
 
     if (!user?.id) return;
 
     try {
       const url = `${API_BASE_URL}/users/me/sidebar-preferences?user_id=${user.id}`;
-      saveQueue.current = saveQueue.current.catch(() => {}).then(() => fetch(url, {
+      saveQueue.current = saveQueue.current.catch(() => { }).then(() => fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          sidebar_preferences: { 
+        body: JSON.stringify({
+          sidebar_preferences: {
             sections: newSections,
-            favourites: favsToSave 
-          } 
+            favourites: favsToSave
+          }
         }),
       }));
       await saveQueue.current;
@@ -773,15 +773,13 @@ function SidebarContent({ role }: SidebarProps) {
       >
         {/* ── TOP BRANDING ── */}
         <div className={cn("shrink-0 flex items-center py-3 border-b border-slate-200/80 dark:border-white/10", collapsed ? "justify-center px-2" : "px-3.5 gap-2.5")}>
-          <div className="shrink-0 w-8 h-8 rounded-lg border border-slate-200/90 dark:border-white/10 shadow-xs flex items-center justify-center overflow-hidden bg-white dark:bg-zinc-900">
+          <div className="shrink-0 w-8 h-8 flex items-center justify-center overflow-hidden">
             <BrandMark size={28} fallback={
-              <div className="w-full h-full bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center">
-                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4">
-                  <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="white" fillOpacity="0.9" />
-                  <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="white" fillOpacity="0.5" />
-                  <circle cx="12" cy="12" r="2" fill="white" />
-                </svg>
-              </div>
+              <img
+                src="/Serp%20Hawk%20Logo.png"
+                alt="Serp Hawk Logo"
+                className="w-full h-full object-contain"
+              />
             } />
           </div>
 
@@ -806,8 +804,8 @@ function SidebarContent({ role }: SidebarProps) {
                   >
                     {theme === "dark" ? <Sun className="w-3.5 h-3.5 text-amber-500" /> : <Moon className="w-3.5 h-3.5 text-indigo-500" />}
                   </button>
-                  <button 
-                    onClick={() => setIsEditMode(!isEditMode)} 
+                  <button
+                    onClick={() => setIsEditMode(!isEditMode)}
                     className={cn("p-1 rounded-lg border transition-colors shadow-xs", isEditMode ? "bg-indigo-50 text-indigo-600 border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-400 dark:border-indigo-500/30" : "border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-white/10")}
                     title={t("sidebar.customize_sidebar")}
                   >
@@ -830,7 +828,7 @@ function SidebarContent({ role }: SidebarProps) {
               >
                 {activeLang === "en" ? "🇺🇸" : "🇪🇸"}
               </button>
-              
+
               <button
                 onClick={toggleTheme}
                 title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
@@ -846,8 +844,8 @@ function SidebarContent({ role }: SidebarProps) {
                 title={t("sidebar.switch_en")}
                 className={cn(
                   "flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold transition-all",
-                  activeLang === "en" 
-                    ? "bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/70 dark:border-white/10" 
+                  activeLang === "en"
+                    ? "bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/70 dark:border-white/10"
                     : "text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white"
                 )}
               >
@@ -860,8 +858,8 @@ function SidebarContent({ role }: SidebarProps) {
                 title={t("sidebar.switch_es")}
                 className={cn(
                   "flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold transition-all",
-                  activeLang === "es" 
-                    ? "bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/70 dark:border-white/10" 
+                  activeLang === "es"
+                    ? "bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/70 dark:border-white/10"
                     : "text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white"
                 )}
               >
@@ -902,13 +900,13 @@ function SidebarContent({ role }: SidebarProps) {
 
         {/* ── MAIN NAVIGATION ── */}
         <nav className={cn("flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 flex flex-col gap-0.5 pb-2", collapsed ? "px-2" : "px-3")}>
-          
+
           {/* ── FAVOURITES SECTION ── */}
           {favouriteItems.length > 0 && (
             <div className="flex flex-col mb-1 pb-2 border-b border-slate-100 dark:border-slate-800/80">
               {!collapsed && (
                 <div className="flex items-center justify-between px-2 pt-1 pb-1">
-                  <span 
+                  <span
                     className="text-[9px] font-bold tracking-[0.1em] uppercase flex items-center gap-1.5"
                     style={{ color: "var(--text-secondary)" }}
                   >
@@ -986,14 +984,14 @@ function SidebarContent({ role }: SidebarProps) {
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={navigationSections.map(s => s.id)} strategy={verticalListSortingStrategy}>
               {navigationSections.map((section) => (
-                <SortableSection 
+                <SortableSection
                   key={section.id}
                   section={section}
                   unreadCount={unreadCount}
                   inboxUnread={inboxUnread}
-                  role={role} 
-                  pathname={pathname} 
-                  collapsed={collapsed} 
+                  role={role}
+                  pathname={pathname}
+                  collapsed={collapsed}
                   isEditMode={isEditMode}
                   onRenameSection={handleRenameSection}
                   onRenameItem={handleRenameItem}

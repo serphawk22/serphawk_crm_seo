@@ -3737,6 +3737,7 @@ def reset_password(body: ResetPasswordRequest, session: Session = Depends(get_se
 class GoogleAuthRequest(BaseModel):
     access_token: str
     model: Literal["b2b", "b2c"] = "b2b"
+    company_name: Optional[str] = None
 
 
 @app.post("/auth/google")
@@ -3770,7 +3771,8 @@ def auth_google(body: GoogleAuthRequest, session: Session = Depends(get_session)
         from modules import demo_accounts
         is_new_user = True
         out = demo_accounts.create_self_service_demo(session, name=name or email, email=email,
-                                                     password_hash=_hash_password(os.urandom(16).hex()), model=body.model)
+                                                     password_hash=_hash_password(os.urandom(16).hex()), model=body.model,
+                                                     company_name=(body.company_name or "").strip() or None)
         user = session.exec(select(User).where(User.id == out["admin_user_id"]).execution_options(skip_tenant=True)).first()
 
     result = _user_dict(user)
