@@ -109,6 +109,7 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
     const q = query.trim().toLowerCase();
     const out: Record<string, CatalogFeature[]> = {};
     for (const f of catalog) {
+      if (f.key === "dashboard" || f.group === "Command Center sections" || f.parent_key === "dashboard") continue;
       if (q && !`${t(f.label)} ${f.description} ${f.group}`.toLowerCase().includes(q)) continue;
       (out[f.group] ||= []).push(f);
     }

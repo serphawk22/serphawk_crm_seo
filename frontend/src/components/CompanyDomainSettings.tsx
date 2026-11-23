@@ -16,7 +16,7 @@ export default function CompanyDomainSettings({ tenantId }: { tenantId: number }
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to assign domain"); } finally { setBusy(false); }
   }
   return <section className="border rounded-xl p-4 space-y-3"><h3 className="font-bold">Company subdomain</h3>
-    {domain.company_url ? <><p>{domain.company_url}</p><p className="text-sm">Status: {domain.domain_status}</p><p className="text-sm break-all">Form: {domain.lead_form_url}</p></> : <div className="flex gap-2"><input aria-label="Subdomain" className="border rounded p-2 flex-1" value={slug} onChange={e => setSlug(e.target.value)} placeholder="dapros" /><button disabled={busy} className="rounded bg-indigo-600 text-white px-4" onClick={assign}>Assign</button></div>}
+    {domain.company_url ? <><p>{domain.company_url}</p><p className="text-sm">Status: {domain.domain_status}</p></> : <div className="flex gap-2"><input aria-label="Subdomain" className="border rounded p-2 flex-1" value={slug} onChange={e => setSlug(e.target.value)} placeholder="dapros" /><button disabled={busy} className="rounded bg-indigo-600 text-white px-4" onClick={assign}>Assign</button></div>}
     <a className="block text-sm underline" href="/superadmin/security">Configure platform bot protection</a>
     <button className="text-sm underline disabled:opacity-50" disabled={busy} onClick={async () => {
       setBusy(true); setError("");

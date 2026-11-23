@@ -53,12 +53,37 @@ def current_logo(tenant_id=_UNSET):
     """
     PNG bytes of the logo to print on documents and e-mails, or None for "no logo".
 
-    A tenant that uploaded its own gets it. A tenant with its own brand name but no upload gets none (it must never
+    A tenant that uploaded its own gets it. If ``brand_logo_url`` points to an external URL or local static file,
+    it is loaded and normalized. A tenant with its own brand name but no upload gets none (it must never
     carry another company's logo). The default identity keeps the SerpHawk logo, which callers load themselves.
     """
+    import os
     from modules import tenant_assets
     tid = current_tenant_id.get() if tenant_id is _UNSET else tenant_id
-    return tenant_assets.logo_bytes(tid)
+    data = tenant_assets.logo_bytes(tid)
+    if data:
+        return data
+    logo_url = tenant_settings.get_setting(tid, "brand_logo_url", None) if tid else None
+    if logo_url and isinstance(logo_url, str):
+        logo_url = logo_url.strip()
+        if logo_url.startswith("/static/"):
+            root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            local_path = os.path.join(root, logo_url.lstrip("/"))
+            if os.path.exists(local_path):
+                try:
+                    with open(local_path, "rb") as f:
+                        return tenant_assets.normalize_logo(f.read())
+                except Exception:
+                    pass
+        elif logo_url.startswith("http://") or logo_url.startswith("https://"):
+            try:
+                import requests
+                resp = requests.get(logo_url, timeout=5)
+                if resp.status_code == 200 and resp.content:
+                    return tenant_assets.normalize_logo(resp.content)
+            except Exception:
+                pass
+    return None
 
 
 def uses_default_identity(tenant_id=_UNSET) -> bool:

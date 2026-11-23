@@ -111,10 +111,9 @@ const defaultSidebarSections: SidebarSection[] = [
   {
     id: "section-home",
     heading: null,
-    items: [
+  items: [
       { id: "item-dashboard-b2c", name: "Dashboard", icon: "LayoutDashboard", href: "/dashboard-b2c", roles: ["Admin", "Employee", "SalesManager", "Sales", "Demo"] },
       { id: "item-command-center", name: "Dashboard", icon: "LayoutDashboard", href: "/command-center", roles: ["Admin", "SalesManager", "Sales", "Demo"] },
-      { id: "item-dashboard", name: "Command Center", icon: "LayoutDashboard", href: "/legacy-command-center", roles: ["Admin", "Employee", "Client", "Intern", "SalesManager", "Demo"] },
       { id: "item-work-queue", name: "My Work Queue", icon: "LayoutList", href: "/work-queue", roles: ["Admin", "Demo", "SalesManager", "Employee", "ProjectMember", "Intern", "Developer"] },
       { id: "item-notifications", name: "Notifications", icon: "Bell", href: "/notifications", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
       { id: "item-inbox", name: "Inbox", icon: "Inbox", href: "/inbox", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
@@ -287,6 +286,7 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
   };
 
   const visibleItems = section.items
+    .filter((item: SidebarItem) => item.id !== "item-dashboard")
     .filter((item: SidebarItem) => (role === 'SuperAdmin' || item.roles.includes(role)) && !(item.id === 'item-reports' && !['Admin', 'SuperAdmin', 'SalesManager'].includes(role)))
     .filter((item: SidebarItem) => (role === 'SuperAdmin' && isPlatformManagementPage(item.href)) || hasFeature(ITEM_FEATURE[item.id]))
     .filter((item: SidebarItem) => !ITEM_ADDON[item.id] || isOn(ITEM_ADDON[item.id]))
@@ -735,7 +735,7 @@ function SidebarContent({ role }: SidebarProps) {
 
   const favouriteItems: SidebarItem[] = favourites
     .map(id => allItemsMap.get(id))
-    .filter((item): item is SidebarItem => Boolean(item))
+    .filter((item): item is SidebarItem => item !== undefined && item.id !== "item-dashboard")
     .filter(item => role === 'SuperAdmin' || item.roles?.includes(role))
     .filter(item => ((role === "SuperAdmin" && isPlatformManagementPage(item.href)) || hasFeature(ITEM_FEATURE[item.id])) && (!ITEM_ADDON[item.id] || isOn(ITEM_ADDON[item.id])))
     .filter(item => item.id !== "item-dashboard-b2c" || isOn("institute"))

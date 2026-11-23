@@ -18,21 +18,22 @@ from modules.branding import current_brand, current_logo, document_style, uses_d
 _STATIC_LOGO = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "serphawk_logo.png")
 
 
-def _logo_flowable(box_mm=20, h_align="CENTER"):
+def _logo_flowable(box_mm=20, h_align="CENTER", tenant_id=None):
     """
     The logo for a document header, fitted into a square box without distortion, or None.
     A tenant's own upload wins; the default (SerpHawk) identity keeps the SerpHawk logo; a tenant with its own brand
     name and no upload gets no logo, never another company's.
     """
     try:
-        data = current_logo()
+        data = current_logo(tenant_id) if tenant_id is not None else current_logo()
         if data:
             from PIL import Image as PILImage
             with PILImage.open(io.BytesIO(data)) as im:
                 w, h = im.size
             scale = min(box_mm * mm / w, box_mm * mm / h)
             return Image(io.BytesIO(data), width=w * scale, height=h * scale, hAlign=h_align)
-        if uses_default_identity() and os.path.exists(_STATIC_LOGO):
+        is_def = uses_default_identity(tenant_id) if tenant_id is not None else uses_default_identity()
+        if is_def and os.path.exists(_STATIC_LOGO):
             return Image(_STATIC_LOGO, width=box_mm * mm, height=box_mm * mm, hAlign=h_align)
     except Exception:
         pass

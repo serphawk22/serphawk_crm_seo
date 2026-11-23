@@ -3,6 +3,8 @@ export function homeModule(role: string | null, features: Record<string, boolean
   if (role === "SuperAdmin") return "platform";
   if (["Admin", "SalesManager", "Sales", "Employee", "Demo"].includes(role || "") && features.dashboard_b2c === true && features.institute === true) return "dashboard_b2c";
   if (["Admin", "SalesManager", "Sales", "Demo"].includes(role || "") && features.command_center === true) return "command_center";
-  if (features.dashboard !== false) return "dashboard";
+  if (["Client", "Intern", "ProjectMember", "Developer"].includes(role || "") && features.dashboard !== false) return "dashboard";
+  if (features.command_center === true) return "command_center";
+  if (features.dashboard_b2c === true) return "dashboard_b2c";
   return "none";
 }

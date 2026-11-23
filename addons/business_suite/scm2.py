@@ -1090,15 +1090,38 @@ def add_movement(item_id: int, body: StockBody, session: Session = Depends(get_s
     item = session.get(InventoryItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    new_bal = (item.current_stock or 0) + body.change
+    prev_bal = float(item.current_stock or 0)
+    new_bal = prev_bal + body.change
     if new_bal < 0:
         raise HTTPException(status_code=400, detail=f"Insufficient stock (available {item.current_stock or 0})")
     me = _me(session)
     item.current_stock = new_bal
     item.updated_at = datetime.now(_tz.utc)
-    mv = StockMovement(item_id=item_id, change=body.change, reason=body.reason or "Adjustment",
-                       reference=body.reference, balance_after=new_bal,
-                       author_id=me.id if me else None, tenant_id=_tid() or item.tenant_id)
+    mtype_map = {
+        "purchase": "PURCHASE_IN",
+        "sale": "SALE_OUT",
+        "return": "SALE_RETURN" if body.change >= 0 else "PURCHASE_RETURN",
+        "damage": "DAMAGE_OUT",
+    }
+    raw_reason = (body.reason or "Adjustment").strip()
+    mtype = mtype_map.get(raw_reason.lower(), "ADJUSTMENT_IN" if body.change >= 0 else "ADJUSTMENT_OUT")
+    mv = StockMovement(
+        item_id=item_id,
+        movement_type=mtype,
+        quantity=abs(float(body.change)),
+        previous_stock=prev_bal,
+        new_stock=new_bal,
+        reference_id=body.reference,
+        reference_type="LEGACY_MOVEMENT",
+        performed_by=me.id if me else None,
+        performed_by_name=(me.name or me.email) if me else "Staff",
+        change=body.change,
+        reason=raw_reason,
+        reference=body.reference,
+        balance_after=new_bal,
+        author_id=me.id if me else None,
+        tenant_id=_tid() or item.tenant_id,
+    )
     session.add(item)
     session.add(mv)
     session.commit()

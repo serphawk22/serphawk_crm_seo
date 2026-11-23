@@ -52,9 +52,12 @@ interface CatalogItem {
   code: string;
   description?: string;
   category: string;
+  catalog_source?: "products" | "inventory";
   unit: string;
   photo_url?: string;
   unit_price: number;
+  currency?: string;
+  tax_rate?: number;
   current_stock: number;
 }
 
@@ -145,13 +148,14 @@ function ProposalsPageContent() {
   const [recipientSearch, setRecipientSearch]   = useState("");
 
   // Cart step
-  const { settings } = useTenantConfig();
+  const { settings, hasFeature } = useTenantConfig();
+  const inventoryEnabled = hasFeature("inventory");
   const workspaceCur: "USD" | "INR" = (settings?.default_currency || "INR").toUpperCase() === "USD" ? "USD" : "INR";
   const curSym = workspaceCur === "USD" ? "$" : "₹";
   const [cart, setCart]                 = useState<LineItem[]>([]);
   const [currency, setCurrency]         = useCurrency();
   const [catalogSearch, setCatalogSearch] = useState("");
-  const [catalogCategory, setCatalogCategory] = useState("All");
+  const [catalogCategory, setCatalogCategory] = useState("Product Catalog");
 
   // Custom Item Form state
   const [customName, setCustomName]     = useState("");
@@ -244,13 +248,17 @@ function ProposalsPageContent() {
     setCart([]);
     setCurrency(workspaceCur);
     setCatalogSearch("");
-    setCatalogCategory("All");
+    setCatalogCategory("Product Catalog");
     setQuoteTitle("");
     setValidUntil("");
     setNotes("");
     setSendStatus("Sent");
     setCreatedProposal(null);
     setShowWizard(true);
+    fetch(`${API_BASE_URL}/proposals/catalog`)
+      .then(r => r.json())
+      .then(cat => setCatalog(cat.items || []))
+      .catch(console.error);
   }
 
   function recipientName(): string {
@@ -276,7 +284,7 @@ function ProposalsPageContent() {
     const finalPrice = item.unit_price > 0 ? item.unit_price : 100;
 
     setCart(prev => {
-      const existing = prev.findIndex(c => c.product_id === item.id);
+      const existing = prev.findIndex(c => c.product_id === item.id && c.product_name === item.name);
       if (existing >= 0) {
         const updated = [...prev];
         updated[existing] = { ...updated[existing], quantity: updated[existing].quantity + 1 };
@@ -288,7 +296,7 @@ function ProposalsPageContent() {
         description: item.description,
         quantity: 1,
         unit_price: finalPrice,
-        unit: item.unit || "pcs",
+        unit: item.unit || "service",
         currency,
       }];
     });
@@ -428,6 +436,7 @@ function ProposalsPageContent() {
   }
 
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
 
   async function previewDraftPDF() {
     setPreviewLoading(true);
@@ -465,6 +474,46 @@ function ProposalsPageContent() {
     }
   }
 
+  async function downloadDraftPDF() {
+    setDownloadLoading(true);
+    const autoTitle = quoteTitle.trim() ||
+      `Commercial Proposal for ${recipientName()} – ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+    try {
+      const res = await fetch(`${API_BASE_URL}/proposals/preview-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: autoTitle,
+          client_id: recipientType === "client" ? selectedClientId : null,
+          lead_id: recipientType === "lead" ? selectedLeadId : null,
+          recipient_type: recipientType,
+          content: notes || null,
+          status: sendStatus,
+          valid_until: validUntil || null,
+          total_value: cartTotal,
+          line_items: cart,
+          currency,
+          deal_id: selectedDealId || null,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      const safeName = (recipientName() || "quotation").replace(/[^a-zA-Z0-9_-]/g, "_");
+      a.download = `quotation-${safeName}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      alert("Failed to download quotation PDF.");
+    } finally {
+      setDownloadLoading(false);
+    }
+  }
+
   function previewPDF(id: number) {
     const uid = user?.id ? `?user_id=${user.id}` : "";
     const p = proposals.find(x => x.id === id);
@@ -489,10 +538,30 @@ function ProposalsPageContent() {
         return p.status === filterStatus;
       });
 
-  const catalogCategories = ["All", ...Array.from(new Set(catalog.map(i => i.category || "General")))];
-  const filteredCatalog = catalog.filter(item => {
-    const matchCat = catalogCategory === "All" || item.category === catalogCategory;
-    const matchQ   = !catalogSearch || item.name.toLowerCase().includes(catalogSearch.toLowerCase());
+  const visibleCatalog = useMemo(() => {
+    return catalog.filter(item => {
+      if (item.catalog_source === "inventory" && !inventoryEnabled) return false;
+      return true;
+    });
+  }, [catalog, inventoryEnabled]);
+
+  const catalogCategories = useMemo(() => {
+    const opts = ["Product Catalog"];
+    if (inventoryEnabled) {
+      opts.push("Inventory Catalog");
+    }
+    return opts;
+  }, [inventoryEnabled]);
+
+  const filteredCatalog = visibleCatalog.filter(item => {
+    const matchCat = catalogCategory === "Inventory Catalog" && inventoryEnabled
+      ? item.catalog_source === "inventory"
+      : (item.catalog_source || "products") === "products";
+    const q = catalogSearch.toLowerCase();
+    const matchQ   = !catalogSearch
+      || item.name.toLowerCase().includes(q)
+      || (item.code && item.code.toLowerCase().includes(q))
+      || (item.description && item.description.toLowerCase().includes(q));
     return matchCat && matchQ;
   });
 
@@ -1406,28 +1475,35 @@ function ProposalsPageContent() {
                       </select>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
                       {filteredCatalog.map(item => {
-                        const inCart = cart.find(c => c.product_id === item.id);
+                        const inCart = cart.find(c => c.product_id === item.id && c.product_name === item.name);
                         const price = item.unit_price > 0 ? item.unit_price : 100;
 
                         return (
-                          <button key={item.id} onClick={() => addToCart(item)}
-                            className={`text-left p-2.5 rounded-xl border transition-all text-xs flex items-center justify-between gap-2 ${
+                          <button key={`${item.catalog_source || "products"}-${item.id}-${item.code}`} onClick={() => addToCart(item)}
+                            className={`text-left p-2.5 rounded-xl border transition-all text-xs flex items-start justify-between gap-2 ${
                               inCart ? "border-blue-400 bg-blue-50/70 dark:bg-blue-900/20" : "border-slate-200 dark:border-slate-800 hover:border-blue-300"
                             }`}>
                             <div className="min-w-0 flex-1">
                               <p className="font-bold text-slate-900 dark:text-white truncate">{item.name}</p>
-                              <p className="text-[10px] text-slate-400 truncate">{item.category} · {item.unit || "pcs"}</p>
+                              <p className="text-[10px] text-slate-400 truncate">
+                                {item.catalog_source === "inventory" ? "Inventory" : "Product"} · {item.category} · {item.unit || "service"}{item.code ? ` · ${item.code}` : ""}
+                              </p>
+                              {item.description && (
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5 leading-snug">
+                                  {item.description}
+                                </p>
+                              )}
                             </div>
-                            <div className="text-right shrink-0">
+                            <div className="text-right shrink-0 flex flex-col items-end gap-1">
                               <div className="font-black text-blue-600 font-mono">{fmtCur(price, currency)}</div>
+                              {inCart && (
+                                <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
+                                  ×{inCart.quantity}
+                                </span>
+                              )}
                             </div>
-                            {inCart && (
-                              <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
-                                ×{inCart.quantity}
-                              </span>
-                            )}
                           </button>
                         );
                       })}
@@ -1649,11 +1725,22 @@ function ProposalsPageContent() {
                   <button
                     type="button"
                     onClick={previewDraftPDF}
-                    disabled={previewLoading || saving}
-                    className="px-4 py-2.5 rounded-xl border border-purple-200 dark:border-purple-800/60 bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 text-xs font-bold hover:bg-purple-100 dark:hover:bg-purple-900/40 disabled:opacity-50 transition-all flex items-center gap-1.5"
+                    disabled={previewLoading || downloadLoading || saving}
+                    title="Preview Quotation PDF"
+                    aria-label="Preview Quotation PDF"
+                    className="p-2.5 rounded-xl border border-purple-200 dark:border-purple-800/60 bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 disabled:opacity-50 transition-all flex items-center justify-center"
                   >
                     {previewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-                    Preview Quotation
+                  </button>
+                  <button
+                    type="button"
+                    onClick={downloadDraftPDF}
+                    disabled={downloadLoading || previewLoading || saving}
+                    title="Download Quotation PDF"
+                    aria-label="Download Quotation PDF"
+                    className="p-2.5 rounded-xl border border-blue-200 dark:border-blue-800/60 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 disabled:opacity-50 transition-all flex items-center justify-center"
+                  >
+                    {downloadLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                   </button>
                   <button onClick={submitQuote} disabled={saving}
                     className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 disabled:opacity-50 transition-all shadow-md active:scale-95">

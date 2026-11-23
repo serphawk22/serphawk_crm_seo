@@ -1662,14 +1662,34 @@ class PurchaseOrder(SQLModel, table=True):
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
     po_number: Optional[str] = Field(default=None, max_length=100, index=True)
-    vendor_name: str = Field(max_length=500)
+    vendor_name: str = Field(default="", max_length=500)
     vendor_email: Optional[str] = Field(default=None, max_length=255)
-    status: str = Field(default="Draft", max_length=50)  # Draft, Sent, Received, Cancelled
+    supplier_id: Optional[int] = Field(default=None, index=True)
+    supplier_user_id: Optional[int] = Field(default=None, index=True)
+    rfq_id: Optional[int] = Field(default=None, index=True)
+    rfq_response_id: Optional[int] = Field(default=None)
+    warehouse_id: Optional[int] = Field(default=None, index=True)
+    items: Optional[List[dict]] = Field(default_factory=list, sa_column=Column(JSON))
+    subtotal: float = Field(default=0.0)
+    tax_amount: float = Field(default=0.0)
+    discount: float = Field(default=0.0)
+    total_amount: float = Field(default=0.0)
+    status: str = Field(default="Draft", max_length=50)  # Draft, Pending Approval, Approved, Sent, Confirmed, Partially Received, Received, Cancelled
+    payment_status: str = Field(default="Unpaid", max_length=50)  # Unpaid, Partially Paid, Fully Paid
+    paid_amount: float = Field(default=0.0)
     grand_total: float = Field(default=0.0)
     currency: str = Field(default="USD", max_length=10)
     expected_delivery: Optional[str] = Field(default=None, max_length=50)
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
     owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_by: Optional[int] = Field(default=None, foreign_key="users.id")
+    approved_by: Optional[int] = Field(default=None, foreign_key="users.id")
+    approved_at: Optional[datetime] = Field(default=None)
+    supplier_confirmed_at: Optional[datetime] = Field(default=None)
+    supplier_confirmed_delivery: Optional[str] = Field(default=None, max_length=50)
+    supplier_invoice_number: Optional[str] = Field(default=None, max_length=120)
+    supplier_invoice_amount: Optional[float] = Field(default=None)
+    supplier_notes: Optional[str] = Field(default=None, sa_column=Column(Text))
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 
@@ -1989,6 +2009,65 @@ def create_db_and_tables():
         "CREATE INDEX IF NOT EXISTS ix_leads_converted_student_id ON leads (converted_student_id)",
         "CREATE INDEX IF NOT EXISTS ix_tasks_student_id ON tasks (student_id)",
         "CREATE INDEX IF NOT EXISTS ix_tasks_batch_id ON tasks (batch_id)",
+        # Pulpos Inventory, Procurement, Warehouse & Stock Ledger migrations (additive)
+        "ALTER TABLE inventory_items ADD COLUMN barcode VARCHAR(120)",
+        "ALTER TABLE inventory_items ADD COLUMN brand VARCHAR(200)",
+        "ALTER TABLE inventory_items ADD COLUMN cost_price FLOAT DEFAULT 0.0",
+        "ALTER TABLE inventory_items ADD COLUMN selling_price FLOAT DEFAULT 0.0",
+        "ALTER TABLE inventory_items ADD COLUMN tax_rate FLOAT DEFAULT 0.0",
+        "ALTER TABLE inventory_items ADD COLUMN status VARCHAR(50) DEFAULT 'Active'",
+        "ALTER TABLE inventory_items ADD COLUMN variants JSON",
+        "ALTER TABLE inventory_items ADD COLUMN currency VARCHAR(10) DEFAULT 'USD'",
+        "CREATE INDEX IF NOT EXISTS ix_inventory_items_barcode ON inventory_items (barcode)",
+        "ALTER TABLE stock_movements ADD COLUMN warehouse_id INTEGER",
+        "ALTER TABLE stock_movements ADD COLUMN movement_type VARCHAR(50) DEFAULT 'ADJUSTMENT_IN'",
+        "ALTER TABLE stock_movements ADD COLUMN quantity FLOAT DEFAULT 0.0",
+        "ALTER TABLE stock_movements ADD COLUMN previous_stock FLOAT DEFAULT 0.0",
+        "ALTER TABLE stock_movements ADD COLUMN new_stock FLOAT DEFAULT 0.0",
+        "ALTER TABLE stock_movements ADD COLUMN reference_id VARCHAR(120)",
+        "ALTER TABLE stock_movements ADD COLUMN reference_type VARCHAR(50)",
+        "ALTER TABLE stock_movements ADD COLUMN performed_by INTEGER",
+        "ALTER TABLE stock_movements ADD COLUMN performed_by_name VARCHAR(200)",
+        "ALTER TABLE stock_movements ADD COLUMN idempotency_key VARCHAR(120)",
+        "CREATE INDEX IF NOT EXISTS ix_stock_movements_warehouse_id ON stock_movements (warehouse_id)",
+        "CREATE INDEX IF NOT EXISTS ix_stock_movements_movement_type ON stock_movements (movement_type)",
+        "CREATE INDEX IF NOT EXISTS ix_stock_movements_idempotency_key ON stock_movements (idempotency_key)",
+        "ALTER TABLE rfq_requests ADD COLUMN deadline VARCHAR(50)",
+        "ALTER TABLE rfq_requests ADD COLUMN warehouse_id INTEGER",
+        "ALTER TABLE rfq_requests ADD COLUMN rfq_group_code VARCHAR(64)",
+        "ALTER TABLE rfq_requests ADD COLUMN approved_response_id INTEGER",
+        "ALTER TABLE rfq_requests ADD COLUMN approved_by INTEGER",
+        "ALTER TABLE rfq_requests ADD COLUMN approved_at TIMESTAMP",
+        "ALTER TABLE rfq_requests ADD COLUMN approval_status VARCHAR(50) DEFAULT 'Pending'",
+        "CREATE INDEX IF NOT EXISTS ix_rfq_requests_rfq_group_code ON rfq_requests (rfq_group_code)",
+        "ALTER TABLE rfq_responses ADD COLUMN supplier_id INTEGER",
+        "ALTER TABLE rfq_responses ADD COLUMN supplier_name VARCHAR(255)",
+        "ALTER TABLE rfq_responses ADD COLUMN supplier_email VARCHAR(255)",
+        "ALTER TABLE rfq_responses ADD COLUMN min_order_qty FLOAT",
+        "ALTER TABLE rfq_responses ADD COLUMN availability VARCHAR(100) DEFAULT 'In Stock'",
+        "ALTER TABLE rfq_responses ADD COLUMN attachment_url VARCHAR(1000)",
+        "ALTER TABLE rfq_responses ADD COLUMN status VARCHAR(50) DEFAULT 'Submitted'",
+        "ALTER TABLE purchase_orders ADD COLUMN supplier_id INTEGER",
+        "ALTER TABLE purchase_orders ADD COLUMN supplier_user_id INTEGER",
+        "ALTER TABLE purchase_orders ADD COLUMN rfq_id INTEGER",
+        "ALTER TABLE purchase_orders ADD COLUMN rfq_response_id INTEGER",
+        "ALTER TABLE purchase_orders ADD COLUMN warehouse_id INTEGER",
+        "ALTER TABLE purchase_orders ADD COLUMN items JSON",
+        "ALTER TABLE purchase_orders ADD COLUMN subtotal FLOAT DEFAULT 0.0",
+        "ALTER TABLE purchase_orders ADD COLUMN tax_amount FLOAT DEFAULT 0.0",
+        "ALTER TABLE purchase_orders ADD COLUMN discount FLOAT DEFAULT 0.0",
+        "ALTER TABLE purchase_orders ADD COLUMN total_amount FLOAT DEFAULT 0.0",
+        "ALTER TABLE purchase_orders ADD COLUMN payment_status VARCHAR(50) DEFAULT 'Unpaid'",
+        "ALTER TABLE purchase_orders ADD COLUMN paid_amount FLOAT DEFAULT 0.0",
+        "ALTER TABLE purchase_orders ADD COLUMN created_by INTEGER",
+        "ALTER TABLE purchase_orders ADD COLUMN approved_by INTEGER",
+        "ALTER TABLE purchase_orders ADD COLUMN approved_at TIMESTAMP",
+        "ALTER TABLE purchase_orders ADD COLUMN supplier_confirmed_at TIMESTAMP",
+        "ALTER TABLE purchase_orders ADD COLUMN supplier_confirmed_delivery VARCHAR(50)",
+        "ALTER TABLE purchase_orders ADD COLUMN supplier_invoice_number VARCHAR(120)",
+        "ALTER TABLE purchase_orders ADD COLUMN supplier_invoice_amount FLOAT",
+        "ALTER TABLE purchase_orders ADD COLUMN supplier_notes TEXT",
+        "UPDATE inventory_suppliers SET login_password = NULL WHERE login_password IS NOT NULL",
     ]
     
     with engine.connect() as conn:
@@ -2220,6 +2299,14 @@ class InventoryItem(SQLModel, table=True):
     unit: Optional[str] = Field(default=None, max_length=50)   # kg, pcs, box, etc.
     min_stock: Optional[float] = Field(default=0)
     current_stock: Optional[float] = Field(default=0)
+    barcode: Optional[str] = Field(default=None, max_length=120, index=True)
+    brand: Optional[str] = Field(default=None, max_length=200)
+    cost_price: Optional[float] = Field(default=0.0)
+    selling_price: Optional[float] = Field(default=0.0)
+    tax_rate: Optional[float] = Field(default=0.0)
+    status: str = Field(default="Active", max_length=50)  # Active, Inactive, Discontinued
+    variants: Optional[List[dict]] = Field(default_factory=list, sa_column=Column(JSON))
+    currency: str = Field(default="USD", max_length=10)
     owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
@@ -2245,7 +2332,7 @@ class InventorySupplier(SQLModel, table=True):
     min_order_qty: Optional[float] = Field(default=None)
     is_preferred: bool = Field(default=False)
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
-    login_password: Optional[str] = Field(default=None, max_length=255)  # plaintext unique password for supplier login
+    login_password: Optional[str] = Field(default=None, max_length=255)  # deprecated: kept NULL in DB
     credentials_sent: bool = Field(default=False)  # whether credentials email has been sent
     created_at: datetime = Field(default_factory=_utcnow)
 
@@ -2266,8 +2353,15 @@ class RFQRequest(SQLModel, table=True):
     supplier_email: str = Field(max_length=255)
     quantity: Optional[float] = Field(default=None)
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
-    status: str = Field(default="Pending")   # Pending, Responded, Accepted, Rejected
+    status: str = Field(default="Pending")   # Pending, Responded, Accepted, Rejected, Expired, Cancelled
     token: Optional[str] = Field(default=None, max_length=64)  # unique link token
+    deadline: Optional[str] = Field(default=None, max_length=50)
+    warehouse_id: Optional[int] = Field(default=None)
+    rfq_group_code: Optional[str] = Field(default=None, max_length=64, index=True)
+    approved_response_id: Optional[int] = Field(default=None)
+    approved_by: Optional[int] = Field(default=None)
+    approved_at: Optional[datetime] = Field(default=None)
+    approval_status: str = Field(default="Pending", max_length=50)  # Pending, Approved, Rejected
     sent_by: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: datetime = Field(default_factory=_utcnow)
 
@@ -2281,14 +2375,132 @@ class RFQResponse(SQLModel, table=True):
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
     rfq_id: int = Field(foreign_key="rfq_requests.id")
+    supplier_id: Optional[int] = Field(default=None)
+    supplier_name: Optional[str] = Field(default=None, max_length=255)
+    supplier_email: Optional[str] = Field(default=None, max_length=255)
     unit_price: float
     currency: str = Field(default="USD", max_length=10)
     lead_time_days: Optional[int] = Field(default=None)
+    min_order_qty: Optional[float] = Field(default=None)
+    availability: Optional[str] = Field(default="In Stock", max_length=100)
+    attachment_url: Optional[str] = Field(default=None, max_length=1000)
+    status: str = Field(default="Submitted", max_length=50)  # Submitted, Selected, Approved, Rejected
     valid_until: Optional[str] = Field(default=None, max_length=50)
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
     submitted_at: datetime = Field(default_factory=_utcnow)
 
     rfq: Optional[RFQRequest] = Relationship(back_populates="responses")
+
+
+# ──────────────────────────────────────────────────────
+# WAREHOUSE, GOODS RECEIVING, TRANSFERS, COUNTS & SUPPLIER PAYMENTS
+# ──────────────────────────────────────────────────────
+
+class Warehouse(SQLModel, table=True):
+    """Physical or logical warehouse location"""
+    __tablename__ = "warehouses"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    warehouse_name: str = Field(max_length=255)
+    warehouse_code: str = Field(max_length=100, index=True)
+    address: Optional[str] = Field(default=None, sa_column=Column(Text))
+    contact_person: Optional[str] = Field(default=None, max_length=200)
+    phone: Optional[str] = Field(default=None, max_length=50)
+    email: Optional[str] = Field(default=None, max_length=255)
+    status: str = Field(default="Active", max_length=50)  # Active, Inactive
+    is_default: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class WarehouseStock(SQLModel, table=True):
+    """Per-warehouse inventory stock level"""
+    __tablename__ = "warehouse_stocks"
+    __table_args__ = (UniqueConstraint("tenant_id", "warehouse_id", "item_id", name="uq_warehouse_item_stock"),)
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    warehouse_id: int = Field(foreign_key="warehouses.id", index=True)
+    item_id: int = Field(foreign_key="inventory_items.id", index=True)
+    quantity: float = Field(default=0.0)
+    reserved_qty: float = Field(default=0.0)
+    damaged_qty: float = Field(default=0.0)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class GoodsReceipt(SQLModel, table=True):
+    """Goods receiving against a purchase order"""
+    __tablename__ = "goods_receipts"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    receipt_number: str = Field(max_length=100, index=True)
+    purchase_order_id: int = Field(foreign_key="purchase_orders.id", index=True)
+    supplier_id: Optional[int] = Field(default=None, index=True)
+    warehouse_id: Optional[int] = Field(default=None, index=True)
+    items: Optional[List[dict]] = Field(default_factory=list, sa_column=Column(JSON))
+    status: str = Field(default="Completed", max_length=50)  # Completed, Partial, Discrepancy
+    received_by: Optional[int] = Field(default=None, foreign_key="users.id")
+    received_by_name: Optional[str] = Field(default=None, max_length=200)
+    received_at: datetime = Field(default_factory=_utcnow)
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    idempotency_key: Optional[str] = Field(default=None, max_length=120, index=True)
+
+
+class StockTransfer(SQLModel, table=True):
+    """Inter-warehouse stock transfer"""
+    __tablename__ = "stock_transfers"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    transfer_number: str = Field(max_length=100, index=True)
+    source_warehouse_id: int = Field(foreign_key="warehouses.id", index=True)
+    destination_warehouse_id: int = Field(foreign_key="warehouses.id", index=True)
+    items: Optional[List[dict]] = Field(default_factory=list, sa_column=Column(JSON))
+    status: str = Field(default="Draft", max_length=50)  # Draft, Pending Approval, Approved, Dispatched, Partially Received, Completed, Cancelled
+    requested_by: Optional[int] = Field(default=None, foreign_key="users.id")
+    approved_by: Optional[int] = Field(default=None, foreign_key="users.id")
+    dispatched_at: Optional[datetime] = Field(default=None)
+    received_at: Optional[datetime] = Field(default=None)
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class StockCount(SQLModel, table=True):
+    """Physical inventory stock count & discrepancy audit"""
+    __tablename__ = "stock_counts"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    count_number: str = Field(max_length=100, index=True)
+    warehouse_id: Optional[int] = Field(default=None, index=True)
+    status: str = Field(default="Draft", max_length=50)  # Draft, Submitted, Approved, Rejected
+    items: Optional[List[dict]] = Field(default_factory=list, sa_column=Column(JSON))
+    counted_by: Optional[int] = Field(default=None, foreign_key="users.id")
+    approved_by: Optional[int] = Field(default=None, foreign_key="users.id")
+    submitted_at: Optional[datetime] = Field(default=None)
+    approved_at: Optional[datetime] = Field(default=None)
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class SupplierPayment(SQLModel, table=True):
+    """Supplier payment ledger"""
+    __tablename__ = "supplier_payments"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    payment_number: Optional[str] = Field(default=None, max_length=100, index=True)
+    supplier_id: Optional[int] = Field(default=None, index=True)
+    supplier_user_id: Optional[int] = Field(default=None, index=True)
+    supplier_name: Optional[str] = Field(default=None, max_length=255)
+    supplier_email: Optional[str] = Field(default=None, max_length=255)
+    purchase_order_id: Optional[int] = Field(default=None, foreign_key="purchase_orders.id", index=True)
+    amount: float = Field(default=0.0)
+    currency: str = Field(default="USD", max_length=10)
+    payment_method: str = Field(default="Bank Transfer", max_length=100)
+    transaction_reference: Optional[str] = Field(default=None, max_length=200)
+    payment_date: Optional[str] = Field(default=None, max_length=50)
+    status: str = Field(default="Completed", max_length=50)  # Completed, Pending, Voided
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    created_by: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 # ──────────────────────────────────────────────────────

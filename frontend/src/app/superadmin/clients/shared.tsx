@@ -42,7 +42,7 @@ export interface CatalogFeature { key: string; label: string; group: string; des
 export interface Preset { key: string; label: string; description: string; features: string[]; module_count: number }
 
 export function countModules(catalog: CatalogFeature[], enabled?: Record<string, boolean>): number {
-  return catalog.filter(feature => !feature.parent_key && (!enabled || enabled[feature.key])).length;
+  return catalog.filter(feature => feature.key !== "dashboard" && !feature.parent_key && (!enabled || enabled[feature.key])).length;
 }
 export interface RegionOptions {
   industries: { key: string; label: string; preset?: string }[];
@@ -50,7 +50,7 @@ export interface RegionOptions {
 }
 
 /** Presets in the order a person should see them: SerpHawk Flagship first. */
-export const PRESET_ORDER = ["serphawk", "standard", "bpo", "full"];
+export const PRESET_ORDER = ["serphawk", "institute", "full"];
 
 export const inputCls =
   "w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3.5 py-2.5 text-sm text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition";

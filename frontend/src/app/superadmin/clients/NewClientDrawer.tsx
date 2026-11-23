@@ -155,7 +155,6 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
                 <input className={`${inputCls} ${bad("name")}`} placeholder="acme-logistics" value={form.name}
                   onChange={(e) => { setAccountTouched(true); set({ name: e.target.value }); }} />
                 {showErrors && problems.name ? field("name") : <p className="mt-1 text-xs text-slate-500 dark:text-zinc-500">A short unique id; filled in for you.</p>}
-                <p className="mt-1 text-xs break-all">https://{form.name || "company"}.{COMPANY_BASE_DOMAIN}/leadformpage</p>
               </div>
               <div>
                 <label htmlFor="new-client-industry" className={labelCls}><LocalizedText text={"Business type"} /></label>

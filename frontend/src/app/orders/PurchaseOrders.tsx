@@ -6,9 +6,18 @@ import { Truck, Plus, X, Search, Loader2, Trash2, Building2, Download, Mail, Eye
 import { ExportActions } from "@/components/ExportActions";
 import { API_BASE_URL } from "@/config";
 
-interface PO { id: number; po_number?: string; vendor_name: string; vendor_email?: string; status: string; grand_total: number; currency: string; expected_delivery?: string; created_at: string; }
-const STATUSES = ["Draft", "Sent", "Received", "Cancelled"];
-const STATUS_COLORS: Record<string, string> = { Draft: "bg-slate-100 text-slate-500", Sent: "bg-blue-500/10 text-blue-600", Received: "bg-emerald-500/10 text-emerald-600", Cancelled: "bg-red-500/10 text-red-500" };
+interface PO { id: number; po_number?: string; vendor_name: string; vendor_email?: string; status: string; payment_status?: string; grand_total: number; total_amount?: number; currency: string; expected_delivery?: string; created_at: string; }
+const STATUSES = ["Draft", "Pending Approval", "Approved", "Sent", "Confirmed", "Partially Received", "Received", "Cancelled"];
+const STATUS_COLORS: Record<string, string> = {
+  Draft: "bg-slate-100 text-slate-500",
+  "Pending Approval": "bg-amber-500/10 text-amber-600",
+  Approved: "bg-indigo-500/10 text-indigo-600",
+  Sent: "bg-blue-500/10 text-blue-600",
+  Confirmed: "bg-violet-500/10 text-violet-600",
+  "Partially Received": "bg-cyan-500/10 text-cyan-600",
+  Received: "bg-emerald-500/10 text-emerald-600",
+  Cancelled: "bg-red-500/10 text-red-500"
+};
 
 export default function PurchaseOrdersPage() {
   const [orders, setOrders] = useState<PO[]>([]);
