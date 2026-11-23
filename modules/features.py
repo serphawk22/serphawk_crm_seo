@@ -110,7 +110,7 @@ _FEATURES: List[Feature] = [
        default_on=False, path_regexes=(r"^/(api/)?leads/webhook$",)),
     _f("followup_board", "Follow-up board", "Business suite",
        "The SCM BPO follow-up screens: overdue / pending / upcoming buckets, reschedule, drafted emails, overdue notices.",
-       default_on=False, path_prefixes=("/follow-ups",)),
+       default_on=True, path_prefixes=("/follow-ups",)),
     _f("ai_reports", "AI reports", "Business suite", "Natural-language report generation.",
        default_on=False, path_prefixes=("/reports/ai",)),
     _f("dropped_clients", "Dropped clients", "Business suite", "Record why clients left, reactivate them, reassignment history.",

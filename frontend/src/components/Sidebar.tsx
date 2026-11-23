@@ -125,7 +125,7 @@ const defaultSidebarSections: SidebarSection[] = [
       { id: "item-notifications", name: "Notifications", icon: "Bell", href: "/notifications", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
       { id: "item-messages", name: "Messages", icon: "MessageCircle", href: "/messages", roles: ["Admin", "Demo", "SalesManager", "Employee", "Sales"] },
       { id: "item-inbox", name: "Inbox", icon: "Inbox", href: "/inbox", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
-      { id: "item-followups", name: "Follow-ups", icon: "CalendarClock", href: "/followups", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
+      { id: "item-followups", name: "Follow-ups", icon: "CalendarClock", href: "/follow-ups", roles: ["Admin", "Demo", "SalesManager", "Employee", "Sales", "Admissions"] },
       { id: "item-blogs", name: "Blogs & Knowledge Hub", icon: "BookOpen", href: "/blogs", roles: ["Admin", "Demo", "SalesManager", "Employee", "Sales", "ProjectMember", "Intern", "Client", "Developer"] },
     ],
   },
@@ -304,8 +304,8 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
     .filter((item: SidebarItem) => !ITEM_ADDON[item.id] || isOn(ITEM_ADDON[item.id]))
     .filter((item: SidebarItem) => item.id !== "item-dashboard-b2c" || isOn("institute"))
     .filter((item: SidebarItem) => !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    // a company with the follow-up board gets the board (which has the email follow-ups as a tab) behind the same menu entry
-    .map((item: SidebarItem) => (item.id === "item-followups" && isOn("followup_board") ? { ...item, href: "/follow-ups" } : item));
+    // a company gets the rich follow-up board with calendar view, availability & blackout slots
+    .map((item: SidebarItem) => (item.id === "item-followups" ? { ...item, href: "/follow-ups" } : item));
 
   if (visibleItems.length === 0) return null;
 
@@ -787,7 +787,7 @@ function SidebarContent({ role }: SidebarProps) {
     .filter(item => ((role === "SuperAdmin" && isPlatformManagementPage(item.href)) || hasFeature(ITEM_FEATURE[item.id])) && (!ITEM_ADDON[item.id] || isOn(ITEM_ADDON[item.id])))
     .filter(item => item.id !== "item-dashboard-b2c" || isOn("institute"))
     .filter(item => !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    .map(item => item.id === "item-followups" && isOn("followup_board") ? { ...item, href: "/follow-ups" } : item);
+    .map(item => item.id === "item-followups" ? { ...item, href: "/follow-ups" } : item);
 
   const labelFor = (item: SidebarItem) => {
     if (item.customName) return item.customName;

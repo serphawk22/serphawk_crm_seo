@@ -14,6 +14,7 @@ import { useRole } from "@/context/RoleContext";
 import TimezonePicker from "@/components/TimezonePicker";
 import EmailFollowUpsView from "@/components/followups/EmailFollowUpsView";
 import ManualFollowUpActions from "@/components/followups/ManualFollowUpActions";
+import CalendarAvailabilityModal from "@/components/CalendarAvailabilityModal";
 import { ListChecks as SectionBoardIcon, Mail as SectionEmailIcon } from "lucide-react";
 import {
   detectTimeZone, formatInZone, relativeTime, toZonedInput, zonedWallToUtc, gmtLabel,
@@ -2148,195 +2149,14 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
       </Sheet>
 
       {/* ── Admin Availability & Blocked Slots Modal ── */}
-      {showAvailabilityModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-2xl rounded-3xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121217] p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-                  <Clock className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                    Calendar Availability & Blackout Times
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-zinc-400">
-                    Define working hours and block specific dates or times from being booked
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAvailabilityModal(false)}
-                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Section 1: Standard Working Hours */}
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-white/5 space-y-3">
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300">
-                1. Standard Daily Working Hours
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-400 block mb-1">
-                    Start Time
-                  </label>
-                  <input
-                    type="time"
-                    value={availabilityHours.start_time}
-                    onChange={(e) =>
-                      setAvailabilityHours({ ...availabilityHours, start_time: e.target.value })
-                    }
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-400 block mb-1">
-                    End Time
-                  </label>
-                  <input
-                    type="time"
-                    value={availabilityHours.end_time}
-                    onChange={(e) =>
-                      setAvailabilityHours({ ...availabilityHours, end_time: e.target.value })
-                    }
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white"
-                  />
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleSaveAvailability}
-                disabled={savingBlock}
-                className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition active:scale-95"
-              >
-                Save Working Hours
-              </button>
-            </div>
-
-            {/* Section 2: Blackout / Blocked Date or Times */}
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-white/5 space-y-3">
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300">
-                2. Block Date or Specific Time Slot
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-400 block mb-1">
-                    Date to Block
-                  </label>
-                  <input
-                    type="date"
-                    value={blockForm.date}
-                    onChange={(e) => setBlockForm({ ...blockForm, date: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-400 block mb-1">
-                    Start Time (Optional)
-                  </label>
-                  <input
-                    type="time"
-                    value={blockForm.start_time}
-                    onChange={(e) => setBlockForm({ ...blockForm, start_time: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-400 block mb-1">
-                    End Time (Optional)
-                  </label>
-                  <input
-                    type="time"
-                    value={blockForm.end_time}
-                    onChange={(e) => setBlockForm({ ...blockForm, end_time: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-400 block mb-1">
-                  Reason / Description
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. National Holiday, Strategy Review, Offsite"
-                  value={blockForm.reason}
-                  onChange={(e) => setBlockForm({ ...blockForm, reason: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={handleCreateBlockedSlot}
-                disabled={savingBlock || !blockForm.date}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs transition active:scale-95 disabled:opacity-50"
-              >
-                <Lock className="w-3.5 h-3.5" /> Block This Slot
-              </button>
-            </div>
-
-            {/* Section 3: List of Active Blocked Slots */}
-            <div>
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300 mb-2">
-                Active Blackout / Blocked Slots ({blockedSlots.length})
-              </h4>
-              {blockedSlots.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">No dates or times are currently blocked.</p>
-              ) : (
-                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                  {blockedSlots.map((slot) => (
-                    <div
-                      key={slot.id}
-                      className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-zinc-900 text-xs"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Lock className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                        <div>
-                          <span className="font-extrabold text-slate-900 dark:text-white">
-                            {slot.date}
-                          </span>
-                          {slot.start_time && slot.end_time && (
-                            <span className="text-[11px] text-slate-500 dark:text-zinc-400 ml-1.5">
-                              ({slot.start_time} - {slot.end_time})
-                            </span>
-                          )}
-                          <span className="text-slate-600 dark:text-zinc-300 ml-2">
-                            — {slot.reason || "Blocked slot"}
-                          </span>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteBlockedSlot(slot.id)}
-                        className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
-                        title="Remove blocked slot"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="pt-3 border-t border-slate-200 dark:border-white/10 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowAvailabilityModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CalendarAvailabilityModal
+        isOpen={showAvailabilityModal}
+        onClose={() => setShowAvailabilityModal(false)}
+        onUpdated={() => {
+          fetchBlockedSlots();
+          fetchAvailability();
+        }}
+      />
     </div>
   );
 }

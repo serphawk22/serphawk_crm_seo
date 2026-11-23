@@ -36,7 +36,7 @@ PRESETS: Dict[str, dict] = {
         "description": "Institute administration & admissions workspace: student directory, course batches, enrollments, "
                        "fee collection on remaining balance, admission slips, advance slips, and payment recording.",
         "features": {"dashboard", "dashboard_b2c", "institute", "work_queue", "teams", "leaderboard", "inbox",
-                     "reports", "billing", "invoices"},
+                     "reports", "billing", "invoices", "followups", "followup_board"},
         "settings": {"sales_scoping": True, "home_dashboard": "dashboard_b2c", "default_currency": "INR",
                      "timezone": "Asia/Kolkata",
                      "lead_statuses": ["New", "Contacted", "Enrolled", "Lost"]},
@@ -107,7 +107,7 @@ _LEGACY_PRESETS: Dict[str, dict] = {
         "description": "SCM HB-style: leads and admissions tracking, students, courses, batches, enrollments and fees, "
                        "attendance, portals, reports, inbox, follow-ups and email agent.",
         "features": {"dashboard", "dashboard_b2c", "cases", "leads", "work_queue", "task_sheet", "reports", "calls", "teams", "leaderboard", "inbox",
-                     "followups", "email_agent", "support", "institute", "ai_reports", "lead_sources", "lead_source_analytics"},
+                     "followups", "email_agent", "support", "institute", "ai_reports", "lead_sources", "lead_source_analytics", "followup_board"},
         "settings": {"default_currency": "INR", "timezone": "Asia/Kolkata", "lead_assignment": "revenue",
                      "sales_scoping": True, "home_dashboard": "dashboard_b2c",
                      "lead_statuses": ["New", "Contacted", "Not Responded", "Follow-up", "Webinar Scheduled",
