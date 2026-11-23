@@ -14,14 +14,16 @@ interface QuickAction {
 }
 
 const QUICK_ACTIONS: QuickAction[] = [
-  { label: 'Go to Leads', icon: <TrendingUp className="w-3.5 h-3.5 text-violet-500" />, route: '/leads' },
-  { label: 'Add Client', icon: <UserPlus className="w-3.5 h-3.5 text-emerald-500" />, route: '/clients?action=add' },
-  { label: 'Email Agent', icon: <Mail className="w-3.5 h-3.5 text-blue-500" />, route: '/email-agent' },
-  { label: 'Dashboard', icon: <LayoutDashboard className="w-3.5 h-3.5 text-indigo-500" />, route: '/' },
-  { label: 'Reports', icon: <TrendingUp className="w-3.5 h-3.5 text-cyan-500" />, route: '/reports' },
-  { label: 'Leaderboard', icon: <TrendingUp className="w-3.5 h-3.5 text-yellow-500" />, route: '/admin/leaderboard' },
-  { label: 'Team Directory', icon: <Users className="w-3.5 h-3.5 text-indigo-500" />, route: '/teams' },
-  { label: 'Task Sheet', icon: <FolderOpen className="w-3.5 h-3.5 text-emerald-500" />, route: '/task-sheet' },
+  { label: 'Leads Kanban', icon: <TrendingUp className="w-3 h-3 text-violet-500" />, route: '/leads' },
+  { label: 'Clients Hub', icon: <UserPlus className="w-3 h-3 text-emerald-500" />, route: '/clients' },
+  { label: 'Storefront Shop', icon: <ShoppingBag className="w-3 h-3 text-indigo-500" />, route: '/shop' },
+  { label: 'Proposals', icon: <FolderOpen className="w-3 h-3 text-orange-500" />, route: '/proposals' },
+  { label: 'My Follow-ups', icon: <LayoutDashboard className="w-3 h-3 text-amber-500" />, route: '/followups' },
+  { label: 'Task Sheet', icon: <FolderOpen className="w-3 h-3 text-cyan-500" />, route: '/task-sheet' },
+  { label: 'Email Agent', icon: <Mail className="w-3 h-3 text-blue-500" />, route: '/email-agent' },
+  { label: 'Reports', icon: <TrendingUp className="w-3 h-3 text-pink-500" />, route: '/reports' },
+  { label: 'Team Directory', icon: <Users className="w-3 h-3 text-indigo-500" />, route: '/teams' },
+  { label: 'Voice Caller', icon: <Phone className="w-3 h-3 text-teal-500" />, route: '/voice-agent' },
 ];
 
 const ROLE_ROUTES: Record<string, Array<{ label: string; route: string }>> = {
@@ -304,18 +306,21 @@ export function Chatbot() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Action Pills */}
-          <div className="px-4 py-3 bg-white dark:bg-zinc-900 shrink-0 border-t border-slate-100 dark:border-zinc-800">
-            <p className="text-[9px] font-black text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Quick Navigate</p>
-            <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+          {/* Quick Action Pills - 2-line compact layout */}
+          <div className="px-3.5 py-2 bg-white dark:bg-zinc-900 shrink-0 border-t border-slate-100 dark:border-zinc-800">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[9px] font-black text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Quick Shortcuts</p>
+              <span className="text-[9px] text-slate-400">Click to navigate</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5 max-h-[64px] overflow-y-auto pr-0.5" style={{ scrollbarWidth: 'thin' }}>
               {visibleQuickActions.map((action) => (
                 <button
                   key={action.label}
                   onClick={() => handleCommand(action.label)}
-                  className="flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 bg-slate-50 dark:bg-zinc-800/50 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-full border border-slate-200/60 dark:border-zinc-700/60 text-[11px] font-bold text-slate-600 dark:text-zinc-300 transition-all hover:border-indigo-300 dark:hover:border-indigo-700 hover:text-indigo-600 dark:hover:text-indigo-400 shadow-sm"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-50 dark:bg-zinc-800/60 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg border border-slate-200/60 dark:border-zinc-700/60 text-[10px] font-bold text-slate-600 dark:text-zinc-300 transition-all hover:border-indigo-300 dark:hover:border-indigo-700 hover:text-indigo-600 dark:hover:text-indigo-400 shadow-2xs"
                 >
                   {action.icon}
-                  {action.label}
+                  <span className="truncate max-w-[95px]">{action.label}</span>
                 </button>
               ))}
             </div>

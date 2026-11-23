@@ -1,6 +1,6 @@
 export const INSTITUTE_STAGES = [
   "New", "Contacted", "Not Responded", "Follow-up", "Webinar Scheduled", "Webinar Attended",
-  "Webinar Not Attended", "Walk-in Scheduled", "Walk-in Attended", "Walk-in Not Attended", "Converted", "Lost",
+  "Webinar Not Attended", "Walk-in Scheduled", "Walk-in Attended", "Walk-in Not Attended", "Student", "Converted", "Lost",
 ];
 
 export type ScheduleStage = "Follow-up" | "Webinar Scheduled" | "Walk-in Scheduled";

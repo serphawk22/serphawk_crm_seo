@@ -17,12 +17,12 @@ from sqlmodel import Session, select
 from database import Lead, User
 from modules import tenant_settings
 
-STRATEGIES = ("workload", "revenue")
+STRATEGIES = ("roundrobin", "workload", "revenue")
 _PRIMARY_ROLES = ("SalesManager", "Sales")
 _FALLBACK_ROLES = ("Employee",)
 
 
-def strategy_for(tenant_id: Optional[int], default: str = "workload") -> str:
+def strategy_for(tenant_id: Optional[int], default: str = "roundrobin") -> str:
     value = tenant_settings.get_setting(tenant_id, "lead_assignment", default)
     return value if value in STRATEGIES else default
 
@@ -43,13 +43,42 @@ def _workload_stats(session: Session, tenant_id: int, reps: List[User]) -> Dict[
     for owner_id, is_converted, status in rows:
         s = stats[owner_id]
         s["total"] += 1
-        if is_converted or str(status or "").lower() in ("converted", "won"):
+        if is_converted or str(status or "").lower() in ("converted", "won", "enrolled"):
             s["converted"] += 1
     return stats
 
 
 def _rate(s: dict) -> float:
     return (s["converted"] / s["total"]) if s["total"] else 0.5      # no history: assume average
+
+
+def _pick_roundrobin_performance(session: Session, tenant_id: int) -> Optional[User]:
+    """Auto-assign based on round-robin as 1st criteria, and performance as 2nd criteria."""
+    reps = _active(session, tenant_id, _PRIMARY_ROLES) or _active(session, tenant_id, _FALLBACK_ROLES)
+    if not reps:
+        return None
+    if len(reps) == 1:
+        return reps[0]
+
+    stats = _workload_stats(session, tenant_id, reps)
+    from sqlmodel import func
+    last_assignments = {}
+    for r in reps:
+        last_dt = session.exec(
+            select(func.max(Lead.created_at)).where(Lead.tenant_id == tenant_id, Lead.owner_id == r.id)
+        ).first()
+        last_assignments[r.id] = last_dt.timestamp() if hasattr(last_dt, "timestamp") else 0.0
+
+    chosen = min(
+        reps,
+        key=lambda r: (
+            last_assignments.get(r.id, 0.0),                         # 1st criteria: Round-robin (least recently assigned)
+            -_rate(stats.get(r.id, {"converted": 0, "total": 0})),    # 2nd criteria: Performance (higher conversion rate)
+            stats.get(r.id, {}).get("total", 0),                     # Workload balance
+            r.id or 0
+        )
+    )
+    return chosen
 
 
 def _workload_pool(session: Session, tenant_id: int) -> Dict[int, dict]:
@@ -77,6 +106,8 @@ def _revenue_pool(session: Session, tenant_id: int):
 
 def choose_salesperson(session: Session, tenant_id: int, strategy: Optional[str] = None) -> Optional[User]:
     strategy = strategy or strategy_for(tenant_id)
+    if strategy == "roundrobin":
+        return _pick_roundrobin_performance(session, tenant_id)
     if strategy == "revenue":
         users, metrics = _revenue_pool(session, tenant_id)
         if not users:

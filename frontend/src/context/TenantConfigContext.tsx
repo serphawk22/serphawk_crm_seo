@@ -18,6 +18,8 @@ export interface TenantSettings {
   lead_statuses?: string[] | null;
   deal_stages?: string[] | null;
   client_statuses?: string[] | null;
+  company_type?: string | null;
+  [key: string]: any;
 }
 
 interface TenantConfig {

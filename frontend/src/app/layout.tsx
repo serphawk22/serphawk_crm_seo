@@ -37,14 +37,29 @@ import WebsiteLeadSummary from "@/components/WebsiteLeadSummary";
 import MeetingOutcomePromptModal from "@/components/MeetingOutcomePromptModal";
 
 function AdminMainContent({ children }: { children: React.ReactNode }) {
-  const { collapsed } = useSidebar();
+  const { collapsed, mobileOpen, setMobileOpen } = useSidebar();
   const pathname = usePathname();
   const isClientDetail = pathname?.match(/^\/admin\/clients\/\d+$/);
 
   return (
-    <main className={`relative z-10 min-h-screen transition-[margin-left] duration-200 ease-in-out motion-reduce:transition-none ${collapsed ? "ml-[72px]" : "ml-[280px]"}`}>
+    <main className={`relative z-10 min-h-screen transition-[margin-left] duration-200 ease-in-out motion-reduce:transition-none ml-0 ${collapsed ? "md:ml-[72px]" : "md:ml-[280px]"}`}>
+      {/* Mobile Top Navigation Bar with Hamburger */}
+      <div className="md:hidden sticky top-0 z-40 flex items-center justify-between px-3.5 py-2.5 bg-white/95 dark:bg-[#0c0c0e]/95 backdrop-blur-md border-b border-slate-200/80 dark:border-white/10">
+        <button
+          type="button"
+          onClick={() => setMobileOpen(prev => !prev)}
+          className="p-2 -ml-1 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-zinc-200 hover:bg-slate-200 dark:hover:bg-white/15 transition-colors"
+          aria-label="Toggle navigation menu"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <span className="font-extrabold text-sm text-slate-900 dark:text-white tracking-tight">DaPros CRM</span>
+        <div className="w-6" />
+      </div>
       <TopRightControls />
-      <div className={isClientDetail ? "w-full h-full px-2 sm:px-4 sm:pr-20" : "pt-[68px] sm:pt-[76px] px-2.5 sm:px-6 md:px-8 pb-6 md:pb-8 pr-2.5 sm:pr-20 md:pr-24 max-w-[1600px] mx-auto h-full"}>
+      <div className={isClientDetail ? "w-full h-full px-2 sm:px-4 sm:pr-20" : "pt-3 md:pt-[76px] px-2.5 sm:px-6 md:px-8 pb-6 md:pb-8 pr-2.5 sm:pr-20 md:pr-24 max-w-[1600px] mx-auto h-full"}>
         {children}
       </div>
     </main>
@@ -121,7 +136,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
   }
 
   if (pathname !== "/" && isPublicPage(pathname)) {
-    return <main className="h-screen w-full">{children}</main>;
+    return <main className="min-h-screen w-full bg-slate-50 dark:bg-[#09090b] text-slate-900 dark:text-zinc-100">{children}</main>;
   }
   if (!isAuthenticated) {
     return pathname === "/" ? <>{children}</> : <GlobalLoader />;

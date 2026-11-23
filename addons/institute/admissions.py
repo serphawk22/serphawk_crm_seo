@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_, and_
 from sqlmodel import Session, select
 from database import User, Lead, Invoice
-from addons.institute.models import Student, Enrollment, PaymentRecord, Course, LeadTransferHistory
+from addons.institute.models import Student, Enrollment, PaymentRecord, Course, Batch, Instructor, LeadTransferHistory
 from addons.institute.routes import get_session, _require_roles, _normalize_role, _utcnow
 from modules.tenant_scope import current_tenant_id
 router = APIRouter()
@@ -139,6 +139,19 @@ def list_admissions_students(session: Session = Depends(get_session)):
     users = session.exec(users_query).all()
     user_map = {user.id: user for user in users}
     invoice_map = {invoice.enrollment_id: invoice for invoice in invoices if invoice.enrollment_id}
+
+    course_ids = [e.course_id for e in enrollments if e.course_id]
+    courses = session.exec(select(Course).where(Course.id.in_(course_ids))).all() if course_ids else []
+    course_map = {c.id: c for c in courses}
+
+    batch_ids = [e.batch_id for e in enrollments if e.batch_id]
+    batches = session.exec(select(Batch).where(Batch.id.in_(batch_ids))).all() if batch_ids else []
+    batch_map = {b.id: b for b in batches}
+
+    instructor_ids = [b.instructor_id for b in batches if b.instructor_id]
+    instructors = session.exec(select(Instructor).where(Instructor.id.in_(instructor_ids))).all() if instructor_ids else []
+    instructor_map = {i.id: i for i in instructors}
+
     enrollment_map: dict[int, list[Enrollment]] = {}
     payment_map: dict[int, list[PaymentRecord]] = {}
     for enrollment in enrollments:
@@ -171,10 +184,24 @@ def list_admissions_students(session: Session = Depends(get_session)):
                     {
                         "id": enrollment.id,
                         "course_id": enrollment.course_id,
+                        "course_title": course_map[enrollment.course_id].title if enrollment.course_id in course_map else None,
                         "batch_id": enrollment.batch_id,
+                        "batch_name": batch_map[enrollment.batch_id].batch_name if enrollment.batch_id in batch_map else None,
+                        "batch_code": batch_map[enrollment.batch_id].batch_code if enrollment.batch_id in batch_map else None,
+                        "batch_schedule": batch_map[enrollment.batch_id].schedule if enrollment.batch_id in batch_map else None,
+                        "mode": batch_map[enrollment.batch_id].mode if enrollment.batch_id in batch_map else None,
+                        "instructor_name": (
+                            instructor_map[batch_map[enrollment.batch_id].instructor_id].name
+                            if enrollment.batch_id in batch_map and batch_map[enrollment.batch_id].instructor_id in instructor_map
+                            else None
+                        ),
                         "total_fee": enrollment.total_fee,
                         "amount_paid": enrollment.amount_paid,
                         "amount_due": enrollment.amount_due,
+                        "discount": enrollment.discount,
+                        "slip_number": enrollment.slip_number,
+                        "admission_slip_generated": bool(enrollment.admission_slip_generated),
+                        "advance_slip_generated": bool(enrollment.advance_slip_generated),
                         "payment_status": enrollment.payment_status,
                         "payments": [
                             {

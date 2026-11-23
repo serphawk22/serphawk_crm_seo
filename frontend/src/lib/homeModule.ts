@@ -3,6 +3,8 @@ export function homeModule(role: string | null, features: Record<string, boolean
   if (role === "SuperAdmin") return "platform";
   if (["Admin", "SalesManager", "Sales", "Employee", "Demo"].includes(role || "") && features.dashboard_b2c === true && features.institute === true) return "dashboard_b2c";
   if (["Admin", "SalesManager", "Sales", "Demo"].includes(role || "") && features.command_center === true) return "command_center";
+  // Sales instance roles always get access to their sales dashboard
+  if (["SalesManager", "Sales", "Employee"].includes(role || "")) return "dashboard";
   if (features.dashboard !== false) return "dashboard";
   return "none";
 }

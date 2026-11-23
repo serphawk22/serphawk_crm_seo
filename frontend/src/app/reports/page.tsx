@@ -169,6 +169,9 @@ function BusinessReportsPage() {
   const [classicError, setClassicError] = useState<string>("");
   const [selectedStaffMember, setSelectedStaffMember] = useState<any | null>(null);
   const [staffSearch, setStaffSearch] = useState<string>("");
+  const [leadSourceSalesperson, setLeadSourceSalesperson] = useState<string>("all");
+  const [leadSourceSubTab, setLeadSourceSubTab] = useState<"overview" | "by_salesperson" | "per_lead">("overview");
+  const [leadSourceSearch, setLeadSourceSearch] = useState<string>("");
 
   const applyClassicPreset = (preset: "today" | "yesterday" | "7d" | "this_month" | "last_month" | "ytd") => {
     const now = new Date();
@@ -249,13 +252,15 @@ function BusinessReportsPage() {
   };
 
   // Load Classic Data
-  const loadClassicData = async (overrideStart?: string, overrideEnd?: string) => {
+  const loadClassicData = async (overrideStart?: string, overrideEnd?: string, overrideSalesperson?: string) => {
     setClassicLoading(true);
     setClassicError("");
     try {
       const s = overrideStart || classicStart;
       const e = overrideEnd || classicEnd;
+      const sp = overrideSalesperson !== undefined ? overrideSalesperson : leadSourceSalesperson;
       const params = new URLSearchParams({ start_date: s, end_date: e });
+      if (sp && sp !== "all") params.append("salesperson_id", sp);
       const response = await fetch(`${API_BASE_URL}/reports/summary?${params.toString()}`, {
         headers: getAuthHeaders(),
       });
@@ -1714,12 +1719,308 @@ function BusinessReportsPage() {
               )}
 
               {classicTab === "lead_sources" && (
-                <ClassicTable
-                  headers={["Lead source", "Leads", "Converted", "Conversion %"]}
-                  rows={(classicData.lead_sources || []).map((ls: any) => [
-                    ls.source, ls.leads, ls.converted, `${ls.conversion_percentage}%`
-                  ])}
-                />
+                <div className="space-y-5">
+                  {/* Controls Header */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white dark:bg-[#111111]/90 p-3 sm:p-4 rounded-2xl border border-slate-200/90 dark:border-white/10 shadow-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setLeadSourceSubTab("overview")}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                          leadSourceSubTab === "overview"
+                            ? "bg-blue-600 text-white shadow-xs"
+                            : "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700"
+                        }`}
+                      >
+                        Overview Breakdown
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLeadSourceSubTab("by_salesperson")}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                          leadSourceSubTab === "by_salesperson"
+                            ? "bg-blue-600 text-white shadow-xs"
+                            : "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700"
+                        }`}
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        By Salesperson (Individual)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLeadSourceSubTab("per_lead")}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                          leadSourceSubTab === "per_lead"
+                            ? "bg-blue-600 text-white shadow-xs"
+                            : "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700"
+                        }`}
+                      >
+                        <Target className="w-3.5 h-3.5" />
+                        Per-Lead Analytics
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      {/* Filter by Salesperson */}
+                      <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl px-2.5 py-1">
+                        <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <select
+                          value={leadSourceSalesperson}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setLeadSourceSalesperson(val);
+                            loadClassicData(classicStart, classicEnd, val);
+                          }}
+                          className="bg-transparent text-xs font-medium text-slate-800 dark:text-zinc-200 outline-none cursor-pointer"
+                        >
+                          <option value="all" className="bg-white dark:bg-zinc-900">All Salespeople</option>
+                          {(classicData?.salespeople || []).map((sp: any) => (
+                            <option key={sp.id} value={String(sp.id)} className="bg-white dark:bg-zinc-900">
+                              {sp.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Search box */}
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          placeholder="Search source or lead..."
+                          value={leadSourceSearch}
+                          onChange={(e) => setLeadSourceSearch(e.target.value)}
+                          className="pl-8 pr-2.5 py-1 text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-slate-800 dark:text-zinc-200 placeholder-slate-400 outline-none focus:border-blue-500 w-44"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SUB-TAB 1: Overview Breakdown */}
+                  {leadSourceSubTab === "overview" && (
+                    <div className="space-y-4">
+                      {/* KPI Summary Tiles */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#111111]/90 p-3 shadow-2xs">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Top Performing Source</p>
+                          <p className="text-base font-bold text-slate-900 dark:text-white mt-1 truncate">
+                            {(classicData?.lead_sources || [])[0]?.source || "N/A"}
+                          </p>
+                          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">
+                            {(classicData?.lead_sources || [])[0]?.converted || 0} conversions
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#111111]/90 p-3 shadow-2xs">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total Leads from Sources</p>
+                          <p className="text-base font-bold text-slate-900 dark:text-white mt-1">
+                            {(classicData?.lead_sources || []).reduce((acc: number, curr: any) => acc + (curr.leads || 0), 0)}
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">Active prospects</p>
+                        </div>
+                        <div className="rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#111111]/90 p-3 shadow-2xs">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total Converted</p>
+                          <p className="text-base font-bold text-slate-900 dark:text-white mt-1">
+                            {(classicData?.lead_sources || []).reduce((acc: number, curr: any) => acc + (curr.converted || 0), 0)}
+                          </p>
+                          <p className="text-[11px] text-blue-600 dark:text-blue-400 mt-0.5">Closed deals</p>
+                        </div>
+                        <div className="rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#111111]/90 p-3 shadow-2xs">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Overall Source Win Rate</p>
+                          <p className="text-base font-bold text-slate-900 dark:text-white mt-1">
+                            {(() => {
+                              const total = (classicData?.lead_sources || []).reduce((acc: number, curr: any) => acc + (curr.leads || 0), 0);
+                              const conv = (classicData?.lead_sources || []).reduce((acc: number, curr: any) => acc + (curr.converted || 0), 0);
+                              return total > 0 ? `${((conv / total) * 100).toFixed(1)}%` : "0%";
+                            })()}
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">Source to client ratio</p>
+                        </div>
+                      </div>
+
+                      {/* Main Sources Table */}
+                      <ClassicTable
+                        headers={["Lead Source", "Total Leads", "Converted", "Conversion Rate", "Pipeline Value", "Won Revenue"]}
+                        rows={(classicData?.lead_sources || [])
+                          .filter((ls: any) => !leadSourceSearch || (ls.source || "").toLowerCase().includes(leadSourceSearch.toLowerCase()))
+                          .map((ls: any) => [
+                            <span key="source" className="font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-blue-500 inline-block shrink-0" />
+                              {ls.source}
+                            </span>,
+                            <span key="leads" className="font-bold">{ls.leads}</span>,
+                            <span key="converted" className="text-emerald-600 dark:text-emerald-400 font-bold">{ls.converted}</span>,
+                            <div key="pct" className="flex items-center gap-2">
+                              <div className="w-16 h-2 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-blue-600 rounded-full"
+                                  style={{ width: `${Math.min(ls.conversion_percentage || 0, 100)}%` }}
+                                />
+                              </div>
+                              <span className="font-bold">{ls.conversion_percentage}%</span>
+                            </div>,
+                            <span key="pipe" className="font-mono text-slate-600 dark:text-zinc-300">
+                              ₹{(ls.pipeline_value || 0).toLocaleString()}
+                            </span>,
+                            <span key="won" className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                              ₹{(ls.won_value || 0).toLocaleString()}
+                            </span>,
+                          ])}
+                      />
+                    </div>
+                  )}
+
+                  {/* SUB-TAB 2: By Salesperson (Individual Reports - SCM1-423, P1-773) */}
+                  {leadSourceSubTab === "by_salesperson" && (
+                    <div className="space-y-4">
+                      {((classicData?.salesperson_lead_sources || []) as any[])
+                        .filter((rep: any) => !leadSourceSearch || rep.salesperson_name.toLowerCase().includes(leadSourceSearch.toLowerCase()))
+                        .map((rep: any) => (
+                          <div
+                            key={rep.salesperson_id}
+                            className="rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#111111]/90 p-4 shadow-xs space-y-3"
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-white/5 pb-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-xs">
+                                  {rep.salesperson_name[0]?.toUpperCase() || "S"}
+                                </div>
+                                <div>
+                                  <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                    {rep.salesperson_name}
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400">
+                                      Sales Representative
+                                    </span>
+                                  </h4>
+                                  <p className="text-xs text-slate-500 dark:text-zinc-400">
+                                    {rep.total_leads} total leads handled across {rep.sources?.length || 0} acquisition sources
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3 self-end sm:self-auto">
+                                <div className="text-right">
+                                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Converted Leads</p>
+                                  <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                                    {rep.total_converted} ({rep.total_leads > 0 ? ((rep.total_converted / rep.total_leads) * 100).toFixed(1) : 0}%)
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Individual Sources Table for this salesperson */}
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-xs">
+                                <thead className="border-b border-slate-100 bg-slate-50/70 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:border-white/10 dark:bg-zinc-950/40">
+                                  <tr>
+                                    <th className="px-3 py-1.5">Acquisition Source</th>
+                                    <th className="px-3 py-1.5">Assigned Leads</th>
+                                    <th className="px-3 py-1.5">Converted</th>
+                                    <th className="px-3 py-1.5">Conversion %</th>
+                                    <th className="px-3 py-1.5">Pipeline Value</th>
+                                    <th className="px-3 py-1.5">Won Revenue</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                                  {(rep.sources || []).map((src: any, sIdx: number) => (
+                                    <tr key={sIdx} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors">
+                                      <td className="px-3 py-2 font-medium text-slate-800 dark:text-zinc-200 flex items-center gap-1.5">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block shrink-0" />
+                                        {src.source}
+                                      </td>
+                                      <td className="px-3 py-2 font-bold text-slate-700 dark:text-zinc-300">{src.leads}</td>
+                                      <td className="px-3 py-2 text-emerald-600 dark:text-emerald-400 font-bold">{src.converted}</td>
+                                      <td className="px-3 py-2 font-bold text-slate-900 dark:text-white">{src.conversion_percentage}%</td>
+                                      <td className="px-3 py-2 font-mono text-slate-600 dark:text-zinc-400">₹{(src.pipeline_value || 0).toLocaleString()}</td>
+                                      <td className="px-3 py-2 font-mono text-emerald-600 dark:text-emerald-400 font-bold">₹{(src.won_value || 0).toLocaleString()}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ))}
+                      {(!classicData?.salesperson_lead_sources || classicData.salesperson_lead_sources.length === 0) && (
+                        <div className="p-8 text-center text-xs text-slate-400 bg-white dark:bg-[#111111]/90 rounded-2xl border border-slate-200/90 dark:border-white/10">
+                          No individual salesperson lead source records found for this period.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* SUB-TAB 3: Per-Lead Source Analytics (P1-774) */}
+                  {leadSourceSubTab === "per_lead" && (
+                    <div className="space-y-4">
+                      <div className="overflow-x-auto rounded-xl border border-slate-200/90 bg-white shadow-xs dark:border-white/10 dark:bg-[#111111]/90">
+                        <table className="w-full text-left text-xs">
+                          <thead className="border-b border-slate-100 bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:border-white/10 dark:bg-zinc-950/40">
+                            <tr>
+                              <th className="px-3 py-2.5">Lead / Company</th>
+                              <th className="px-3 py-2.5">Source</th>
+                              <th className="px-3 py-2.5">Salesperson</th>
+                              <th className="px-3 py-2.5">Status</th>
+                              <th className="px-3 py-2.5">Deal Value</th>
+                              <th className="px-3 py-2.5">Contact</th>
+                              <th className="px-3 py-2.5">Created Date</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                            {((classicData?.lead_source_analytics_per_lead || []) as any[])
+                              .filter((lead: any) => {
+                                const q = leadSourceSearch.toLowerCase();
+                                if (!q) return true;
+                                return (
+                                  (lead.company_name || "").toLowerCase().includes(q) ||
+                                  (lead.source || "").toLowerCase().includes(q) ||
+                                  (lead.salesperson_name || "").toLowerCase().includes(q)
+                                );
+                              })
+                              .map((lead: any) => (
+                                <tr key={lead.id} className="hover:bg-slate-50/80 dark:hover:bg-white/5 transition-colors">
+                                  <td className="px-3 py-2.5">
+                                    <Link
+                                      href={`/leads/${lead.id}`}
+                                      className="font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                                    >
+                                      {lead.company_name}
+                                      <ArrowUpRight className="w-3 h-3 shrink-0" />
+                                    </Link>
+                                    {lead.city && <span className="text-[10.5px] text-slate-400 block">{lead.city}</span>}
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] font-medium bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/40">
+                                      {lead.source}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2.5 font-medium text-slate-700 dark:text-zinc-300">
+                                    {lead.salesperson_name}
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <span
+                                      className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                                        lead.is_converted
+                                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                                          : "bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700"
+                                      }`}
+                                    >
+                                      {lead.status}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2.5 font-mono font-medium text-slate-800 dark:text-zinc-200">
+                                    {lead.deal_value ? `₹${lead.deal_value.toLocaleString()}` : "—"}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-slate-500 dark:text-zinc-400 text-[11px]">
+                                    {lead.email || lead.phone || "—"}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-slate-400 text-[11px] whitespace-nowrap">
+                                    {lead.created_at ? new Date(lead.created_at).toLocaleDateString() : "—"}
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
 
               {classicTab === "onboarding" && (

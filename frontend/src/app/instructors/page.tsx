@@ -3,13 +3,14 @@ import LocalizedText from "@/components/LocalizedText";
 import React, { useState, useEffect } from "react";
 import { API_BASE_URL } from "@/config";
 import { motion, AnimatePresence } from "framer-motion";
-import { UserCog, Plus, Search, Star, Layers, Users, Mail, Phone, X, Loader2, Edit2, Trash2, Eye, Award, Briefcase, List, LayoutGrid, ArrowUpRight, CheckCircle2, UserCheck } from "lucide-react";
+import { UserCog, Plus, Search, Star, Layers, Users, Mail, Phone, X, Loader2, Edit2, Trash2, Eye, Award, Briefcase, List, LayoutGrid, ArrowUpRight, CheckCircle2, UserCheck, GraduationCap } from "lucide-react";
 import Link from "next/link";
 import CreateInstituteLoginButton from "@/components/CreateInstituteLoginButton";
 
 interface Instructor {
   id: number;
   user_id?: number | null;
+  course_id?: number | null;
   name: string;
   email?: string;
   phone?: string;
@@ -30,20 +31,28 @@ interface Instructor {
 
 export default function InstructorsPage() {
   const [instructors, setInstructors] = useState<Instructor[]>([]);
+  const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [showModal, setShowModal] = useState(false);
   const [editInstructor, setEditInstructor] = useState<Instructor | null>(null);
-  const [form, setForm] = useState({ name: "", email: "", phone: "", bio: "", expertise: "", qualification: "", experience_years: "", is_active: true });
+  const [form, setForm] = useState({ name: "", course_id: "", email: "", phone: "", bio: "", expertise: "", qualification: "", experience_years: "", is_active: true });
   const [saving, setSaving] = useState(false);
 
   const fetch_ = async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${API_BASE_URL}/instructors`);
+      const [r, cRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/instructors`),
+        fetch(`${API_BASE_URL}/courses`).catch(() => null),
+      ]);
       const d = await r.json();
       setInstructors(d.instructors || []);
+      if (cRes && cRes.ok) {
+        const cData = await cRes.json();
+        setCourses(cData.courses || []);
+      }
     } catch (e) {
     } finally {
       setLoading(false);
@@ -61,12 +70,12 @@ export default function InstructorsPage() {
 
   const openCreate = () => {
     setEditInstructor(null);
-    setForm({ name: "", email: "", phone: "", bio: "", expertise: "", qualification: "", experience_years: "", is_active: true });
+    setForm({ name: "", course_id: "", email: "", phone: "", bio: "", expertise: "", qualification: "", experience_years: "", is_active: true });
     setShowModal(true);
   };
   const openEdit = (i: Instructor) => {
     setEditInstructor(i);
-    setForm({ name: i.name, email: i.email || "", phone: i.phone || "", bio: i.bio || "", expertise: i.expertise || "", qualification: i.qualification || "", experience_years: i.experience_years?.toString() || "", is_active: i.is_active });
+    setForm({ name: i.name, course_id: i.course_id ? String(i.course_id) : "", email: i.email || "", phone: i.phone || "", bio: i.bio || "", expertise: i.expertise || "", qualification: i.qualification || "", experience_years: i.experience_years?.toString() || "", is_active: i.is_active });
     setShowModal(true);
   };
 
@@ -74,7 +83,11 @@ export default function InstructorsPage() {
     if (!form.name.trim()) return;
     setSaving(true);
     try {
-      const payload = { ...form, experience_years: form.experience_years ? parseInt(form.experience_years) : null };
+      const payload = {
+        ...form,
+        course_id: form.course_id ? parseInt(form.course_id) : null,
+        experience_years: form.experience_years ? parseInt(form.experience_years) : null
+      };
       const url = editInstructor ? `${API_BASE_URL}/instructors/${editInstructor.id}` : `${API_BASE_URL}/instructors`;
       await fetch(url, { method: editInstructor ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       setShowModal(false);
@@ -389,6 +402,37 @@ export default function InstructorsPage() {
                 <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400"><X className="w-4 h-4" /></button>
               </div>
               <div className="grid grid-cols-2 gap-3">
+                {/* 1. Choose Course First */}
+                <div className="col-span-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 mb-1">
+                  <label className="block text-xs font-bold text-amber-800 dark:text-amber-300 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <GraduationCap className="w-4 h-4 text-amber-600" />
+                      1. Choose Course First *
+                    </span>
+                    <span className="text-[10.5px] font-normal text-amber-700 dark:text-amber-400">Assigns primary teaching course</span>
+                  </label>
+                  <select
+                    value={form.course_id}
+                    onChange={(e) => {
+                      const cId = e.target.value;
+                      const selected = courses.find((c) => String(c.id) === cId);
+                      setForm((prev) => ({
+                        ...prev,
+                        course_id: cId,
+                        expertise: selected ? (prev.expertise ? `${prev.expertise}, ${selected.title}` : selected.title) : prev.expertise,
+                      }));
+                    }}
+                    className="w-full px-3 py-2 text-xs sm:text-sm bg-white dark:bg-zinc-800 border border-amber-300 dark:border-amber-700/60 rounded-xl text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer shadow-xs"
+                  >
+                    <option value="">-- Select Course First --</option>
+                    {courses.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.title} {c.category ? `(${c.category})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {[
                   { l: "Full Name *", k: "name", p: "Instructor name", col: 2 },
                   { l: "Email", k: "email", p: "email@example.com" },

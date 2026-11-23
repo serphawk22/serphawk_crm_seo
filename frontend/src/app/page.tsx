@@ -24,6 +24,7 @@ import OnboardingChecklist from "@/components/OnboardingChecklist";
 import { useTenantConfig } from "@/context/TenantConfigContext";
 import { DeveloperDashboard } from "@/components/DeveloperDashboard";
 import { SalesManagerDashboard } from "@/components/SalesManagerDashboard";
+import { SalesDashboard } from "@/components/SalesDashboard";
 import { ClientDashboard } from "@/components/ClientDashboard";
 import { DemoDashboard } from "@/components/DemoDashboard";
 import Link from "next/link";
@@ -235,7 +236,12 @@ export default function HomePage() {
   }
 
   if (home === "platform" || !loaded || home === "command_center" || home === "dashboard_b2c" || home === "admissions") return null;
-  if (home === "none") return <FeatureAccessNotice kind="module" feature={role === "Admissions" ? "Admissions" : "Dashboard"} />;
+  if (home === "none") {
+    if (["SalesManager", "Sales", "Employee"].includes(role || "")) {
+      return <SalesDashboard name={user?.name || email} />;
+    }
+    return <FeatureAccessNotice kind="module" feature={role === "Admissions" ? "Admissions" : "Dashboard"} />;
+  }
   // Mount only the enabled overview, so a disabled dashboard never fetches data.
   return <Dashboard />;
 }
@@ -356,11 +362,12 @@ function Dashboard() {
   return (
     <motion.div initial="hidden" animate="show" variants={containerVariants} className={cn(isAdmin || role === 'ProjectMember' || role === 'Demo' ? "space-y-6" : "")}>
       {role === "ProjectMember" && <DashboardSection name="developer_work" module="projects"><DeveloperDashboard /></DashboardSection>}
-      {role === "SalesManager" && stats && <SalesManagerDashboard stats={stats as any} name={user?.name || email} />}
+      {(role === "Sales" || role === "Employee") && <SalesDashboard name={user?.name || email} />}
+      {role === "SalesManager" && (stats ? <SalesManagerDashboard stats={stats as any} name={user?.name || email} /> : <SalesDashboard name={user?.name || email} />)}
       {isAdmin && <DashboardSection name="onboarding"><OnboardingChecklist hideWhenDone /></DashboardSection>}
       {isAdmin && adminStats && <AdminDashboard adminStats={adminStats} NAV_CARDS={NAV_CARDS} language={language} />}
       {role === "Demo" && <AdminDashboard adminStats={adminStats} NAV_CARDS={visibleNavCards} language={language} isDemo={true} />}
-      {!isAdmin && role !== "Demo" && role !== "ProjectMember" && role !== "SalesManager" && (
+      {!isAdmin && role !== "Demo" && role !== "ProjectMember" && role !== "SalesManager" && role !== "Sales" && role !== "Employee" && (
         <ClientDashboard clientStats={clientStats} NAV_CARDS={visibleNavCards} language={language} />
       )}
 

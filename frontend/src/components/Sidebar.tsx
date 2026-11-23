@@ -8,7 +8,7 @@ import {
   Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
   Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar, X,
   Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Edit2, GripVertical, Check,
-  Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb, LogOut, Sparkles, Archive, Trash2
+  Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb, LogOut, Sparkles, Archive, Trash2, MessageCircle
 } from "lucide-react";
 import { createVisiblePoll } from "@/lib/visiblePoll";
 import { cn } from "@/lib/utils";
@@ -49,7 +49,7 @@ const iconMap: Record<string, LucideIcon> = {
   LayoutDashboard, Bell, Users, FolderOpen, CheckSquare, CheckCircle, Radar, Mail,
   Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
   Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar, X,
-  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb, Sparkles, Archive, Trash2
+  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb, Sparkles, Archive, Trash2, MessageCircle
 };
 
 // Roles that can open /inbox (routers/inbox.py enforces the same list server-side).
@@ -60,7 +60,7 @@ const ITEM_FEATURE: Record<string, string> = {
   "item-dashboard": "dashboard",
   "item-dashboard-b2c": "dashboard_b2c",
   "item-admissions": "institute",
-  "item-work-queue": "work_queue", "item-inbox": "inbox", "item-followups": "followups",
+  "item-work-queue": "work_queue", "item-inbox": "inbox", "item-messages": "messages", "item-followups": "followups",
   "item-leads": "leads", "item-temp-leads": "leads", "item-contacts": "contacts", "item-clients": "clients",
   "item-projects": "projects", "item-task-sheet": "task_sheet", "item-reports": "reports",
   "item-meetings": "meetings", "item-calls": "calls", "item-teams": "teams", "item-leaderboard": "leaderboard",
@@ -83,8 +83,14 @@ const ITEM_ADDON: Record<string, string> = {
 };
 
 // Live count shown next to a sidebar item, if any.
-function badgeCount(item: SidebarItem, unreadCount: number, inboxUnread: number): number {
-  return item.id === "item-notifications" ? unreadCount : item.id === "item-inbox" ? inboxUnread : item.badge || 0;
+function badgeCount(item: SidebarItem, unreadCount: number, inboxUnread: number, chatUnread: number = 0): number {
+  return item.id === "item-notifications"
+    ? unreadCount
+    : item.id === "item-inbox"
+    ? inboxUnread
+    : item.id === "item-messages"
+    ? chatUnread
+    : item.badge || 0;
 }
 
 interface SidebarItem {
@@ -117,8 +123,10 @@ const defaultSidebarSections: SidebarSection[] = [
       { id: "item-dashboard", name: "Command Center", icon: "LayoutDashboard", href: "/legacy-command-center", roles: ["Admin", "Employee", "Client", "Intern", "SalesManager", "Demo"] },
       { id: "item-work-queue", name: "My Work Queue", icon: "LayoutList", href: "/work-queue", roles: ["Admin", "Demo", "SalesManager", "Employee", "ProjectMember", "Intern", "Developer"] },
       { id: "item-notifications", name: "Notifications", icon: "Bell", href: "/notifications", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
+      { id: "item-messages", name: "Messages", icon: "MessageCircle", href: "/messages", roles: ["Admin", "Demo", "SalesManager", "Employee", "Sales"] },
       { id: "item-inbox", name: "Inbox", icon: "Inbox", href: "/inbox", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
       { id: "item-followups", name: "Follow-ups", icon: "CalendarClock", href: "/followups", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
+      { id: "item-blogs", name: "Blogs & Knowledge Hub", icon: "BookOpen", href: "/blogs", roles: ["Admin", "Demo", "SalesManager", "Employee", "Sales", "ProjectMember", "Intern", "Client", "Developer"] },
     ],
   },
   {
@@ -197,6 +205,7 @@ const defaultSidebarSections: SidebarSection[] = [
       { id: "item-invoices", name: "Invoices", icon: "FileText", href: "/invoices", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-proposals", name: "Proposals", icon: "FileEdit", href: "/proposals", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-marketplace", name: "Marketplace", icon: "ShoppingBag", href: "/admin/marketplace", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-storefront", name: "Storefront & Shop", icon: "ShoppingBag", href: "/shop", roles: ["Admin", "SalesManager", "Demo", "Client", "Employee", "Sales", "ProjectMember"] },
     ],
   },
   {
@@ -248,6 +257,7 @@ interface SortableSectionProps {
   onRenameItem: (itemId: string, name: string) => void;
   unreadCount: number;
   inboxUnread: number;
+  chatUnread?: number;
   favourites: string[];
   onToggleFavourite: (id: string) => void;
   searchQuery: string;
@@ -255,8 +265,9 @@ interface SortableSectionProps {
   onToggleSection: (sectionId: string) => void;
 }
 
-function SortableSection({ section, role, pathname, collapsed, isEditMode, onRenameSection, onRenameItem, unreadCount, inboxUnread, favourites, onToggleFavourite, searchQuery, isOpen, onToggleSection }: SortableSectionProps) {
+function SortableSection({ section, role, pathname, collapsed, isEditMode, onRenameSection, onRenameItem, unreadCount, inboxUnread, chatUnread = 0, favourites, onToggleFavourite, searchQuery, isOpen, onToggleSection }: SortableSectionProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id, disabled: !isEditMode || collapsed });
+  const { setMobileOpen } = useSidebar();
   const { t } = useLanguage();
   const { hasFeature, isOn } = useTenantConfig();
   const itemLabel = (item: SidebarItem) => {
@@ -365,11 +376,12 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
                 const isActive = sidebarPathMatches(pathname, item.href);
                 const IconComp = iconMap[item.icon] || LayoutDashboard;
                 const isFav = favourites?.includes(item.id);
-                const badge = badgeCount(item, unreadCount, inboxUnread);
+                const badge = badgeCount(item, unreadCount, inboxUnread, chatUnread);
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={() => setMobileOpen(false)}
                     title={collapsed ? itemLabel(item) : undefined}
                     aria-label={itemLabel(item)}
                     aria-current={isActive ? "page" : undefined}
@@ -504,7 +516,7 @@ function SidebarContent({ role }: SidebarProps) {
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const inboxEnabled = hasFeature("inbox");
   const userId = user?.id;
-  const { collapsed, setCollapsed } = useSidebar();
+  const { collapsed, setCollapsed, mobileOpen, setMobileOpen } = useSidebar();
   const { theme, toggleTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -526,6 +538,40 @@ function SidebarContent({ role }: SidebarProps) {
   const [isEditMode, setIsEditMode] = useState(false);
   const { unreadCount } = useNotifications();
   const [inboxUnread, setInboxUnread] = useState(0);
+  const [chatUnread, setChatUnread] = useState(0);
+
+  // Chat unread count: light poll + instant update when chat reads or receives a message
+  useEffect(() => {
+    if (!user?.id) return;
+    let alive = true;
+    const fetchChatUnread = async () => {
+      try {
+        const t = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+        const res = await fetch(`${API_BASE_URL}/team-chat/unread-count`, {
+          headers: t ? { Authorization: `Bearer ${t}` } : {},
+        });
+        if (res.ok && alive) {
+          const d = await res.json();
+          setChatUnread(d.unread_count || 0);
+        }
+      } catch {}
+    };
+    fetchChatUnread();
+    const interval = setInterval(fetchChatUnread, 15000);
+    const handleChatUnreadChanged = (e: Event) => {
+      if (e instanceof CustomEvent && typeof e.detail?.unread === "number") {
+        setChatUnread(e.detail.unread);
+      } else {
+        void fetchChatUnread();
+      }
+    };
+    window.addEventListener("chat-unread-changed", handleChatUnreadChanged);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+      window.removeEventListener("chat-unread-changed", handleChatUnreadChanged);
+    };
+  }, [user?.id]);
 
   // Inbox unread badge: light poll, plus an immediate refresh whenever the Inbox page changes read state.
   useEffect(() => {
@@ -761,11 +807,21 @@ function SidebarContent({ role }: SidebarProps) {
 
   return (
     <>
+      {/* Mobile backdrop overlay */}
+      {mobileOpen && (
+        <div
+          onClick={() => setMobileOpen(false)}
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs md:hidden"
+        />
+      )}
       <motion.div
         initial={false}
         animate={{ width: collapsed ? 72 : 280 }}
         transition={{ duration: reducedMotion ? 0 : 0.2, ease: "easeInOut" }}
-        className="app-sidebar fixed left-0 top-0 z-50 flex flex-col overflow-hidden"
+        className={cn(
+          "app-sidebar fixed left-0 top-0 z-50 flex flex-col overflow-hidden transition-transform duration-300 md:translate-x-0",
+          mobileOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full md:translate-x-0"
+        )}
         style={{
           background: "var(--sidebar-bg)",
           boxShadow: "4px 0 24px rgba(0,0,0,0.06)",
@@ -923,11 +979,12 @@ function SidebarContent({ role }: SidebarProps) {
                 {favouriteItems.map((item: SidebarItem) => {
                   const isActive = sidebarPathMatches(pathname, item.href);
                   const IconComp = iconMap[item.icon] || LayoutDashboard;
-                  const badge = badgeCount(item, unreadCount, inboxUnread);
+                  const badge = badgeCount(item, unreadCount, inboxUnread, chatUnread);
                   return (
                     <Link
                       key={`fav-${item.id}-${item.href}`}
                       href={item.href}
+                      onClick={() => setMobileOpen(false)}
                       title={collapsed ? labelFor(item) : undefined}
                       aria-label={labelFor(item)}
                       aria-current={isActive ? "page" : undefined}
@@ -990,6 +1047,7 @@ function SidebarContent({ role }: SidebarProps) {
                   section={section}
                   unreadCount={unreadCount}
                   inboxUnread={inboxUnread}
+                  chatUnread={chatUnread}
                   role={role}
                   pathname={pathname}
                   collapsed={collapsed}
@@ -1021,7 +1079,7 @@ function SidebarContent({ role }: SidebarProps) {
                   {user?.name || user?.email || t("User")}
                 </p>
                 <p className="truncate text-[10px] text-slate-400 dark:text-zinc-500 font-medium">
-                  {t(role === "SalesManager" || role === "Employee" || role === "Sales" ? "Sales Manager" : role)}
+                  {t(role === "SalesManager" || role === "Employee" || role === "Sales" ? "Salesperson" : role)}
                 </p>
               </div>
               <button

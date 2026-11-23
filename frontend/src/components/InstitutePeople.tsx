@@ -55,7 +55,13 @@ function calculateWinRate(converted: number = 0, assigned: number = 0): number {
   return converted > 0 ? 100 : 0;
 }
 
-export default function InstitutePeople({ leaderboard = false }: { leaderboard?: boolean }) {
+export default function InstitutePeople({
+  leaderboard = false,
+  onPersonClick
+}: {
+  leaderboard?: boolean;
+  onPersonClick?: (person: Person) => void;
+}) {
   const { settings } = useTenantConfig();
   const [sales, setSales] = useState<Person[]>([]);
   const [instructors, setInstructors] = useState<Person[]>([]);
@@ -499,15 +505,15 @@ export default function InstitutePeople({ leaderboard = false }: { leaderboard?:
         >
           {activeTab === "sales" ? (
             <>
-              {top3[0] && <SalesPodiumGold person={top3[0]} totalList={currentList} money={money} />}
-              {top3[1] && <SalesPodiumSilver person={top3[1]} totalList={currentList} money={money} />}
-              {top3[2] && <SalesPodiumBronze person={top3[2]} totalList={currentList} money={money} />}
+              {top3[0] && <SalesPodiumGold person={top3[0]} totalList={currentList} money={money} onPersonClick={onPersonClick} />}
+              {top3[1] && <SalesPodiumSilver person={top3[1]} totalList={currentList} money={money} onPersonClick={onPersonClick} />}
+              {top3[2] && <SalesPodiumBronze person={top3[2]} totalList={currentList} money={money} onPersonClick={onPersonClick} />}
             </>
           ) : (
             <>
-              {top3[0] && <InstructorPodiumCard person={top3[0]} rank={1} totalList={currentList} />}
-              {top3[1] && <InstructorPodiumCard person={top3[1]} rank={2} totalList={currentList} />}
-              {top3[2] && <InstructorPodiumCard person={top3[2]} rank={3} totalList={currentList} />}
+              {top3[0] && <InstructorPodiumCard person={top3[0]} rank={1} totalList={currentList} onPersonClick={onPersonClick} />}
+              {top3[1] && <InstructorPodiumCard person={top3[1]} rank={2} totalList={currentList} onPersonClick={onPersonClick} />}
+              {top3[2] && <InstructorPodiumCard person={top3[2]} rank={3} totalList={currentList} onPersonClick={onPersonClick} />}
             </>
           )}
         </section>
@@ -568,6 +574,7 @@ export default function InstitutePeople({ leaderboard = false }: { leaderboard?:
                 person={person}
                 rank={index + 1}
                 money={money}
+                onPersonClick={onPersonClick}
               />
             ))
           ) : (
@@ -576,6 +583,7 @@ export default function InstitutePeople({ leaderboard = false }: { leaderboard?:
                 key={person.id || person.user_id || index}
                 person={person}
                 rank={index + 1}
+                onPersonClick={onPersonClick}
               />
             ))
           )}
@@ -591,17 +599,22 @@ export default function InstitutePeople({ leaderboard = false }: { leaderboard?:
 
 function SalesPodiumGold({
   person,
-  money
+  money,
+  onPersonClick
 }: {
   person: Person;
   totalList: Person[];
   money: (val: number) => string;
+  onPersonClick?: (person: Person) => void;
 }) {
   const winRate = person.conversion_rate ?? calculateWinRate(person.leads_converted, person.leads_assigned);
   const initials = getInitials(person.name);
 
   return (
-    <div className="relative bg-white dark:bg-[#141414] rounded-2xl lg:rounded-3xl p-3.5 sm:p-4 lg:p-5 flex flex-col justify-between border-2 border-amber-300 dark:border-amber-400/80 shadow-[0_0_24px_rgba(251,191,36,0.25)] transition-all">
+    <div
+      onClick={() => onPersonClick?.(person)}
+      className="relative bg-white dark:bg-[#141414] rounded-2xl lg:rounded-3xl p-3.5 sm:p-4 lg:p-5 flex flex-col justify-between border-2 border-amber-300 dark:border-amber-400/80 shadow-[0_0_24px_rgba(251,191,36,0.25)] transition-all cursor-pointer hover:scale-[1.01]"
+    >
       <div>
         {/* Top Header: Badge & Champion Pill */}
         <div className="flex items-center justify-between gap-1.5 mb-2.5 sm:mb-3">
@@ -705,11 +718,13 @@ function SalesPodiumGold({
 function SalesPodiumSilver({
   person,
   totalList,
-  money
+  money,
+  onPersonClick
 }: {
   person: Person;
   totalList: Person[];
   money: (val: number) => string;
+  onPersonClick?: (person: Person) => void;
 }) {
   const top1Revenue = totalList[0]?.revenue_collected || 0;
   const sharePercent =
@@ -721,7 +736,10 @@ function SalesPodiumSilver({
   const initials = getInitials(person.name);
 
   return (
-    <div className="relative bg-white dark:bg-[#141414] rounded-2xl lg:rounded-3xl p-3.5 sm:p-4 lg:p-5 flex flex-col justify-between border border-slate-200/90 dark:border-white/10 shadow-sm transition-all">
+    <div
+      onClick={() => onPersonClick?.(person)}
+      className="relative bg-white dark:bg-[#141414] rounded-2xl lg:rounded-3xl p-3.5 sm:p-4 lg:p-5 flex flex-col justify-between border border-slate-200/90 dark:border-white/10 shadow-sm transition-all cursor-pointer hover:scale-[1.01]"
+    >
       <div>
         <div className="flex items-center justify-between gap-1.5 mb-2.5 sm:mb-3">
           <div className="inline-flex items-center gap-1 bg-[#f1f5f9] dark:bg-white/5 text-slate-700 dark:text-zinc-300 text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 rounded-full whitespace-nowrap">
@@ -811,11 +829,13 @@ function SalesPodiumSilver({
 function SalesPodiumBronze({
   person,
   totalList,
-  money
+  money,
+  onPersonClick
 }: {
   person: Person;
   totalList: Person[];
   money: (val: number) => string;
+  onPersonClick?: (person: Person) => void;
 }) {
   const top1Revenue = totalList[0]?.revenue_collected || 0;
   const sharePercent =
@@ -827,7 +847,10 @@ function SalesPodiumBronze({
   const initials = getInitials(person.name);
 
   return (
-    <div className="relative bg-white dark:bg-[#141414] rounded-2xl lg:rounded-3xl p-3.5 sm:p-4 lg:p-5 flex flex-col justify-between border border-slate-200/90 dark:border-white/10 shadow-sm transition-all">
+    <div
+      onClick={() => onPersonClick?.(person)}
+      className="relative bg-white dark:bg-[#141414] rounded-2xl lg:rounded-3xl p-3.5 sm:p-4 lg:p-5 flex flex-col justify-between border border-slate-200/90 dark:border-white/10 shadow-sm transition-all cursor-pointer hover:scale-[1.01]"
+    >
       <div>
         <div className="flex items-center justify-between gap-1.5 mb-2.5 sm:mb-3">
           <div className="inline-flex items-center gap-1 bg-[#fff7ed] dark:bg-orange-950/40 text-[#c2410c] dark:text-orange-300 text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 rounded-full whitespace-nowrap">
@@ -921,17 +944,22 @@ function SalesPodiumBronze({
 function SalesTableRow({
   person,
   rank,
-  money
+  money,
+  onPersonClick
 }: {
   person: Person;
   rank: number;
   money: (val: number) => string;
+  onPersonClick?: (person: Person) => void;
 }) {
   const winRate = person.conversion_rate ?? calculateWinRate(person.leads_converted, person.leads_assigned);
   const initials = getInitials(person.name);
 
   return (
-    <article className="py-3 sm:py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 transition-colors">
+    <article
+      onClick={() => onPersonClick?.(person)}
+      className="py-3 sm:py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 transition-colors cursor-pointer hover:bg-slate-50/80 dark:hover:bg-white/5 rounded-xl px-2"
+    >
       {/* Left: Rank Pill, Avatar, Name & Role */}
       <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0 sm:min-w-[220px] flex-1 sm:flex-initial">
         {/* Rank Pill */}
@@ -1062,11 +1090,13 @@ function SalesTableRow({
 function InstructorPodiumCard({
   person,
   rank,
-  totalList
+  totalList,
+  onPersonClick
 }: {
   person: Person;
   rank: 1 | 2 | 3;
   totalList: Person[];
+  onPersonClick?: (person: Person) => void;
 }) {
   const top1Rating = totalList[0]?.avg_rating || 5;
   const ratingPercent = Math.min(100, Math.round(((person.avg_rating || 0) / top1Rating) * 100));
@@ -1074,7 +1104,9 @@ function InstructorPodiumCard({
 
   return (
     <div
+      onClick={() => onPersonClick?.(person)}
       className={cn(
+        "cursor-pointer hover:scale-[1.01]",
         "relative rounded-2xl lg:rounded-3xl p-3.5 sm:p-4 lg:p-5 flex flex-col justify-between transition-all",
         rank === 1
           ? "bg-white dark:bg-[#141414] border-2 border-indigo-400 shadow-[0_0_24px_rgba(99,102,241,0.22)]"
@@ -1167,15 +1199,20 @@ function InstructorPodiumCard({
 
 function InstructorTableRow({
   person,
-  rank
+  rank,
+  onPersonClick
 }: {
   person: Person;
   rank: number;
+  onPersonClick?: (person: Person) => void;
 }) {
   const initials = getInitials(person.name);
 
   return (
-    <article className="py-3 sm:py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 transition-colors">
+    <article
+      onClick={() => onPersonClick?.(person)}
+      className="py-3 sm:py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 transition-colors cursor-pointer hover:bg-slate-50/80 dark:hover:bg-white/5 rounded-xl px-2"
+    >
       <div className="flex items-center space-x-2.5 sm:space-x-3.5 min-w-0 sm:min-w-[220px] flex-1 sm:flex-initial">
         <div
           className={cn(
