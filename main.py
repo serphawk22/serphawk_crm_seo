@@ -22818,6 +22818,16 @@ class SetAvailabilityRequest(BaseModel):
     end_time: str = "18:00"
     slot_duration_minutes: int = 30
 
+def _require_calendar_manager(session: Session, detail: str = "Only administrators and staff can manage calendar availability") -> User:
+    user = _current_user(session)
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    r = (user.role or "").strip().lower()
+    if r in {"admin", "superadmin", "salesmanager", "admissions", "demo", "employee", "sales"} or (user.email or "").lower() == "admin@serphawk.com":
+        return user
+    raise HTTPException(status_code=403, detail=detail)
+
+
 @app.get("/calendar/availability")
 def get_calendar_availability(session: Session = Depends(get_session)):
     tid = current_tenant_id.get() or 1
@@ -22834,7 +22844,7 @@ def get_calendar_availability(session: Session = Depends(get_session)):
 
 @app.post("/calendar/availability")
 def update_calendar_availability(body: SetAvailabilityRequest, session: Session = Depends(get_session)):
-    _require_admin_user(session, "Only admins can change calendar availability")
+    _require_calendar_manager(session, "Only admins and staff can change calendar availability")
     tid = current_tenant_id.get() or 1
     from modules import tenant_settings
     tenant_settings.set_setting(tid, "calendar_availability", body.model_dump())
@@ -22849,7 +22859,7 @@ def get_calendar_blocked_slots(session: Session = Depends(get_session)):
 
 @app.post("/calendar/blocked-slots")
 def add_calendar_blocked_slot(body: BlockSlotRequest, session: Session = Depends(get_session)):
-    me = _require_admin_user(session, "Only admins can block calendar dates/times")
+    me = _require_calendar_manager(session, "Only admins and staff can block calendar dates/times")
     tid = current_tenant_id.get() or 1
     from modules import tenant_settings
     blocked = tenant_settings.get_setting(tid, "calendar_blocked_slots", []) or []
@@ -22869,7 +22879,7 @@ def add_calendar_blocked_slot(body: BlockSlotRequest, session: Session = Depends
 
 @app.delete("/calendar/blocked-slots/{slot_id}")
 def delete_calendar_blocked_slot(slot_id: str, session: Session = Depends(get_session)):
-    _require_admin_user(session, "Only admins can remove blocked slots")
+    _require_calendar_manager(session, "Only admins and staff can remove blocked slots")
     tid = current_tenant_id.get() or 1
     from modules import tenant_settings
     blocked = tenant_settings.get_setting(tid, "calendar_blocked_slots", []) or []

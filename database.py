@@ -2021,6 +2021,10 @@ def create_db_and_tables():
         "CREATE INDEX IF NOT EXISTS ix_leads_converted_student_id ON leads (converted_student_id)",
         "CREATE INDEX IF NOT EXISTS ix_tasks_student_id ON tasks (student_id)",
         "CREATE INDEX IF NOT EXISTS ix_tasks_batch_id ON tasks (batch_id)",
+        "ALTER TABLE instructors ADD COLUMN course_id INTEGER REFERENCES courses(id)",
+        "ALTER TABLE students ADD COLUMN course_id INTEGER REFERENCES courses(id)",
+        "CREATE INDEX IF NOT EXISTS ix_instructors_course_id ON instructors (course_id)",
+        "CREATE INDEX IF NOT EXISTS ix_students_course_id ON students (course_id)",
     ]
     
     with engine.connect() as conn:
