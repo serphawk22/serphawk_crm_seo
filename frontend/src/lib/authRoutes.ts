@@ -4,10 +4,39 @@ export const platformOrigin = `https://${COMPANY_BASE_DOMAIN}`;
 export const platformLogin = `${platformOrigin}/login`;
 
 export function isPublicPage(path: string | null | undefined) {
-  return !!path && (
-    ["/", "/login", "/signup", "/register", "/forgot-password", "/reset-password", "/showcase", "/demo_showcase", "/leadformpage", "/demo", "/demo-account", "/product-guide"].includes(path)
+  if (!path) return false;
+  // Explicit public pages
+  if (
+    [
+      "/",
+      "/login",
+      "/signup",
+      "/register",
+      "/forgot-password",
+      "/reset-password",
+      "/showcase",
+      "/demo_showcase",
+      "/leadformpage",
+      "/demo",
+      "/demo-account",
+      "/product-guide",
+      "/shop",
+      "/storefront",
+      "/blogs"
+    ].includes(path)
     || path.startsWith("/p/")
-  );
+    || path.startsWith("/proposals/")
+  ) {
+    return true;
+  }
+
+  // Public blog viewing routes: /blogs/[slug]
+  // Note: /blogs/create and /blogs/edit are authoring routes and require login
+  if (path.startsWith("/blogs/") && !path.startsWith("/blogs/create") && !path.startsWith("/blogs/edit")) {
+    return true;
+  }
+
+  return false;
 }
 
 export function loginError(detail: unknown, fallback: string) {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   History,
@@ -13,7 +13,9 @@ import {
   RefreshCw,
   Building2,
   FileText,
-  Clock
+  Clock,
+  Filter,
+  Check
 } from "lucide-react";
 import Link from "next/link";
 import { API_BASE_URL } from "@/config";
@@ -31,13 +33,19 @@ export default function TransferredLeadsModal({
   const { language } = useLanguage();
   const [transfers, setTransfers] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+
+  // Filters
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [dateFilter, setDateFilter] = useState<string>("all"); // 'all' | 'today' | 'yesterday' | 'this_week' | 'this_month'
+  const [selectedSalesperson, setSelectedSalesperson] = useState<string>("all");
+  const [salespersonRole, setSalespersonRole] = useState<"either" | "from" | "to" | "by">("either");
+  const [selectedStage, setSelectedStage] = useState<string>("all");
 
   const fetchTransfers = async () => {
     setLoading(true);
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-      const res = await fetch(`${API_BASE_URL}/leads/transfers?limit=200`, {
+      const res = await fetch(`${API_BASE_URL}/leads/transfers?limit=500`, {
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         }
@@ -59,17 +67,112 @@ export default function TransferredLeadsModal({
     }
   }, [isOpen]);
 
+  // Extract unique salespeople and stages
+  const allSalespeople = useMemo(() => {
+    const set = new Set<string>();
+    transfers.forEach((t) => {
+      if (t.from_user_name && t.from_user_name !== "Unassigned") set.add(t.from_user_name);
+      if (t.to_user_name) set.add(t.to_user_name);
+      if (t.transferred_by_name) set.add(t.transferred_by_name);
+    });
+    return Array.from(set).sort();
+  }, [transfers]);
+
+  const allStages = useMemo(() => {
+    const set = new Set<string>();
+    transfers.forEach((t) => {
+      if (t.lead_stage) set.add(t.lead_stage);
+    });
+    return Array.from(set).sort();
+  }, [transfers]);
+
+  // Date filtering logic
+  const isSameCalendarDay = (d1: Date, d2: Date) =>
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate();
+
+  const checkDateMatches = (dateStr?: string, filter: string = "all") => {
+    if (filter === "all") return true;
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return false;
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    if (filter === "today") {
+      return isSameCalendarDay(d, today);
+    }
+    if (filter === "yesterday") {
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      return isSameCalendarDay(d, yesterday);
+    }
+    if (filter === "this_week") {
+      const day = today.getDay();
+      const diff = today.getDate() - (day === 0 ? 6 : day - 1);
+      const startOfWeek = new Date(today.getFullYear(), today.getMonth(), diff);
+      startOfWeek.setHours(0, 0, 0, 0);
+      return d >= startOfWeek;
+    }
+    if (filter === "this_month") {
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    }
+    return true;
+  };
+
   const filtered = transfers.filter((t) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      (t.lead_name || "").toLowerCase().includes(q) ||
-      (t.from_user_name || "").toLowerCase().includes(q) ||
-      (t.to_user_name || "").toLowerCase().includes(q) ||
-      (t.transferred_by_name || "").toLowerCase().includes(q) ||
-      (t.reason || "").toLowerCase().includes(q)
-    );
+    // 1. Date filter
+    if (!checkDateMatches(t.transferred_at, dateFilter)) return false;
+
+    // 2. Salesperson filter
+    if (selectedSalesperson !== "all") {
+      const s = selectedSalesperson.toLowerCase();
+      const from = (t.from_user_name || "").toLowerCase();
+      const to = (t.to_user_name || "").toLowerCase();
+      const by = (t.transferred_by_name || "").toLowerCase();
+
+      if (salespersonRole === "from" && from !== s) return false;
+      if (salespersonRole === "to" && to !== s) return false;
+      if (salespersonRole === "by" && by !== s) return false;
+      if (salespersonRole === "either" && from !== s && to !== s && by !== s) return false;
+    }
+
+    // 3. Stage filter
+    if (selectedStage !== "all") {
+      if ((t.lead_stage || "New").toLowerCase() !== selectedStage.toLowerCase()) return false;
+    }
+
+    // 4. Search Query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const match =
+        (t.lead_name || "").toLowerCase().includes(q) ||
+        (t.from_user_name || "").toLowerCase().includes(q) ||
+        (t.to_user_name || "").toLowerCase().includes(q) ||
+        (t.transferred_by_name || "").toLowerCase().includes(q) ||
+        (t.reason || "").toLowerCase().includes(q) ||
+        String(t.lead_id || "").includes(q);
+      if (!match) return false;
+    }
+
+    return true;
   });
+
+  const isFilterActive =
+    dateFilter !== "all" ||
+    selectedSalesperson !== "all" ||
+    selectedStage !== "all" ||
+    Boolean(searchQuery.trim());
+
+  const handleResetFilters = () => {
+    setDateFilter("all");
+    setSelectedSalesperson("all");
+    setSalespersonRole("either");
+    setSelectedStage("all");
+    setSearchQuery("");
+  };
 
   if (!isOpen) return null;
 
@@ -80,7 +183,7 @@ export default function TransferredLeadsModal({
           initial={{ opacity: 0, scale: 0.95, y: 16 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 16 }}
-          className="bg-white dark:bg-zinc-950 border border-slate-200 dark:border-white/10 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden text-slate-900 dark:text-zinc-100"
+          className="bg-white dark:bg-zinc-950 border border-slate-200 dark:border-white/10 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden text-slate-900 dark:text-zinc-100"
         >
           {/* Header */}
           <div className="px-6 py-4 border-b border-slate-200 dark:border-white/10 flex items-center justify-between shrink-0 bg-slate-50/70 dark:bg-zinc-900/60">
@@ -105,37 +208,140 @@ export default function TransferredLeadsModal({
                 onClick={fetchTransfers}
                 disabled={loading}
                 title="Refresh history"
-                className="p-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 transition"
+                className="p-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 transition cursor-pointer"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-blue-600" : ""}`} />
               </button>
               <button
                 onClick={onClose}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 hover:bg-slate-200/60 dark:hover:bg-zinc-800 transition"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 hover:bg-slate-200/60 dark:hover:bg-zinc-800 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
           </div>
 
-          {/* Search bar & Metrics */}
-          <div className="px-6 py-3 border-b border-slate-200 dark:border-white/10 flex items-center justify-between gap-3 bg-white dark:bg-zinc-900 shrink-0">
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={
-                  language === "es"
-                    ? "Buscar por empresa, vendedor o motivo..."
-                    : "Search by company, salesperson, or reason..."
-                }
-                className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+          {/* ── SEARCH & FILTER CONTROLS ── */}
+          <div className="px-6 py-3 border-b border-slate-200 dark:border-white/10 bg-white dark:bg-zinc-900 space-y-2.5 shrink-0">
+            {/* Row 1: Search + Quick Date Filter Pills */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={
+                    language === "es"
+                      ? "Buscar por empresa, vendedor o motivo..."
+                      : "Search by company, salesperson, or reason..."
+                  }
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Date Presets */}
+              <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
+                {[
+                  { id: "all", label: language === "es" ? "Todos" : "All Time" },
+                  { id: "today", label: language === "es" ? "Hoy" : "Today" },
+                  { id: "yesterday", label: language === "es" ? "Ayer" : "Yesterday" },
+                  { id: "this_week", label: language === "es" ? "Esta Semana" : "This Week" },
+                  { id: "this_month", label: language === "es" ? "Este Mes" : "This Month" },
+                ].map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setDateFilter(p.id)}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                      dateFilter === p.id
+                        ? "bg-indigo-600 text-white shadow-xs"
+                        : "bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-600 dark:text-zinc-300"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="text-xs font-semibold text-slate-500 dark:text-zinc-400">
-              {filtered.length} {language === "es" ? "registros encontrados" : "records found"}
+
+            {/* Row 2: Salesperson, Role Direction, Stage, and Reset Filter */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-zinc-800/80">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Salesperson Filter */}
+                <div className="flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-slate-400" />
+                  <select
+                    value={selectedSalesperson}
+                    onChange={(e) => setSelectedSalesperson(e.target.value)}
+                    className="text-xs font-semibold bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2.5 py-1 text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    <option value="all">
+                      {language === "es" ? "Todos los vendedores" : "All Salespeople"}
+                    </option>
+                    {allSalespeople.map((sp) => (
+                      <option key={sp} value={sp}>
+                        {sp}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Salesperson Role Direction */}
+                {selectedSalesperson !== "all" && (
+                  <select
+                    value={salespersonRole}
+                    onChange={(e) => setSalespersonRole(e.target.value as any)}
+                    className="text-xs font-semibold bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2.5 py-1 text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    <option value="either">
+                      {language === "es" ? "Cualquiera (De o Para)" : "Either (From or To)"}
+                    </option>
+                    <option value="from">
+                      {language === "es" ? "De (Origen)" : "From (Source)"}
+                    </option>
+                    <option value="to">
+                      {language === "es" ? "Para (Destino)" : "To (Destination)"}
+                    </option>
+                    <option value="by">
+                      {language === "es" ? "Por (Transferido por)" : "By (Operator)"}
+                    </option>
+                  </select>
+                )}
+
+                {/* Stage Filter */}
+                {allStages.length > 0 && (
+                  <select
+                    value={selectedStage}
+                    onChange={(e) => setSelectedStage(e.target.value)}
+                    className="text-xs font-semibold bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2.5 py-1 text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    <option value="all">
+                      {language === "es" ? "Todas las etapas" : "All Stages"}
+                    </option>
+                    {allStages.map((st) => (
+                      <option key={st} value={st}>
+                        {st}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {/* Reset button */}
+                {isFilterActive && (
+                  <button
+                    type="button"
+                    onClick={handleResetFilters}
+                    className="text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:underline flex items-center gap-1 cursor-pointer ml-1"
+                  >
+                    <X className="w-3 h-3" /> {language === "es" ? "Limpiar filtros" : "Reset filters"}
+                  </button>
+                )}
+              </div>
+
+              <div className="text-xs font-semibold text-slate-500 dark:text-zinc-400">
+                {filtered.length} {filtered.length === 1 ? "record" : "records"}
+              </div>
             </div>
           </div>
 
@@ -150,13 +356,26 @@ export default function TransferredLeadsModal({
               <div className="flex flex-col items-center justify-center h-56 text-center">
                 <FileText className="w-10 h-10 text-slate-300 dark:text-zinc-700 mb-2" />
                 <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-200">
-                  {language === "es" ? "No se encontraron transferencias" : "No transfer records found"}
+                  {language === "es" ? "No se encontraron transferencias" : "No transfer records match your filters"}
                 </h3>
                 <p className="text-xs text-slate-400 max-w-sm mt-0.5">
-                  {language === "es"
+                  {isFilterActive
+                    ? language === "es"
+                      ? "Intenta cambiar o limpiar los filtros seleccionados."
+                      : "Try adjusting or clearing your date or salesperson filters."
+                    : language === "es"
                     ? "Los prospectos transferidos en lote o individualmente aparecerán aquí con su registro de auditoría."
                     : "Transferred leads will be logged here with date, source, destination, and reason."}
                 </p>
+                {isFilterActive && (
+                  <button
+                    type="button"
+                    onClick={handleResetFilters}
+                    className="mt-3 px-3 py-1 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition"
+                  >
+                    {language === "es" ? "Limpiar filtros" : "Clear filters"}
+                  </button>
+                )}
               </div>
             ) : (
               <div className="border border-slate-200/90 dark:border-white/10 rounded-xl overflow-hidden bg-white dark:bg-zinc-900 shadow-2xs">
@@ -249,7 +468,10 @@ export default function TransferredLeadsModal({
           </div>
 
           {/* Footer */}
-          <div className="px-6 py-3 border-t border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-zinc-900/60 flex items-center justify-end shrink-0">
+          <div className="px-6 py-3 border-t border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-zinc-900/60 flex items-center justify-between shrink-0">
+            <span className="text-xs text-slate-500 dark:text-zinc-400">
+              Showing {filtered.length} of {transfers.length} total transfers
+            </span>
             <button
               onClick={onClose}
               className="px-4 py-1.5 rounded-xl text-xs font-bold bg-slate-200 hover:bg-slate-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 transition cursor-pointer"

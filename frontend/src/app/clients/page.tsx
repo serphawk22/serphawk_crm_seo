@@ -53,6 +53,7 @@ import AddFollowUpModal, { FollowUpTarget } from '@/components/AddFollowUpModal'
 import dynamic from 'next/dynamic';
 import { ContextMenu } from '@/components/ContextMenu';
 import { ViewSwitcher, ViewType } from '@/components/ViewSwitcher';
+import PipelineWorkflowFlowchart from "@/components/PipelineWorkflowFlowchart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const ClientMapView = dynamic(() => import('./ClientMapView'), {
@@ -108,6 +109,8 @@ interface Client {
   assignedEmployeeId?: number | null;
   lead_source?: string;
   industry?: string;
+  customFields?: any;
+  is_sample?: boolean;
 }
 
 interface ClientStatusOption {
@@ -200,6 +203,42 @@ export default function ClientsPage() {
   const [isDropModalOpen, setIsDropModalOpen] = useState(false);
   const droppedDropdownRef = useRef<HTMLDivElement>(null);
   const [employees, setEmployees] = useState<{ id: number; name: string }[]>([]);
+  const [sampleStats, setSampleStats] = useState<{ has_sample_data: boolean; sample_clients_count: number } | null>(null);
+  const [sampleBusy, setSampleBusy] = useState(false);
+
+  const fetchSampleStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/sample-data/status`);
+      if (res.ok) {
+        const d = await res.json();
+        setSampleStats(d);
+      }
+    } catch (e) {}
+  };
+
+  const handleDeleteSampleData = async () => {
+    if (!window.confirm("Delete all sample demo records? Your original real clients will remain untouched.")) return;
+    setSampleBusy(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/sample-data/delete`, { method: "DELETE" });
+      if (res.ok) {
+        await fetchClients();
+        await fetchSampleStatus();
+      }
+    } catch (e) {
+      alert("Failed to delete sample data.");
+    } finally {
+      setSampleBusy(false);
+    }
+  };
+
+  const clientStageCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    CLIENT_STAGES.forEach(st => {
+      c[st] = clients.filter(cl => ((cl as any).stage || cl.status) === st).length;
+    });
+    return c;
+  }, [clients]);
 
   const filteredClients = useMemo(() => {
     return clients.filter(client => {
@@ -338,6 +377,7 @@ export default function ClientsPage() {
     fetchStatuses();
     fetchActivities();
     fetchEmployees();
+    fetchSampleStatus();
   }, [role, user]);
 
   useEffect(() => { fetchDroppedClients(); }, [dropOn]);
@@ -430,6 +470,7 @@ export default function ClientsPage() {
   const [addLoading, setAddLoading] = useState(false);
   const [showSalesAssign, setShowSalesAssign] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<any>(null);
+  const [clientCustomFields, setClientCustomFields] = useState<{ key: string; value: string }[]>([]);
   const handleAddClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (addLoading) return;
@@ -448,9 +489,15 @@ export default function ClientsPage() {
     }
 
     // Store form data and open sales assign modal
+    const cfObj = clientCustomFields.reduce((acc, curr) => {
+      if (curr.key.trim()) acc[curr.key.trim()] = curr.value.trim();
+      return acc;
+    }, {} as Record<string, string>);
     setPendingFormData({
       ...formData,
-      targetKeywords: formData.targetKeywords.split(',').map((k: string) => k.trim())
+      targetKeywords: formData.targetKeywords.split(',').map((k: string) => k.trim()),
+      customFields: cfObj,
+      custom_fields: cfObj,
     });
     setIsModalOpen(false);
     setShowSalesAssign(true);
@@ -480,6 +527,7 @@ export default function ClientsPage() {
           tagline: '',
           targetKeywords: ''
         });
+        setClientCustomFields([]);
         setPendingFormData(null);
       } else {
         const data = await res.json().catch(() => ({}));
@@ -709,6 +757,37 @@ export default function ClientsPage() {
 
       </div>
 
+      {/* Sample Data Banner */}
+      {(sampleStats?.has_sample_data || clients.some(c => c.customFields?.is_sample || c.is_sample)) && (
+        <div className="mx-3 sm:mx-6 my-2 p-3 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/30 border border-amber-200 dark:border-amber-800/60 flex items-center justify-between flex-wrap gap-2 shadow-xs">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+            <span className="text-xs font-bold text-amber-900 dark:text-amber-200">
+              Sample Data Active: Demo client profiles loaded to preview client management.
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={sampleBusy}
+            onClick={handleDeleteSampleData}
+            className="px-3 py-1 rounded-xl text-xs font-bold bg-white dark:bg-zinc-900 text-rose-600 border border-rose-300 dark:border-rose-800 hover:bg-rose-50 transition shadow-xs cursor-pointer"
+          >
+            {sampleBusy ? "Removing..." : "Delete Sample Data"}
+          </button>
+        </div>
+      )}
+
+      {/* Interactive Workflow Flowchart */}
+      <div className="px-3 sm:px-6 pt-2">
+        <PipelineWorkflowFlowchart
+          entityType="clients"
+          stages={CLIENT_STAGES}
+          counts={clientStageCounts}
+          selectedStage={filter}
+          onSelectStage={(st) => setFilter(st)}
+        />
+      </div>
+
       {/* Toolbar */}
       <div className="flex items-center justify-between px-3 sm:px-6 py-3 bg-white dark:bg-[#1e293b] border-b border-slate-200 dark:border-slate-800 flex-wrap gap-3">
         <div className="relative w-full sm:w-72">
@@ -720,7 +799,7 @@ export default function ClientsPage() {
           />
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap max-w-full overflow-x-auto scrollbar-none pb-1 sm:pb-0">
-          <ViewSwitcher currentView={viewMode as any} onViewChange={(v: any) => setViewMode(v)} />
+          <ViewSwitcher currentView={viewMode as any} onViewChange={(v: any) => setViewMode(v)} storageKey="crm_pref_view_clients" />
           {["All", ...CLIENT_STAGES].map(s => (
             <button key={s} onClick={() => { setFilter(s === "All" ? "All" : s); setPage(1); }}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${(filter === "All" ? "All" : filter) === s ? (s === "Lost" ? "bg-rose-600 text-white shadow-sm shadow-rose-500/30" : "bg-blue-600 dark:bg-white text-white dark:text-black shadow-sm") : (s === "Lost" ? "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 border border-rose-200 dark:border-rose-900/40" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700")}`}>
@@ -1455,6 +1534,62 @@ export default function ClientsPage() {
                     <textarea className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500 transition-all shadow-sm font-medium min-h-[100px]" value={formData.targetKeywords} onChange={e => setFormData({...formData, targetKeywords: e.target.value})} />
                   </div>
 
+                  {/* Custom / Additional Fields */}
+                  <div className="border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 bg-slate-50/50 dark:bg-zinc-800/40 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                          {language === 'es' ? 'Campos Personalizados' : 'Custom / Additional Fields'}
+                        </h4>
+                        <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                          {language === 'es' ? 'Agregue campos que se mostrarán en el encabezado del cliente' : 'Add custom metadata fields that will be displayed in the client header'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setClientCustomFields(prev => [...prev, { key: "", value: "" }])}
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 transition flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" /> {language === 'es' ? 'Agregar Campo' : 'Add Field'}
+                      </button>
+                    </div>
+
+                    {clientCustomFields.length > 0 && (
+                      <div className="space-y-2 pt-1">
+                        {clientCustomFields.map((cf, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              placeholder="Field Name (e.g. Account Type, Contract Term)"
+                              value={cf.key}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setClientCustomFields(prev => prev.map((item, i) => i === idx ? { ...item, key: val } : item));
+                              }}
+                              className="w-1/2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Value"
+                              value={cf.value}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setClientCustomFields(prev => prev.map((item, i) => i === idx ? { ...item, value: val } : item));
+                              }}
+                              className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setClientCustomFields(prev => prev.filter((_, i) => i !== idx))}
+                              className="p-1.5 text-slate-400 hover:text-red-500 transition rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <div className="pt-4 sm:pt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5 sm:gap-3 border-t border-slate-100 dark:border-zinc-800">
                     <button type="button" onClick={() => setIsModalOpen(false)} className="w-full sm:w-auto px-6 py-2.5 sm:py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:bg-zinc-950 transition-colors shadow-sm">{language === 'es' ? 'Cancelar' : 'Cancel'}</button>
                     <button type="submit" className="w-full sm:w-auto px-8 py-2.5 sm:py-3 bg-gradient-to-r from-zinc-600 to-slate-600 text-white rounded-xl font-bold hover:shadow-[0_8px_30px_rgba(79,70,229,0.3)] shadow-[0_4px_15px_rgba(79,70,229,0.2)] hover:-translate-y-0.5 transition-all">{language === 'es' ? 'Crear Cliente' : 'Create Client'}</button>

@@ -15,6 +15,7 @@ interface LeadSidebarPanelProps {
   onClientUpdate: (updates: any) => void;
   onResearchUpdate: (research: any) => void;
   leadId: string | string[];
+  isInstitute?: boolean;
 }
 
 const InfoRow = ({ icon: Icon, label, value, href }: { icon: any; label: string; value: string; href?: string }) => (
@@ -122,7 +123,7 @@ const ResearchField = ({
 
 
 export default function LeadSidebarPanel({
-  lead, research, onClientUpdate, onResearchUpdate, leadId
+  lead, research, onClientUpdate, onResearchUpdate, leadId, isInstitute
 }: LeadSidebarPanelProps) {
   const { t, language } = useLanguage();
   const [researchOpen, setResearchOpen] = useState(true);
@@ -242,6 +243,10 @@ export default function LeadSidebarPanel({
     ['business_goals', language === 'es' ? 'Objetivos de Negocio' : 'Business Goals'],
     ['key_decision_makers', language === 'es' ? 'Tomadores de Decisiones' : 'Key Decision Makers'],
   ];
+
+  if (isInstitute) {
+    return null;
+  }
 
   return (
     <div className="space-y-4">

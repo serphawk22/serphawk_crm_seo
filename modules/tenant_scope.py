@@ -59,6 +59,7 @@ GLOBAL_TABLES = frozenset({
     "tenants", "client_statuses", "service_catalog",
     "audit_logs",      # telemetry must always be cross-tenant for the admin view
     "notifications",   # user-scoped, not tenant-scoped
+    "blog_posts",      # public articles visible to all visitors and clients
 })
 
 _scoped_models: Optional[Tuple[type, ...]] = None

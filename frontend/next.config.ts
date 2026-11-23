@@ -42,7 +42,13 @@ const nextConfig: NextConfig = {
     return [{ source: "/showcase/index.html", destination: "/showcase", permanent: true }];
   },
   async rewrites() {
-    return [{ source: "/showcase", destination: "/showcase/index.html" }];
+    return [
+      { source: "/showcase", destination: "/showcase/index.html" },
+      { source: "/blog", destination: "/blogs" },
+      { source: "/blog/:slug*", destination: "/blogs/:slug*" },
+      { source: "/storefront", destination: "/shop" },
+      { source: "/storefront/:path*", destination: "/shop/:path*" }
+    ];
   },
   typescript: {
     ignoreBuildErrors: true,

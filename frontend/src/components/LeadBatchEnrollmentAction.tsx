@@ -153,6 +153,8 @@ export default function LeadBatchEnrollmentAction({
           batch_id: Number(selectedBatchId),
           discount: Number(discount) || 0,
           discount_reason: discountReason.trim() || undefined,
+          advance_amount: Number(advance) || 0,
+          payment_mode: paymentMode,
         }),
       });
       const data = await response.json();

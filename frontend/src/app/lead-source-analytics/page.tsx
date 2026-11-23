@@ -8,7 +8,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area, Legend
 } from "recharts";
-import { Zap, ArrowUpRight, TrendingUp, IndianRupee, Filter, RefreshCw, Calendar, Award, Flame, AlertCircle, CheckCircle2, ChevronRight, Layers, Target, Users, Briefcase, Activity, Clock, ShieldAlert, Sparkles, ExternalLink, Search, SlidersHorizontal, ArrowUpDown } from "lucide-react";
+import { Zap, ArrowUpRight, TrendingUp, IndianRupee, Filter, RefreshCw, Calendar, Award, Flame, AlertCircle, CheckCircle2, ChevronRight, Layers, Target, Users, Briefcase, Activity, Clock, ShieldAlert, Sparkles, ExternalLink, Search, SlidersHorizontal, ArrowUpDown, Edit2, Loader2, X } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
 import { useTenantConfig } from "@/context/TenantConfigContext";
@@ -43,6 +43,48 @@ export default function LeadSourceAnalyticsPage() {
   const [sortBy, setSortBy] = useState<string>("leads");
   const [sortAsc, setSortAsc] = useState<boolean>(false);
 
+  // Admin source reattribute / rename state
+  const [showReassignModal, setShowReassignModal] = useState<boolean>(false);
+  const [targetSourceName, setTargetSourceName] = useState<string>("Import");
+  const [customTargetSource, setCustomTargetSource] = useState<string>("");
+  const [reassigning, setReassigning] = useState<boolean>(false);
+
+  const handleReassignUnassigned = async () => {
+    const chosen = (targetSourceName === "Custom" ? customTargetSource : targetSourceName).trim();
+    if (!chosen) {
+      alert("Please select or enter a valid source name");
+      return;
+    }
+    setReassigning(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(`${API_BASE_URL}/lead-sources/reassign-leads`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          from_source: "", // empty string reattributes blank / unassigned leads
+          to_source: chosen,
+        }),
+      });
+      const result = await res.json();
+      if (res.ok && result.ok) {
+        alert(`Successfully reassigned ${result.reassigned_count} unassigned leads to "${chosen}"!`);
+        setShowReassignModal(false);
+        fetchData();
+      } else {
+        alert(result.detail || "Failed to reassign leads.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error contacting backend to reassign leads.");
+    } finally {
+      setReassigning(false);
+    }
+  };
+
   // Check access
   const canAccess = useMemo(() => {
     if (!role) return false;
@@ -71,7 +113,12 @@ export default function LeadSourceAnalyticsPage() {
         query = `?months=36`;
       }
 
-      const res = await fetch(`${API_BASE_URL}/analytics/lead-sources/full${query}`);
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(`${API_BASE_URL}/analytics/lead-sources/full${query}`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
       if (!res.ok) {
         throw new Error(`Failed to load lead source analytics (${res.status})`);
       }
@@ -95,7 +142,13 @@ export default function LeadSourceAnalyticsPage() {
     setBackfilling(true);
     setBackfillMsg(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/lead-sources/backfill`, { method: "POST" });
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(`${API_BASE_URL}/lead-sources/backfill`, {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
       if (res.ok) {
         const json = await res.json();
         setBackfillMsg(`Backfilled: ${json.updated_leads || 0} leads & ${json.updated_clients || 0} clients mapped.`);
@@ -222,6 +275,16 @@ export default function LeadSourceAnalyticsPage() {
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             <LocalizedText text={"Refresh"} /> </button>
 
+          <button
+            type="button"
+            onClick={() => setShowReassignModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-bold shadow-xs hover:bg-amber-500/20 transition-all cursor-pointer"
+            title="Edit or reattribute unassigned leads to a proper acquisition source"
+          >
+            <Edit2 className="h-3 w-3" />
+            Reassign Sources
+          </button>
+
           <Link
             href="/lead-sources"
             style={sourcesEnabled ? undefined : { display: "none" }}
@@ -282,6 +345,32 @@ export default function LeadSourceAnalyticsPage() {
         </div>
       ) : (
         <>
+          {/* ── UNASSIGNED LEADS ATTRIBUTION BANNER ── */}
+          {sourcesList.some((s: any) => s.source === "Unassigned" && s.leads > 0) && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs sm:text-sm font-extrabold">
+                    {sourcesList.find((s: any) => s.source === "Unassigned")?.leads || 415} Unassigned Leads Found
+                  </p>
+                  <p className="text-[11px] text-amber-700/80 dark:text-amber-300/80 mt-0.5">
+                    These leads do not have an acquisition source tag. As admin, you can reattribute or rename them to "Import", "Radar Scan", or a custom channel in 1 click.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReassignModal(true)}
+                className="self-start sm:self-center px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition active:scale-95 shrink-0"
+              >
+                Reassign Leads Now
+              </button>
+            </div>
+          )}
+
           {/* ── HIGHLIGHT BEST STATS CARDS ───────────────────────────── */}
           <div>
             <div className="flex items-center justify-between mb-2.5">
@@ -909,6 +998,18 @@ export default function LeadSourceAnalyticsPage() {
                                     utm: {s.utm_key}
                                   </span>
                                 )}
+                                {s.source === "Unassigned" && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setShowReassignModal(true);
+                                    }}
+                                    className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded border border-amber-300 dark:border-amber-800 hover:bg-amber-100 transition"
+                                  >
+                                    <Edit2 className="w-2.5 h-2.5" /> Reassign Leads
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -1118,6 +1219,84 @@ export default function LeadSourceAnalyticsPage() {
             </Card>
           </div>
         </>
+      )}
+
+      {/* ── REASSIGN MODAL ── */}
+      {showReassignModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+              <div className="flex items-center gap-2">
+                <Edit2 className="w-5 h-5 text-amber-500" />
+                <h3 className="text-base font-extrabold text-[var(--text-primary)]">Reassign Unassigned Leads</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReassignModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-[var(--text-secondary)]">
+              Choose the acquisition source you want to assign to all unassigned leads. Their analytics, CAC, and ROI will immediately be grouped under this channel.
+            </p>
+
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-[var(--text-primary)]">Target Acquisition Source</label>
+              <select
+                value={targetSourceName}
+                onChange={(e) => setTargetSourceName(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-[var(--border)] bg-transparent text-[var(--text-primary)] font-semibold"
+              >
+                <option value="Import">Import (CSV / Excel Uploads)</option>
+                <option value="Radar Scan">Radar Scan (Lead Scraper / Discovery)</option>
+                <option value="Website">Website Form / Inbound</option>
+                <option value="Meta Ads">Meta Ads (Facebook / Instagram)</option>
+                <option value="Google Ads">Google Ads (Search / PPC)</option>
+                <option value="LinkedIn">LinkedIn Outreach</option>
+                <option value="Referral">Client / Partner Referral</option>
+                <option value="Cold Call">Cold Calling</option>
+                <option value="Custom">Custom Source Name...</option>
+              </select>
+
+              {targetSourceName === "Custom" && (
+                <div>
+                  <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">Enter Custom Source Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. In-Person Conference, WhatsApp Direct..."
+                    value={customTargetSource}
+                    onChange={(e) => setCustomTargetSource(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-[var(--border)] bg-transparent text-[var(--text-primary)] font-medium"
+                    autoFocus
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[var(--border)]">
+              <button
+                type="button"
+                onClick={() => setShowReassignModal(false)}
+                disabled={reassigning}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleReassignUnassigned}
+                disabled={reassigning}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs disabled:opacity-50 transition active:scale-95"
+              >
+                {reassigning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                Save & Reassign
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

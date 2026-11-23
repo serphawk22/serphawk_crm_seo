@@ -4,7 +4,8 @@ import AdmissionsTeamForm from "@/components/AdmissionsTeamForm";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CheckCircle2, FileText, GraduationCap, Loader2, RefreshCw, Wallet } from "lucide-react";
+import { AlertCircle, CheckCircle2, FileText, GraduationCap, Loader2, RefreshCw, Wallet, Download, ExternalLink, BookOpen, Layers, Clock } from "lucide-react";
+import { jsPDF } from "jspdf";
 import { useTenantConfig } from "@/context/TenantConfigContext";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
@@ -18,10 +19,20 @@ interface AdmissionUser {
 interface AdmissionEnrollment {
   id: number;
   course_id: number;
+  course_title?: string | null;
   batch_id: number;
+  batch_name?: string | null;
+  batch_code?: string | null;
+  batch_schedule?: string | null;
+  mode?: string | null;
+  instructor_name?: string | null;
   total_fee: number;
   amount_paid: number;
   amount_due: number;
+  discount?: number;
+  slip_number?: string | null;
+  admission_slip_generated?: boolean;
+  advance_slip_generated?: boolean;
   payment_status: string;
   payments: { id: number; amount: number; payment_mode: string; payment_date: string; receipt_number?: string | null }[];
   invoice?: { id: number; invoice_number: string; status: string } | null;
@@ -199,6 +210,168 @@ export default function AdmissionsPage() {
     } catch (e) { setError(e instanceof Error ? e.message : "Could not download invoice"); }
   };
 
+  const downloadAdmissionSlipPdf = (student: AdmissionStudent, enrollment: AdmissionEnrollment) => {
+    const doc = new jsPDF();
+    const slipNum = enrollment.slip_number || `ADM-${enrollment.id.toString().padStart(5, "0")}`;
+
+    // Header Banner
+    doc.setFillColor(16, 185, 129);
+    doc.rect(0, 0, 210, 26, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text("STUDENT ADMISSION CONFIRMATION SLIP", 14, 17);
+
+    // Slip details
+    doc.setTextColor(51, 65, 85);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Slip No: ${slipNum}`, 14, 36);
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, 140, 36);
+
+    doc.setDrawColor(226, 232, 240);
+    doc.line(14, 40, 196, 40);
+
+    // Student Info
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("Student Particulars", 14, 48);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(`Student Name: ${student.name}`, 14, 56);
+    doc.text(`Student ID: #${student.id}`, 140, 56);
+    doc.text(`Email: ${student.email || "N/A"}`, 14, 63);
+    doc.text(`Phone: ${student.phone || "N/A"}`, 140, 63);
+
+    // Course & Batch Info Box
+    doc.setFillColor(248, 250, 252);
+    doc.rect(14, 70, 182, 36, "F");
+    doc.setDrawColor(203, 213, 225);
+    doc.rect(14, 70, 182, 36, "S");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("Enrolled Course & Batch Details", 20, 78);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(`Course: ${enrollment.course_title || student.course_interest || "Course"}`, 20, 86);
+    doc.text(`Batch: ${enrollment.batch_name || `Batch #${enrollment.batch_id}`} (${enrollment.batch_code || "Standard"})`, 20, 93);
+    doc.text(`Schedule: ${enrollment.batch_schedule || "Regular Class"}`, 20, 100);
+    doc.text(`Instructor: ${enrollment.instructor_name || "Faculty Assigned"}`, 120, 86);
+    doc.text(`Learning Mode: ${enrollment.mode || "Offline / Campus"}`, 120, 93);
+
+    // Financial Fee Table
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("Financial Breakdown & Fee Record", 14, 116);
+
+    const startY = 122;
+    doc.setFillColor(241, 245, 249);
+    doc.rect(14, startY, 182, 8, "F");
+    doc.setFontSize(9);
+    doc.text("Item Description", 18, startY + 6);
+    doc.text("Amount (INR)", 160, startY + 6);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text("Total Standard Course Fee", 18, startY + 16);
+    doc.text(money(enrollment.total_fee), 160, startY + 16);
+
+    if (enrollment.discount && enrollment.discount > 0) {
+      doc.text("Institutional Concession / Discount", 18, startY + 23);
+      doc.text(`- ${money(enrollment.discount)}`, 160, startY + 23);
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Total Paid / Advance Received", 18, startY + 31);
+    doc.setTextColor(16, 185, 129);
+    doc.text(money(enrollment.amount_paid), 160, startY + 31);
+
+    doc.setTextColor(220, 38, 38);
+    doc.text("Outstanding Due Balance", 18, startY + 39);
+    doc.text(money(enrollment.amount_due), 160, startY + 39);
+
+    doc.setTextColor(51, 65, 85);
+    doc.setDrawColor(226, 232, 240);
+    doc.line(14, startY + 44, 196, startY + 44);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(`Admission Status: Confirmed & Active (${enrollment.payment_status})`, 14, startY + 52);
+    doc.text("This admission slip is system generated and officially verifies student enrollment.", 14, startY + 58);
+
+    doc.line(130, startY + 80, 186, startY + 80);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text("Authorized Registrar / Admissions Officer", 125, startY + 86);
+
+    doc.save(`${slipNum}-${student.name.replace(/\s+/g, "_")}.pdf`);
+  };
+
+  const downloadPaymentSlipPdf = (student: AdmissionStudent, enrollment: AdmissionEnrollment, payment: any) => {
+    const doc = new jsPDF();
+    const receiptNum = payment.receipt_number || `REC-${payment.id.toString().padStart(6, "0")}`;
+
+    // Header Banner
+    doc.setFillColor(37, 99, 235);
+    doc.rect(0, 0, 210, 26, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text("OFFICIAL PAYMENT RECEIPT & SLIP", 14, 17);
+
+    // Details
+    doc.setTextColor(51, 65, 85);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Receipt No: ${receiptNum}`, 14, 36);
+    doc.text(`Receipt Date: ${payment.payment_date ? new Date(payment.payment_date).toLocaleDateString() : new Date().toLocaleDateString()}`, 130, 36);
+
+    doc.setDrawColor(226, 232, 240);
+    doc.line(14, 40, 196, 40);
+
+    // Received From
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("Payment Particulars", 14, 48);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(`Received From: ${student.name}`, 14, 56);
+    doc.text(`Contact: ${student.phone || student.email || "N/A"}`, 14, 63);
+    doc.text(`Course: ${enrollment.course_title || student.course_interest || "Course"}`, 14, 70);
+    doc.text(`Batch: ${enrollment.batch_name || `Batch #${enrollment.batch_id}`}`, 14, 77);
+    doc.text(`Payment Mode: ${payment.payment_mode}`, 14, 84);
+
+    // Amount Paid Highlight Box
+    doc.setFillColor(238, 242, 255);
+    doc.rect(14, 92, 182, 26, "F");
+    doc.setDrawColor(199, 210, 254);
+    doc.rect(14, 92, 182, 26, "S");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(67, 56, 202);
+    doc.text("AMOUNT RECEIVED:", 22, 105);
+    doc.setFontSize(16);
+    doc.text(money(payment.amount), 80, 106);
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Remaining Balance Due for this Enrollment: ${money(enrollment.amount_due)}`, 22, 114);
+
+    doc.line(130, 140, 186, 140);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(51, 65, 85);
+    doc.text("Accounts & Cashier Signature", 130, 146);
+
+    doc.save(`${receiptNum}-${student.name.replace(/\s+/g, "_")}.pdf`);
+  };
+
   const recordPayment = async () => {
     if (!paymentTarget || !Number.isFinite(Number(paymentAmount)) || Number(paymentAmount) <= 0) {
       setError("Enter a payment amount greater than zero.");
@@ -279,61 +452,173 @@ export default function AdmissionsPage() {
       ) : (
         <section className="space-y-3">
           {data.students.map(student => (
-            <article key={student.id} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-zinc-950 sm:p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <Link href={`/students/${student.id}`} className="font-bold text-slate-900 hover:underline dark:text-white">{student.name}</Link>
-                  <p className="mt-1 text-sm text-slate-500">{[student.email, student.phone, student.course_interest].filter(Boolean).join(" · ") || "No contact or course details"}</p>
-                </div>
-                {canManageTeam ? (
-                  <label className="flex items-center gap-2 text-sm text-slate-500">
-                    <span>Admissions owner</span>
-                    <select
-                      aria-label={`Admissions owner for ${student.name}`}
-                      value={student.admissions_assignee_id ? String(student.admissions_assignee_id) : ""}
-                      disabled={savingStudentId === student.id}
-                      onChange={event => void assignStudent(student.id, event.target.value)}
-                      className="max-w-56 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-slate-700 dark:border-slate-700 dark:bg-zinc-900 dark:text-slate-200"
+            <article key={student.id} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-zinc-950 sm:p-5 shadow-xs hover:border-emerald-500/40 transition-colors">
+              <div className="flex flex-wrap items-start justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <Link href={`/students/${student.id}`} className="text-base font-bold text-slate-900 hover:text-emerald-600 hover:underline dark:text-white transition-colors">
+                      {student.name}
+                    </Link>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 uppercase tracking-wider">
+                      Student #{student.id}
+                    </span>
+                    {/* Entire Student Overview button (Admin view) */}
+                    <Link
+                      href={`/students/${student.id}`}
+                      target="_blank"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 dark:text-emerald-300 text-xs font-semibold transition-colors border border-emerald-200 dark:border-emerald-800/60 shadow-2xs"
+                      title="Open full student overview including courses, attendance, fees, and notes"
                     >
-                      <option value="">Unassigned</option>
-                      {data.admissions_users.map(member => <option key={member.id} value={member.id}>{member.name || member.email}</option>)}
-                    </select>
-                  </label>
-                ) : (
-                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{student.admissions_assignee_name || "Unassigned"}</span>
-                )}
+                      <GraduationCap className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      Entire Student Overview
+                      <ExternalLink className="w-3 h-3 opacity-70" />
+                    </Link>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {[student.email, student.phone, student.course_interest].filter(Boolean).join(" · ") || "No contact or course details"}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {canManageTeam ? (
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                      <span>Admissions Owner:</span>
+                      <select
+                        aria-label={`Admissions owner for ${student.name}`}
+                        value={student.admissions_assignee_id ? String(student.admissions_assignee_id) : ""}
+                        disabled={savingStudentId === student.id}
+                        onChange={event => void assignStudent(student.id, event.target.value)}
+                        className="max-w-56 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-zinc-900 dark:text-slate-200 shadow-2xs font-medium"
+                      >
+                        <option value="">Unassigned</option>
+                        {data.admissions_users.map(member => <option key={member.id} value={member.id}>{member.name || member.email}</option>)}
+                      </select>
+                    </label>
+                  ) : (
+                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40">
+                      Admissions: {student.admissions_assignee_name || "Unassigned"}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {student.enrollments.length ? (
-                <div className="mt-4 space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+                <div className="mt-3 space-y-3">
                   {student.enrollments.map(enrollment => (
-                    <div key={enrollment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 dark:bg-zinc-900">
-                      <div className="min-w-[220px]">
-                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Enrollment #{enrollment.id}</p>
-                        <p className="mt-1 text-xs text-slate-500">Fee {money(enrollment.total_fee)} · Paid {money(enrollment.amount_paid)} · Due {money(enrollment.amount_due)} · {enrollment.payment_status}</p>
-                        {enrollment.invoice && <p className="mt-1 text-xs text-slate-500">Invoice {enrollment.invoice.invoice_number} · {enrollment.invoice.status}</p>}
-                        {enrollment.payments.length > 0 && <p className="mt-1 text-xs text-slate-500">Payments: {enrollment.payments.map(payment => `${payment.receipt_number || `#${payment.id}`} ${money(payment.amount)} (${payment.payment_mode})`).join(" · ")}</p>}
+                    <div key={enrollment.id} className="rounded-xl border border-slate-100 bg-slate-50/70 dark:bg-zinc-900/80 p-3.5 dark:border-slate-800/80 space-y-2.5">
+                      {/* Top Row: Course, Batch, Schedule info */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200/50 dark:border-slate-800">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
+                            <BookOpen className="w-3.5 h-3.5" />
+                            {enrollment.course_title || student.course_interest || `Course #${enrollment.course_id}`}
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/50">
+                            <Layers className="w-3.5 h-3.5" />
+                            {enrollment.batch_name || `Batch #${enrollment.batch_id}`} {enrollment.batch_code ? `(${enrollment.batch_code})` : ""}
+                          </span>
+                          {enrollment.batch_schedule && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] text-slate-600 dark:text-zinc-300 bg-white dark:bg-zinc-800 border border-slate-200/60 dark:border-zinc-700">
+                              <Clock className="w-3 h-3 text-slate-400" />
+                              {enrollment.batch_schedule}
+                            </span>
+                          )}
+                          {enrollment.instructor_name && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 border border-purple-200/60 dark:border-purple-800/40">
+                              Instructor: {enrollment.instructor_name}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Slip Download Button */}
+                        <button
+                          type="button"
+                          onClick={() => downloadAdmissionSlipPdf(student, enrollment)}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-white dark:bg-zinc-800 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/60 px-3 py-1.5 text-xs font-bold hover:bg-emerald-50 dark:hover:bg-emerald-950/50 transition-colors shadow-2xs"
+                          title="Download Student Admission Confirmation Slip"
+                        >
+                          <Download className="w-3.5 h-3.5 text-emerald-600" />
+                          Download Admission Slip {enrollment.slip_number ? `(${enrollment.slip_number})` : ""}
+                        </button>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {!enrollment.invoice ? (
-                          <>
-                            <input type="date" aria-label="Invoice due date" value={invoiceDueDate} onChange={event => setInvoiceDueDate(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-zinc-950" />
-                            <button type="button" disabled={busyEnrollmentId === enrollment.id} onClick={() => void createInvoice(student, enrollment)} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">
-                              {busyEnrollmentId === enrollment.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />} Create invoice
+
+                      {/* Middle Row: Financials and Action Buttons */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                        <div className="min-w-[220px]">
+                          <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                            Total Fee: <span className="font-bold">{money(enrollment.total_fee)}</span> · Paid: <span className="font-bold text-emerald-600">{money(enrollment.amount_paid)}</span> · Due: <span className="font-bold text-rose-600">{money(enrollment.amount_due)}</span>
+                            {enrollment.discount ? <span className="text-slate-400"> (Discount: {money(enrollment.discount)})</span> : null}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs">
+                            <span className="text-slate-500 font-medium">Payment Status:</span>
+                            <span className={`px-2 py-0.5 rounded-md text-[10.5px] font-bold uppercase tracking-wider ${enrollment.amount_due <= 0
+                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                                : enrollment.amount_paid > 0
+                                  ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                                  : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+                              }`}>
+                              {enrollment.payment_status}
+                            </span>
+                            {enrollment.invoice && (
+                              <span className="text-slate-500 dark:text-zinc-400 ml-2">
+                                Invoice #{enrollment.invoice.invoice_number} ({enrollment.invoice.status})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          {!enrollment.invoice ? (
+                            <>
+                              <input type="date" aria-label="Invoice due date" value={invoiceDueDate} onChange={event => setInvoiceDueDate(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-zinc-950" />
+                              <button type="button" disabled={busyEnrollmentId === enrollment.id} onClick={() => void createInvoice(student, enrollment)} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 shadow-2xs">
+                                {busyEnrollmentId === enrollment.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />} Create invoice
+                              </button>
+                            </>
+                          ) : (
+                            <button type="button" onClick={() => void downloadInvoice(enrollment.invoice!.id)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-zinc-900 dark:text-slate-200 shadow-2xs">
+                              <FileText className="h-3.5 w-3.5" />View invoice
                             </button>
-                          </>
-                        ) : (
-                          <button type="button" onClick={() => void downloadInvoice(enrollment.invoice!.id)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200"><FileText className="h-3.5 w-3.5" />View invoice</button>
-                        )}
-                        {enrollment.amount_due > 0 && (
-                          <button type="button" onClick={() => { setError(""); setPaymentTarget({ student, enrollment }); setPaymentAmount(""); }} className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 dark:border-emerald-800 dark:text-emerald-300">Record payment</button>
-                        )}
+                          )}
+                          {enrollment.amount_due > 0 && (
+                            <button type="button" onClick={() => { setError(""); setPaymentTarget({ student, enrollment }); setPaymentAmount(""); }} className="rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 text-xs font-semibold shadow-2xs transition-colors">
+                              Record payment
+                            </button>
+                          )}
+                        </div>
                       </div>
+
+                      {/* Payment Records with Slip Download Buttons */}
+                      {enrollment.payments.length > 0 && (
+                        <div className="border-t border-slate-200/60 dark:border-slate-800/80 pt-2 flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                            Payment Receipts:
+                          </span>
+                          {enrollment.payments.map(payment => (
+                            <div
+                              key={payment.id}
+                              className="inline-flex items-center gap-1.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 px-2 py-1 rounded-lg text-xs"
+                            >
+                              <span className="font-bold text-slate-800 dark:text-zinc-200">{money(payment.amount)}</span>
+                              <span className="text-slate-400">({payment.payment_mode})</span>
+                              <button
+                                type="button"
+                                onClick={() => downloadPaymentSlipPdf(student, enrollment, payment)}
+                                className="inline-flex items-center gap-1 ml-1 text-[10.5px] font-bold text-blue-600 dark:text-blue-400 hover:underline bg-blue-50 dark:bg-blue-950/50 px-1.5 py-0.5 rounded"
+                                title="Download Payment Receipt Slip"
+                              >
+                                <Download className="w-3 h-3" />
+                                {payment.receipt_number || `#${payment.id}`}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
                   <p className="text-sm text-slate-500">No enrollment or invoice yet.</p>
                   <Link href={`/enrollments?student_id=${student.id}`} className="text-sm font-semibold text-blue-600 hover:underline dark:text-blue-400">Create enrollment</Link>
                 </div>

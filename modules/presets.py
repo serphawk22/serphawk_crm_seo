@@ -20,6 +20,40 @@ _FLAGSHIP_SUITE = {"cases", "invoices", "support_sh", "lead_sources", "lead_sour
                    "ai_reports", "dropped_clients", "proposals_portal", "followup_board"}
 
 PRESETS: Dict[str, dict] = {
+    "sales_instance": {
+        "label": "Sales Instance",
+        "description": "Focused sales operations workspace: lead pipeline, salesperson activity dashboard, upcoming "
+                       "follow-ups, meetings, individual lead source reports per salesperson, and conversion tracking.",
+        "features": {"dashboard", "leads", "contacts", "work_queue", "followups", "meetings", "calls", "teams",
+                     "leaderboard", "inbox", "email_agent", "lead_sources", "lead_source_analytics", "billing",
+                     "invoices", "proposals", "proposals_portal", "ai_reports", "followup_board"},
+        "settings": {"sales_scoping": True, "lead_auto_assign": True, "lead_assignment": "roundrobin",
+                     "home_dashboard": "dashboard",
+                     "lead_statuses": ["New", "Contacted", "Not Responded", "Neutral", "Positive", "Negative", "Converted"]},
+    },
+    "administrator_instance": {
+        "label": "Administrator Instance (Admissions)",
+        "description": "Institute administration & admissions workspace: student directory, course batches, enrollments, "
+                       "fee collection on remaining balance, admission slips, advance slips, and payment recording.",
+        "features": {"dashboard", "dashboard_b2c", "institute", "work_queue", "teams", "leaderboard", "inbox",
+                     "reports", "billing", "invoices"},
+        "settings": {"sales_scoping": True, "home_dashboard": "dashboard_b2c", "default_currency": "INR",
+                     "timezone": "Asia/Kolkata",
+                     "lead_statuses": ["New", "Contacted", "Enrolled", "Lost"]},
+    },
+    "combined_instance": {
+        "label": "Combined (Sales + Administrator)",
+        "description": "Complete end-to-end workflow: Sales converts leads to students with advance payment, and Administrators "
+                       "follow up on remaining fees, issue admission/advance slips, and record fee collections.",
+        "features": {"dashboard", "dashboard_b2c", "leads", "contacts", "clients", "work_queue", "task_sheet", "reports",
+                     "meetings", "calls", "teams", "leaderboard", "inbox", "followups", "email_agent", "lead_sources",
+                     "lead_source_analytics", "institute", "billing", "invoices", "proposals", "proposals_portal",
+                     "ai_reports", "followup_board"},
+        "settings": {"sales_scoping": True, "lead_auto_assign": True, "lead_assignment": "roundrobin",
+                     "home_dashboard": "dashboard_b2c", "default_currency": "INR", "timezone": "Asia/Kolkata",
+                     "lead_statuses": ["New", "Contacted", "Not Responded", "Webinar Scheduled", "Walk-in Scheduled",
+                                       "Converted", "Enrolled", "Lost"]},
+    },
     "serphawk": {
         "label": "SerpHawk Flagship",
         "description": "What the main SerpHawk product itself ships: the full CRM plus the business suite (lead sources, "

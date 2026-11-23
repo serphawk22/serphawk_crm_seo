@@ -1484,6 +1484,7 @@ class Lead(SQLModel, table=True):
     last_activity: Optional[str] = Field(default=None, max_length=500)
     ai_analysis_results: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     swot_analysis: Optional[str] = Field(default=None, sa_column=Column(Text))
+    custom_fields: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
 
     account: Optional[Account] = Relationship(back_populates="leads")
     contacts: List["Contact"] = Relationship(back_populates="lead")
@@ -1847,6 +1848,22 @@ class CustomizationRequestMessage(SQLModel, table=True):
     from_platform: bool = Field(default=False)
     body: str = Field(sa_column=Column(Text))
     created_at: datetime = Field(default_factory=_utcnow)
+
+
+class TeamChatMessage(SQLModel, table=True):
+    """Team directory internal chat message with text and file attachments."""
+    __tablename__ = "team_chat_messages"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(index=True)
+    sender_id: int = Field(index=True)
+    recipient_id: Optional[int] = Field(default=None, index=True)
+    channel_name: Optional[str] = Field(default=None, index=True)
+    content: str = Field(sa_column=Column(Text, nullable=False))
+    attachment_url: Optional[str] = Field(default=None)
+    attachment_name: Optional[str] = Field(default=None)
+    attachment_type: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=_utcnow, index=True)
+    read_at: Optional[datetime] = Field(default=None)
 
 
 # Plan-verified indexes for NEW schemas. create_all does not add indexes to
@@ -2545,4 +2562,30 @@ class DeletedRecord(SQLModel, table=True):
     restored_at: Optional[datetime] = Field(default=None)
     restored_by_id: Optional[int] = Field(default=None)
     transfer_summary: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+
+
+class BlogPost(SQLModel, table=True):
+    """Public blogs, tutorials, product updates, and growth guides.
+    Publicly viewable by anyone. Creation and editing is restricted to SuperAdmin and Admin.
+    """
+    __tablename__ = "blog_posts"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str = Field(max_length=300, index=True)
+    slug: str = Field(max_length=350, unique=True, index=True)
+    summary: Optional[str] = Field(default=None, sa_column=Column(Text))
+    content: str = Field(sa_column=Column(Text))
+    cover_image: Optional[str] = Field(default=None, max_length=1000)
+    category: str = Field(default="CRM Guide", max_length=100, index=True)
+    tags: Optional[str] = Field(default=None, max_length=500)
+    author_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    author_name: str = Field(default="SerpHawk Team", max_length=200)
+    author_role: str = Field(default="Super Admin", max_length=100)
+    author_avatar: Optional[str] = Field(default=None, max_length=500)
+    is_published: bool = Field(default=True, index=True)
+    read_time_minutes: int = Field(default=4)
+    views_count: int = Field(default=0)
+    created_at: datetime = Field(default_factory=_utcnow, index=True)
+    updated_at: datetime = Field(default_factory=_utcnow)
+    tenant_id: Optional[int] = Field(default=1)
 

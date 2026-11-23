@@ -26,7 +26,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/invoices": "Invoices", "/proposals": "Proposals", "/rankings": "Keyword Rankings",
   "/notifications": "Notifications", "/email-agent": "Email Agent", "/calls": "Call Center", "/admin/radar": "Radar Analysis",
   "/messages": "Messages", "/interns": "Intern Pool", "/employees": "Employees",
-  "/sales-manager": "Sales Manager", "/admin/services-overview": "Services Overview", "/admin/requests": "Request Board",
+  "/sales-manager": "Salesperson", "/admin/services-overview": "Services Overview", "/admin/requests": "Request Board",
   "/admin/sales-team": "Sales Team", "/admin/services": "Services", "/admin/marketplace": "Marketplace", "/audit": "Audit Center", "/pricing": "Pricing"
 };
 

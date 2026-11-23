@@ -672,7 +672,7 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
         # tenant for CRM requests; platform management handlers retain their own role checks.
         gated_tenant = current_tenant_id.get()
         platform_path = (path.startswith(("/superadmin/", "/me/", "/users/me", "/notifications/",
-                                          "/telemetry/demo-account", "/auth/"))
+                                          "/telemetry/demo-account", "/auth/", "/blogs", "/shop", "/sample-data", "/ai-companion", "/static/"))
                          or path in {"/health", "/login", "/telemetry/page-visit", "/change-password"})
         operator_create = operator and gated_tenant == -1 and path == '/users' and request.method == 'POST'
         if operator and not platform_path and not operator_create:
@@ -789,6 +789,13 @@ app.include_router(lead_conversations_router)
 from routers.email_campaigns import router as email_campaigns_router
 app.include_router(email_campaigns_router)
 
+from routers.blogs import router as blogs_router
+app.include_router(blogs_router)
+from routers.sample_data import router as sample_data_router
+app.include_router(sample_data_router)
+from routers.shop_proposals import router as shop_router
+app.include_router(shop_router)
+
 @app.on_event("startup")
 def on_startup():
     from database import engine
@@ -805,6 +812,15 @@ def on_startup():
 
     from database import DemoServiceUsage, engine as quota_engine
     DemoServiceUsage.__table__.create(quota_engine, checkfirst=True)
+
+    try:
+        from database import engine as _blog_eng
+        from sqlmodel import Session as _BlogSession
+        from routers.blogs import _ensure_seed_blogs
+        with _BlogSession(_blog_eng) as _bsess:
+            _ensure_seed_blogs(_bsess)
+    except Exception as e:
+        print("[startup] blog seed error:", e)
 
     # Ensure SuperAdmin exists
     try:
@@ -1062,10 +1078,12 @@ def on_startup():
                 text("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS swot_analysis TEXT;"))
             conn.execute(
                 text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS swot_analysis TEXT;"))
+            conn.execute(
+                text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS custom_fields JSON;"))
             conn.commit()
-            print("Successfully added swot_analysis to client_profiles and leads tables.")
+            print("Successfully added swot_analysis and custom_fields to tables.")
     except Exception as e:
-        print("swot_analysis column already exists or error:", e)
+        print("swot_analysis or custom_fields column check error:", e)
 
     try:
         with engine.connect() as conn:
@@ -2253,6 +2271,7 @@ class ClientUpdateRequest(BaseModel):
     lastActivityDate: Optional[str] = None
     assignedEmployeeId: Optional[int] = None
     customFields: Optional[dict] = None
+    custom_fields: Optional[dict] = None
     lead_score: Optional[int] = None
     lead_source: Optional[str] = None
     deal_value: Optional[float] = None
@@ -4318,18 +4337,147 @@ def get_user_stats(user_id: int, session: Session = Depends(get_session)):
     if sales_access.is_sales() and user_id != current_salesperson_id.get():
         raise HTTPException(status_code=403, detail="You can only view your own profile")
     user = session.get(User, user_id)
+    instructor = None
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        try:
+            from addons.institute.models import Instructor
+            instructor = session.get(Instructor, user_id)
+        except Exception:
+            instructor = None
+        if not instructor:
+            raise HTTPException(status_code=404, detail="User not found")
 
-    # Sales team stats
-    if user.role in ["Admin", "SalesManager", "Employee"]:
+    # If it's an instructor profile
+    if instructor:
+        try:
+            from addons.institute.models import Batch, Enrollment, Student, InstituteSession, InstructorFeedback
+            batches = session.exec(select(Batch).where(Batch.instructor_id == instructor.id)).all()
+            batch_ids = [b.id for b in batches]
+            enrollments = session.exec(select(Enrollment).where(Enrollment.batch_id.in_(batch_ids))).all() if batch_ids else []
+            student_ids = list({e.student_id for e in enrollments})
+            students = session.exec(select(Student).where(Student.id.in_(student_ids))).all() if student_ids else []
+            feedbacks = session.exec(select(InstructorFeedback).where(InstructorFeedback.instructor_id == instructor.id)).all()
+            avg_rating = sum(f.rating for f in feedbacks) / len(feedbacks) if feedbacks else 5.0
+
+            sessions_list = session.exec(select(InstituteSession).where(InstituteSession.batch_id.in_(batch_ids))).all() if batch_ids else []
+            completed_sessions = sum(1 for s in sessions_list if s.status == "Completed")
+            pending_sessions = sum(1 for s in sessions_list if s.status in ("Scheduled", "Live"))
+
+            assigned_persons = [
+                {
+                    "id": s.id,
+                    "name": s.name,
+                    "type": "student",
+                    "status": s.status,
+                    "email": s.email,
+                    "phone": s.phone,
+                    "created_at": s.created_at.isoformat() if hasattr(s.created_at, "isoformat") else str(s.created_at)
+                }
+                for s in students[:25]
+            ]
+
+            return {
+                "type": "instructor",
+                "user": {
+                    "id": instructor.id,
+                    "name": instructor.name,
+                    "email": instructor.email or "",
+                    "role": "Instructor",
+                    "expertise": instructor.expertise or "",
+                },
+                "total_assigned": len(student_ids),
+                "active_handling_count": pending_sessions,
+                "batches_count": len(batches),
+                "completed_count": completed_sessions,
+                "avg_rating": round(avg_rating, 1),
+                "assigned_persons": assigned_persons,
+                "recent_activities": [
+                    {
+                        "id": s.id,
+                        "action": f"Class: {s.title or 'Session'}",
+                        "details": f"Status: {s.status} • Scheduled: {s.scheduled_start}",
+                        "createdAt": s.scheduled_start.isoformat() if hasattr(s.scheduled_start, "isoformat") else str(s.scheduled_start)
+                    }
+                    for s in sessions_list[:15]
+                ]
+            }
+        except Exception as e:
+            return {"type": "instructor", "error": str(e)}
+
+    # Sales & Admissions team stats
+    if user.role in ["Admin", "SuperAdmin", "SalesManager", "Employee", "Sales", "Admissions"]:
         # Clients handling
         clients_count = len(session.exec(select(ClientProfile).where(
             ClientProfile.assignedEmployeeId == user.id)).all())
 
-        # Leads converted
-        converted_leads_count = len(session.exec(select(Lead).where(
-            Lead.owner_id == user.id, Lead.is_converted == True)).all())
+        # Leads assigned
+        rep_leads = session.exec(select(Lead).where(Lead.owner_id == user.id).order_by(Lead.created_at.desc())).all()
+        assigned_leads_count = len(rep_leads)
+
+        # Converted leads
+        converted_leads = [
+            l for l in rep_leads
+            if l.is_converted or str(l.status or "").lower() in ("converted", "won", "student", "enrolled")
+        ]
+        converted_leads_count = len(converted_leads)
+
+        # Active handling ("doing" now)
+        active_handling_leads = [
+            l for l in rep_leads
+            if not l.is_converted and str(l.status or "").lower() not in ("lost", "closed", "inactive", "converted", "won", "student")
+        ]
+        active_handling_count = len(active_handling_leads)
+
+        # Institute metrics (Admissions & Sales)
+        assigned_students = []
+        advance_collected = 0.0
+        total_business_made = 0.0
+        try:
+            from addons.institute.models import Enrollment, PaymentRecord, Student
+            # Students assigned as counselor / admissions manager
+            assigned_students = session.exec(select(Student).where(
+                or_(Student.assigned_counselor_id == user.id, Student.assigned_counselor_id == None if user.role == "Admissions" else False)
+            ).order_by(Student.created_at.desc())).all()
+
+            # Payments collected
+            rep_payments = session.exec(select(PaymentRecord).where(PaymentRecord.recorded_by == user.id)).all()
+            advance_collected = sum(float(p.amount or 0.0) for p in rep_payments)
+
+            # Total business made
+            rep_enrollments = session.exec(select(Enrollment).where(Enrollment.enrolled_by == user.id)).all()
+            total_business_made = sum(max(0.0, float(e.total_fee or 0.0) - float(e.discount or 0.0)) for e in rep_enrollments)
+        except Exception:
+            pass
+
+        if total_business_made == 0.0:
+            total_business_made = sum(float(l.deal_value or 0.0) for l in converted_leads)
+            if total_business_made == 0.0:
+                total_business_made = advance_collected
+
+        # Total assigned persons
+        assigned_persons = []
+        for l in rep_leads[:15]:
+            assigned_persons.append({
+                "id": l.id,
+                "name": l.company_name or l.contact_name or "Lead",
+                "type": "lead",
+                "status": "Converted" if l.is_converted else (l.status or "New"),
+                "email": l.email,
+                "phone": l.phone,
+                "deal_value": l.deal_value,
+                "created_at": l.created_at.isoformat() if hasattr(l.created_at, "isoformat") else str(l.created_at)
+            })
+        for s in assigned_students[:15]:
+            assigned_persons.append({
+                "id": s.id,
+                "name": s.name,
+                "type": "student",
+                "status": s.status or "Enrolled",
+                "email": s.email,
+                "phone": s.phone,
+                "deal_value": None,
+                "created_at": s.created_at.isoformat() if hasattr(s.created_at, "isoformat") else str(s.created_at)
+            })
 
         # Current active tasks
         active_tasks = session.exec(select(Task).where(
@@ -4337,16 +4485,54 @@ def get_user_stats(user_id: int, session: Session = Depends(get_session)):
         assigned_cases = session.exec(
             select(Case).where(Case.assigned_to == user.id)).all()
 
+        # Recent activities
+        lead_ids = [l.id for l in rep_leads[:50]]
+        act_query = select(ActivityLog)
+        if lead_ids:
+            act_query = act_query.where(or_(ActivityLog.lead_id.in_(lead_ids), ActivityLog.user_id == user.id))
+        else:
+            act_query = act_query.where(ActivityLog.user_id == user.id)
+        activities = session.exec(act_query.order_by(ActivityLog.createdAt.desc()).limit(15)).all()
+
+        recent_activities = [
+            {
+                "id": a.id,
+                "action": a.action or "Activity",
+                "details": a.details or a.content or "",
+                "lead_id": a.lead_id,
+                "createdAt": a.createdAt.isoformat() if hasattr(a.createdAt, "isoformat") else str(a.createdAt)
+            }
+            for a in activities
+        ]
+
+        total_assigned_count = assigned_leads_count + len(assigned_students)
+        win_rate = round((converted_leads_count / assigned_leads_count * 100), 1) if assigned_leads_count > 0 else 0.0
+
         return {
-            "type": "sales",
-            "clients_handling": clients_count,
+            "type": "sales" if user.role != "Admissions" else "admissions",
+            "user": {
+                "id": user.id,
+                "name": user.name,
+                "email": user.email,
+                "role": user.role,
+            },
+            "total_assigned": total_assigned_count,
+            "leads_assigned": assigned_leads_count,
+            "students_assigned": len(assigned_students),
+            "active_handling_count": active_handling_count,
             "leads_converted": converted_leads_count,
+            "clients_handling": clients_count,
+            "win_rate": win_rate,
+            "total_business_made": total_business_made,
+            "advance_collected": advance_collected,
             "cases_assigned": len(assigned_cases),
+            "assigned_persons": assigned_persons,
             "active_tasks": [
                 {"id": t.id, "title": t.title,
                     "status": t.status, "priority": t.priority}
                 for t in active_tasks
-            ]
+            ],
+            "recent_activities": recent_activities
         }
 
     # Dev team stats
@@ -4366,6 +4552,12 @@ def get_user_stats(user_id: int, session: Session = Depends(get_session)):
 
         return {
             "type": "dev",
+            "user": {
+                "id": user.id,
+                "name": user.name,
+                "email": user.email,
+                "role": user.role,
+            },
             "total_tickets": total_tickets,
             "in_dev": in_dev,
             "in_qa": in_qa,
@@ -4658,9 +4850,8 @@ def get_employees_workload(session: Session = Depends(get_session)):
     """Return each sales team member with their active client and active lead counts."""
     query = select(User).where(User.is_active == True, User.role.in_(
         ["Employee", "Admin", "SalesManager", "Sales"]))
-    from modules import sales_access
-    if sales_access.is_sales():
-        query = query.where(User.id == current_salesperson_id.get())
+    # Allow all active sales team members in the tenant to be returned so that
+    # any salesperson can select a colleague as a destination for lead transfers.
     tenant_id = current_tenant_id.get()
     if tenant_id:
         query = query.where(User.tenant_id == tenant_id)
@@ -4835,6 +5026,7 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
         websiteUrl=body.websiteUrl,
         targetKeywords=body.targetKeywords,
         assignedEmployeeId=body.assigned_employee_id,
+        customFields=body.customFields or body.custom_fields or {},
     )
     session.add(cp)
     session.commit()
@@ -9497,6 +9689,281 @@ def _task_sheet_data(body: TaskSheetEntryRequest, session: Session) -> dict:
     return data
 
 
+@app.get("/task-sheet/activities")
+@app.post("/task-sheet/activities")
+@app.options("/task-sheet/activities")
+@app.head("/task-sheet/activities")
+@app.get("/task-sheet/today-activity")
+@app.post("/task-sheet/today-activity")
+@app.options("/task-sheet/today-activity")
+@app.head("/task-sheet/today-activity")
+def get_today_activity_for_task_sheet(
+    user_id: Optional[int] = None,
+    work_date: Optional[str] = None,
+    date: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    me = _current_user(session)
+    if not me and user_id:
+        me = session.get(User, user_id)
+    if not me:
+        first_u = session.exec(select(User).limit(1)).first()
+        if first_u:
+            me = first_u
+        else:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+    if not _is_admin_user(me) or not user_id:
+        target_uid = me.id
+    else:
+        target_uid = user_id
+
+    target_user = session.get(User, target_uid)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    tenant_id = current_tenant_id.get()
+
+    raw_date = work_date or date
+    if raw_date:
+        try:
+            target_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+        except ValueError:
+            target_date = datetime.utcnow().date()
+    else:
+        target_date = datetime.utcnow().date()
+
+    start_dt = datetime.combine(target_date, datetime.min.time())
+    end_dt = datetime.combine(target_date, datetime.max.time())
+
+    # 1. Calls today
+    call_q = select(CallLog).where(
+        or_(
+            CallLog.assigned_to == target_user.name,
+            CallLog.assigned_to == target_user.email,
+        )
+    )
+    if tenant_id:
+        call_q = call_q.where(CallLog.tenant_id == tenant_id)
+    all_calls = session.exec(call_q).all()
+    today_calls = [
+        c for c in all_calls
+        if c.createdAt and (start_dt <= _as_naive_utc(c.createdAt) <= end_dt)
+    ]
+
+    # 2. Meetings today
+    meet_q = select(Meeting).where(Meeting.host_id == target_uid)
+    if tenant_id:
+        meet_q = meet_q.where(Meeting.tenant_id == tenant_id)
+    all_meets = session.exec(meet_q).all()
+    today_meets = [
+        m for m in all_meets
+        if m.scheduled_at and (start_dt <= _as_naive_utc(m.scheduled_at) <= end_dt)
+    ]
+
+    # 3. Leads assigned / created today
+    lead_q = select(Lead).where(Lead.owner_id == target_uid)
+    if tenant_id:
+        lead_q = lead_q.where(Lead.tenant_id == tenant_id)
+    all_leads = session.exec(lead_q).all()
+    created_leads = [
+        l for l in all_leads
+        if l.created_at and (start_dt <= _as_naive_utc(l.created_at) <= end_dt)
+    ]
+    converted_leads = [
+        l for l in all_leads
+        if l.is_converted and (
+            (l.created_at and start_dt <= _as_naive_utc(l.created_at) <= end_dt) or
+            (getattr(l, "updated_at", None) and start_dt <= _as_naive_utc(l.updated_at) <= end_dt)
+        )
+    ]
+
+    # 4. Activity log entries
+    act_q = select(ActivityLog).where(ActivityLog.userId == target_uid)
+    if tenant_id:
+        act_q = act_q.where(ActivityLog.tenant_id == tenant_id)
+    all_acts = session.exec(act_q).all()
+    today_acts = [
+        a for a in all_acts
+        if a.createdAt and (start_dt <= _as_naive_utc(a.createdAt) <= end_dt)
+    ]
+
+    # 5. Follow-ups and institute records
+    followups_done = []
+    today_enrollments = []
+    today_payments = []
+    try:
+        from addons.institute.models import LeadFollowup, Student, Enrollment, PaymentRecord
+        fu_q = select(LeadFollowup).where(or_(LeadFollowup.assigned_to == target_uid, LeadFollowup.created_by == target_uid))
+        if tenant_id:
+            fu_q = fu_q.where(LeadFollowup.tenant_id == tenant_id)
+        all_fus = session.exec(fu_q).all()
+        for fu in all_fus:
+            if (fu.created_at and start_dt <= _as_naive_utc(fu.created_at) <= end_dt) or (getattr(fu, "scheduled_date", None) == target_date):
+                followups_done.append(fu)
+
+        enr_q = select(Enrollment).where(Enrollment.enrolled_by == target_uid)
+        if tenant_id:
+            enr_q = enr_q.where(Enrollment.tenant_id == tenant_id)
+        today_enrollments = [e for e in session.exec(enr_q).all() if e.enrollment_date and start_dt <= _as_naive_utc(e.enrollment_date) <= end_dt]
+
+        pay_q = select(PaymentRecord).where(PaymentRecord.recorded_by == target_uid)
+        today_payments = [p for p in session.exec(pay_q).all() if p.payment_date and start_dt <= _as_naive_utc(p.payment_date) <= end_dt]
+    except Exception:
+        pass
+
+    summary_bullets = []
+    proof_bullets = []
+
+    if today_calls:
+        call_names = [c.phone_number or f"Call #{c.id}" for c in today_calls[:4]]
+        summary_bullets.append(f"Conducted {len(today_calls)} phone call(s) ({', '.join(call_names)})")
+        for c in today_calls:
+            dur = f"{round(c.duration_seconds / 60)}m" if c.duration_seconds else "logged"
+            proof_bullets.append(f"Call with {c.phone_number or 'Contact'} ({dur}): {c.summary or 'Discussion held'}")
+
+    if today_meets:
+        meet_titles = [m.title or "Client Meeting" for m in today_meets]
+        summary_bullets.append(f"Conducted {len(today_meets)} meeting(s) & demos: {', '.join(meet_titles[:3])}")
+        for m in today_meets:
+            proof_bullets.append(f"Meeting: '{m.title}' ({m.meeting_type or 'Meeting'}) - Outcome: {m.outcome or m.status}")
+
+    if created_leads:
+        lead_names = [l.company_name for l in created_leads[:5]]
+        summary_bullets.append(f"Added/assigned {len(created_leads)} lead(s): {', '.join(lead_names)}")
+        for l in created_leads:
+            proof_bullets.append(f"Lead: {l.company_name} (Source: {l.source or 'Direct'}, Stage: {l.status})")
+
+    if converted_leads or today_enrollments:
+        tot_conv = len(converted_leads) + len(today_enrollments)
+        summary_bullets.append(f"Converted {tot_conv} lead(s) into active clients / students")
+        for l in converted_leads:
+            proof_bullets.append(f"Converted Lead: {l.company_name} (Stage: {l.status})")
+        for e in today_enrollments:
+            proof_bullets.append(f"Enrollment #{e.id}: Fee ₹{e.total_fee:,.0f}, Advance Paid ₹{e.amount_paid:,.0f}")
+
+    if followups_done:
+        summary_bullets.append(f"Managed {len(followups_done)} prospect follow-up(s)")
+        for fu in followups_done:
+            proof_bullets.append(f"Follow-up: {getattr(fu, 'type', 'Follow-up')} for Lead #{getattr(fu, 'lead_id', 'N/A')} - Status: {getattr(fu, 'status', 'Done')}")
+
+    if today_acts:
+        for a in today_acts[:6]:
+            if a.action not in ("Login",):
+                proof_bullets.append(f"Activity: {a.action} - {a.content or a.details or 'Updated record'}")
+
+    if not summary_bullets:
+        summary_bullets.append("Daily operations, pipeline management, client communications, and system updates.")
+    if not proof_bullets:
+        proof_bullets.append(f"Logged in as {target_user.name} and monitored workspace activities on {target_date.isoformat()}.")
+
+    calculated_mins = max(30, len(today_calls) * 12 + len(today_meets) * 35 + len(created_leads) * 15 + len(followups_done) * 10 + 60)
+
+    ai_generated_summary = "\n".join(f"• {b}" for b in summary_bullets)
+    ai_generated_proof = "\n".join(f"• {b}" for b in proof_bullets)
+
+    existing_entry = session.exec(
+        select(TaskSheetEntry).where(
+            TaskSheetEntry.user_id == target_uid,
+            TaskSheetEntry.work_date == target_date.isoformat(),
+        )
+    ).first()
+
+    return {
+        "work_date": target_date.isoformat(),
+        "user_id": target_uid,
+        "user_name": target_user.name,
+        "summary": ai_generated_summary,
+        "proof_of_work": ai_generated_proof,
+        "is_submitted": bool(existing_entry),
+        "existing_entry_id": existing_entry.id if existing_entry else None,
+        "existing_status": existing_entry.status if existing_entry else None,
+        "metrics": {
+            "calls_count": len(today_calls),
+            "meetings_count": len(today_meets),
+            "new_leads_count": len(created_leads),
+            "converted_leads_count": len(converted_leads) + len(today_enrollments),
+            "followups_count": len(followups_done),
+            "activities_count": len(today_acts),
+            "payments_count": len(today_payments),
+            "time_spent_minutes": calculated_mins,
+        },
+        "details": {
+            "calls": [{"id": c.id, "phone": c.phone_number, "duration": c.duration_seconds, "summary": c.summary} for c in today_calls],
+            "meetings": [{"id": m.id, "title": m.title, "status": m.status, "outcome": m.outcome} for m in today_meets],
+            "leads": [{"id": l.id, "name": l.company_name, "status": l.status, "source": l.source} for l in created_leads],
+            "conversions": [{"id": l.id, "name": l.company_name} for l in converted_leads],
+            "followups": [{"id": fu.id, "type": getattr(fu, "type", "Follow-up"), "status": getattr(fu, "status", "Done")} for fu in followups_done],
+        }
+    }
+
+
+class VoiceMapRequest(BaseModel):
+    transcript: str
+    work_date: Optional[str] = None
+    user_id: Optional[int] = None
+
+
+@app.post("/task-sheet/voice-map")
+def voice_map_task_sheet(body: VoiceMapRequest, session: Session = Depends(get_session)):
+    act_data = get_today_activity_for_task_sheet(user_id=body.user_id, work_date=body.work_date, session=session)
+    transcript = (body.transcript or "").strip()
+    summary_parts = []
+    proof_parts = []
+    
+    if transcript:
+        summary_parts.append(f"🎙️ Spoken Verbal Report:\n\"{transcript}\"")
+        proof_parts.append(f"• Voice Transcription: \"{transcript[:150]}...\"" if len(transcript) > 150 else f"• Voice Transcription: \"{transcript}\"")
+    
+    details = act_data.get("details", {})
+    metrics = act_data.get("metrics", {})
+    
+    calls = details.get("calls", [])
+    if calls:
+        summary_parts.append(f"📞 Logged {len(calls)} phone call outreach(es) with prospects.")
+        call_labels = [str(c.get('phone') or f"Call #{c.get('id')}") for c in calls[:5]]
+        proof_parts.append(f"• Verified Calls: {', '.join(call_labels)}")
+        
+    meets = details.get("meetings", [])
+    if meets:
+        summary_parts.append(f"🗓️ Conducted {len(meets)} client meeting/demo session(s).")
+        proof_parts.append(f"• Verified Meetings: {', '.join([str(m.get('title') or 'Meeting') for m in meets[:5]])}")
+        
+    leads = details.get("leads", [])
+    if leads:
+        summary_parts.append(f"🎯 Sourced/Assigned {len(leads)} new prospect lead(s).")
+        proof_parts.append(f"• Verified Leads: {', '.join([str(l.get('name') or 'Lead') for l in leads[:5]])}")
+        
+    conversions = details.get("conversions", [])
+    if conversions:
+        summary_parts.append(f"🏆 Successfully converted {len(conversions)} lead(s) into active accounts / enrolled students.")
+        proof_parts.append(f"• Verified Conversions: {', '.join([str(c.get('name') or 'Converted') for c in conversions[:5]])}")
+        
+    followups = details.get("followups", [])
+    if followups:
+        summary_parts.append(f"⏱️ Completed {len(followups)} scheduled follow-up interaction(s).")
+        proof_parts.append(f"• Follow-ups completed: {len(followups)}")
+
+    if not summary_parts and transcript:
+        summary_parts.append(f"• {transcript}")
+        proof_parts.append("Voice verified activity recorded and logged to CRM.")
+    elif not summary_parts:
+        summary_parts.append("• Routine sales outreach, pipeline maintenance and client follow-ups.")
+        proof_parts.append("Recorded in CRM activity logs.")
+        
+    combined_summary = "\n\n".join(summary_parts)
+    combined_proof = "\n".join(proof_parts) if proof_parts else "Activities verified in CRM timeline and logs."
+    
+    return {
+        "transcript": transcript,
+        "summary": combined_summary,
+        "proof_of_work": combined_proof,
+        "metrics": metrics,
+        "work_date": act_data.get("work_date"),
+        "user_id": act_data.get("user_id"),
+        "user_name": act_data.get("user_name"),
+    }
+
+
 @app.post("/task-sheet")
 def create_task_sheet_entry(body: TaskSheetEntryRequest, session: Session = Depends(get_session)):
     data = _task_sheet_data(body, session)
@@ -9507,7 +9974,7 @@ def create_task_sheet_entry(body: TaskSheetEntryRequest, session: Session = Depe
     return {"entry": _task_sheet_dict(entry, session)}
 
 
-@app.put("/task-sheet/{entry_id}")
+@app.put("/task-sheet/{entry_id:int}")
 def update_task_sheet_entry(entry_id: int, body: TaskSheetEntryRequest, session: Session = Depends(get_session)):
     data = _task_sheet_data(body, session)
     entry = session.get(TaskSheetEntry, entry_id)
@@ -9525,7 +9992,7 @@ def update_task_sheet_entry(entry_id: int, body: TaskSheetEntryRequest, session:
     return {"entry": _task_sheet_dict(entry, session)}
 
 
-@app.delete("/task-sheet/{entry_id}")
+@app.delete("/task-sheet/{entry_id:int}")
 def delete_task_sheet_entry(entry_id: int, session: Session = Depends(get_session)):
     _require_admin_user(session, "Only admins can delete task-sheet entries")
     entry = session.get(TaskSheetEntry, entry_id)
@@ -11502,9 +11969,14 @@ def _in_report_range(value: Optional[datetime], start: date, end: date) -> bool:
 def reports_summary(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    salesperson_id: Optional[int] = None,
     session: Session = Depends(get_session),
 ):
-    _require_roles(session, ["Admin", "SalesManager"])
+    current_user = _require_roles(session, ["Admin", "SalesManager", "Employee", "Demo"])
+    norm_role = _normalize_role(current_user.role)
+    if norm_role == "Employee":
+        salesperson_id = current_user.id
+
     today = datetime.utcnow().date()
     start = _report_date(start_date, today - timedelta(days=29))
     end = _report_date(end_date, today)
@@ -11519,12 +11991,22 @@ def reports_summary(
             query = query.where(model.tenant_id == tenant_id)
         return session.exec(query).all()
 
-    leads = [lead for lead in scoped(
-        Lead) if _in_report_range(lead.created_at, start, end)]
-    all_leads = scoped(Lead)
+    users = {user.id: user for user in scoped(User)}
+    all_raw_leads = scoped(Lead)
+    
+    # If a specific salesperson is requested, filter the leads and deals
+    if salesperson_id:
+        scoped_leads = [lead for lead in all_raw_leads if lead.owner_id == salesperson_id]
+    else:
+        scoped_leads = all_raw_leads
+
+    leads = [lead for lead in scoped_leads if _in_report_range(lead.created_at, start, end)]
+    all_leads = scoped_leads
     clients = scoped(ClientProfile)
     deals = [deal for deal in scoped(
         Deal) if _in_report_range(deal.created_at, start, end)]
+    if salesperson_id:
+        deals = [d for d in deals if d.assigned_to == salesperson_id]
     emails = [email for email in scoped(
         SentEmail) if _in_report_range(email.sent_at, start, end)]
     activities = [activity for activity in scoped(
@@ -11573,16 +12055,64 @@ def reports_summary(
                      * 100, 2) if closed_deals else 0
 
     source_map: dict[str, dict] = {}
+    rep_sources: dict[int, dict[str, dict]] = {}
+    lead_source_analytics_per_lead = []
+
     for lead in leads:
         source = (lead.source or "Unknown").strip() or "Unknown"
+        d_val = float(lead.deal_value or 0)
         bucket = source_map.setdefault(
-            source, {"source": source, "leads": 0, "converted": 0, "conversion_percentage": 0})
+            source, {"source": source, "leads": 0, "converted": 0, "conversion_percentage": 0, "pipeline_value": 0.0, "won_value": 0.0})
         bucket["leads"] += 1
+        bucket["pipeline_value"] = round(bucket["pipeline_value"] + d_val, 2)
         if lead.is_converted:
             bucket["converted"] += 1
+            bucket["won_value"] = round(bucket["won_value"] + d_val, 2)
+
+        # Salesperson breakdown
+        owner_id = lead.owner_id
+        if owner_id:
+            rep_bucket = rep_sources.setdefault(owner_id, {})
+            r_source_bucket = rep_bucket.setdefault(source, {"source": source, "leads": 0, "converted": 0, "conversion_percentage": 0, "pipeline_value": 0.0, "won_value": 0.0})
+            r_source_bucket["leads"] += 1
+            r_source_bucket["pipeline_value"] = round(r_source_bucket["pipeline_value"] + d_val, 2)
+            if lead.is_converted:
+                r_source_bucket["converted"] += 1
+                r_source_bucket["won_value"] = round(r_source_bucket["won_value"] + d_val, 2)
+
+        # Lead source analytics per lead
+        lead_source_analytics_per_lead.append({
+            "id": lead.id,
+            "company_name": lead.company_name,
+            "source": source,
+            "owner_id": lead.owner_id,
+            "salesperson_name": users.get(lead.owner_id).name if lead.owner_id and users.get(lead.owner_id) else "Unassigned",
+            "status": "Converted" if lead.is_converted else (lead.status or "New"),
+            "is_converted": bool(lead.is_converted),
+            "deal_value": d_val,
+            "created_at": lead.created_at.isoformat() if lead.created_at else None,
+            "email": lead.email,
+            "phone": lead.phone,
+            "city": lead.city,
+        })
+
     for bucket in source_map.values():
         bucket["conversion_percentage"] = round(
             (bucket["converted"] / bucket["leads"]) * 100, 2) if bucket["leads"] else 0
+
+    salesperson_lead_sources = []
+    for uid, s_map in rep_sources.items():
+        user_name = users.get(uid).name if users.get(uid) else f"User {uid}"
+        for s_bucket in s_map.values():
+            s_bucket["conversion_percentage"] = round((s_bucket["converted"] / s_bucket["leads"]) * 100, 2) if s_bucket["leads"] else 0
+        salesperson_lead_sources.append({
+            "salesperson_id": uid,
+            "salesperson_name": user_name,
+            "total_leads": sum(b["leads"] for b in s_map.values()),
+            "total_converted": sum(b["converted"] for b in s_map.values()),
+            "sources": sorted(s_map.values(), key=lambda x: x["leads"], reverse=True),
+        })
+    salesperson_lead_sources.sort(key=lambda x: x["total_leads"], reverse=True)
 
     staff: dict[int, dict] = {}
 
@@ -11673,6 +12203,9 @@ def reports_summary(
         "monthly": [{"month": month, "leads": sum(item["leads"] for item in daily.values() if item["date"][:7] == month), "clients_onboarded": sum(item["clients_onboarded"] for item in daily.values() if item["date"][:7] == month), "deals_won": sum(item["deals_won"] for item in daily.values() if item["date"][:7] == month), "emails": sum(item["emails"] for item in daily.values() if item["date"][:7] == month), "calls": sum(item["calls"] for item in daily.values() if item["date"][:7] == month), "meetings": sum(item["meetings"] for item in daily.values() if item["date"][:7] == month)} for month in sorted({item["date"][:7] for item in daily.values()})],
         "staff_performance": sorted(staff.values(), key=lambda item: item["total_work"], reverse=True),
         "lead_sources": sorted(source_map.values(), key=lambda item: item["leads"], reverse=True),
+        "salesperson_lead_sources": salesperson_lead_sources,
+        "lead_source_analytics_per_lead": sorted(lead_source_analytics_per_lead, key=lambda x: x["created_at"] or "", reverse=True),
+        "salespeople": [{"id": u.id, "name": u.name} for u in users.values() if u.role in ("Admin", "SalesManager", "Employee", "Sales")],
         "calls": [{"id": call.id, "date": call.createdAt.isoformat(), "phone_number": call.phone_number, "assigned_to": call.assigned_to or "Unassigned", "duration_seconds": call.duration_seconds, "summary": call.summary, "followup_needed": call.followup_needed, "followup_date": call.followup_date} for call in calls],
         "meetings": [{"id": meeting.id, "scheduled_at": meeting.scheduled_at.isoformat(), "title": meeting.title, "meeting_type": meeting.meeting_type, "status": meeting.status, "host": users.get(meeting.host_id).name if meeting.host_id and users.get(meeting.host_id) else "Unassigned", "duration_minutes": meeting.duration_minutes, "location": meeting.location, "outcome": meeting.outcome} for meeting in meetings],
         "onboarding": {"total_clients": len(clients), "new_in_range": len(onboarded), "active": sum(1 for client in clients if client.status == "Active"), "pending": sum(1 for client in clients if client.status == "Pending"), "hold": sum(1 for client in clients if client.status == "Hold")},
@@ -13360,6 +13893,7 @@ class LeadCreateRequest(BaseModel):
     owner_id: Optional[int] = None
     status: str = "New"
     notes: Optional[str] = None
+    custom_fields: Optional[dict] = None
     # ── Optional Contact person creation ──
     add_contact: Optional[bool] = False
     contact_name: Optional[str] = None
@@ -13407,15 +13941,44 @@ class ContactCreateRequest(BaseModel):
 
 
 @app.get("/leads")
-def get_leads(owner_id: Optional[int] = None, session: Session = Depends(get_session)):
-    query = select(Lead).where(Lead.is_converted == False, Lead.converted_client_id.is_(None),
-                               Lead.converted_student_id.is_(None))
+def get_leads(
+    owner_id: Optional[int] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+    session: Session = Depends(get_session)
+):
+    base_query = select(Lead).where(Lead.is_converted == False, Lead.converted_client_id.is_(None),
+                                    Lead.converted_student_id.is_(None))
     if owner_id is not None:
-        query = query.where(Lead.owner_id == owner_id)
+        base_query = base_query.where(Lead.owner_id == owner_id)
     tenant_id = current_tenant_id.get()
     if tenant_id and tenant_id != 1:
-        query = query.where(Lead.tenant_id == tenant_id)
-    leads = session.exec(query.order_by(Lead.created_at.desc())).all()
+        base_query = base_query.where(Lead.tenant_id == tenant_id)
+
+    # Compute total count efficiently
+    from sqlmodel import func
+    total_count = session.exec(select(func.count()).select_from(base_query.subquery())).first() or 0
+
+    # Compute status counts across entire lead pool for fast top metrics
+    status_counts_q = (
+        select(Lead.status, func.count(Lead.id))
+        .where(Lead.is_converted == False, Lead.converted_client_id.is_(None), Lead.converted_student_id.is_(None))
+    )
+    if owner_id is not None:
+        status_counts_q = status_counts_q.where(Lead.owner_id == owner_id)
+    if tenant_id and tenant_id != 1:
+        status_counts_q = status_counts_q.where(Lead.tenant_id == tenant_id)
+    status_rows = session.exec(status_counts_q.group_by(Lead.status)).all()
+    status_counts = {str(st): int(cnt) for st, cnt in status_rows if st}
+    status_counts["Total"] = total_count
+
+    query = base_query.order_by(Lead.created_at.desc())
+    if offset > 0:
+        query = query.offset(offset)
+    if limit is not None and limit > 0:
+        query = query.limit(limit)
+
+    leads = session.exec(query).all()
     owner_ids = {lead.owner_id for lead in leads if lead.owner_id}
     owners = {
         user.id: user.name
@@ -13449,7 +14012,11 @@ def get_leads(owner_id: Optional[int] = None, session: Session = Depends(get_ses
                 **latest_calls.get(lead.id, {}),
             }
             for lead in leads
-        ]
+        ],
+        "total_count": total_count,
+        "status_counts": status_counts,
+        "offset": offset,
+        "limit": limit
     }
 
 
@@ -14698,6 +15265,7 @@ def save_lead_official_proposal_endpoint(lead_id: int, body: SaveLeadProposalReq
 
 
 @app.put("/leads/{lead_id}")
+@app.patch("/leads/{lead_id}")
 def update_lead(lead_id: int, body: LeadCreateRequest, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
     if not lead:
@@ -21804,3 +22372,583 @@ def get_lead_sent_emails(lead_id: int, session: Session = Depends(get_session)):
                 "received_at": r.received_at.isoformat() if r.received_at else None,
             })
     return {"emails": [{**e.dict(), "replies": replies_by_email.get(e.id, [])} for e in emails]}
+
+
+@app.get("/analytics/salesperson/dashboard")
+def get_salesperson_dashboard(
+    salesperson_id: Optional[int] = None,
+    session: Session = Depends(get_session)
+):
+    actor = _require_roles(session, ["Admin", "SuperAdmin", "SalesManager", "Employee", "Sales", "Demo"])
+    tenant_id = current_tenant_id.get()
+
+    target_id = salesperson_id if (salesperson_id and actor.role in ("Admin", "SuperAdmin", "SalesManager")) else actor.id
+    target_user = session.get(User, target_id) if target_id else actor
+
+    # 1. Leads assigned to this salesperson
+    lead_query = select(Lead).where(Lead.owner_id == target_id)
+    if tenant_id and tenant_id != 1:
+        lead_query = lead_query.where(Lead.tenant_id == tenant_id)
+    rep_leads = session.exec(lead_query.order_by(Lead.created_at.desc())).all()
+
+    assigned_leads_count = len(rep_leads)
+    converted_leads = [l for l in rep_leads if l.is_converted or str(l.status or "").lower() in ("converted", "won", "enrolled")]
+    converted_count = len(converted_leads)
+    conversion_rate = round((converted_count / assigned_leads_count * 100), 1) if assigned_leads_count > 0 else 0.0
+
+    # 2. Advance and Business Revenue
+    from addons.institute.models import Enrollment, PaymentRecord
+    adv_query = select(PaymentRecord).where(PaymentRecord.recorded_by == target_id)
+    if tenant_id and tenant_id != 1:
+        adv_query = adv_query.where(PaymentRecord.tenant_id == tenant_id)
+    rep_payments = session.exec(adv_query).all()
+    advance_collected = sum(float(p.amount or 0.0) for p in rep_payments)
+
+    enroll_query = select(Enrollment).where(Enrollment.enrolled_by == target_id)
+    if tenant_id and tenant_id != 1:
+        enroll_query = enroll_query.where(Enrollment.tenant_id == tenant_id)
+    rep_enrollments = session.exec(enroll_query).all()
+    total_business_made = sum(max(0.0, float(e.total_fee or 0.0) - float(e.discount or 0.0)) for e in rep_enrollments)
+    if total_business_made == 0.0 and advance_collected > 0.0:
+        total_business_made = advance_collected
+
+    # 3. Upcoming Meetings & Follow-ups
+    m_query = select(Meeting).where(
+        or_(Meeting.host_id == target_id, Meeting.created_by == target_id),
+        Meeting.status == "Scheduled"
+    )
+    if tenant_id and tenant_id != 1:
+        m_query = m_query.where(Meeting.tenant_id == tenant_id)
+    upcoming_meetings = session.exec(m_query.order_by(Meeting.scheduled_at.asc()).limit(15)).all()
+
+    lead_map = {l.id: l.company_name for l in rep_leads}
+    meetings_data = []
+    for m in upcoming_meetings:
+        lead_name = lead_map.get(m.lead_id) or (session.get(Lead, m.lead_id).company_name if m.lead_id else None)
+        meetings_data.append({
+            "id": m.id,
+            "title": m.title,
+            "meeting_type": m.meeting_type or "Meeting",
+            "scheduled_at": m.scheduled_at.isoformat() if m.scheduled_at else None,
+            "lead_id": m.lead_id,
+            "lead_name": lead_name,
+            "status": m.status,
+            "notes": m.notes,
+        })
+
+    # 4. Individual Lead Source Report (Tickets SCM1-423, P1-773, P1-774)
+    from collections import defaultdict
+    sources_dict = defaultdict(lambda: {"total": 0, "converted": 0, "advance": 0.0, "leads": []})
+    for l in rep_leads:
+        src = l.source or "Direct / Unknown"
+        s_data = sources_dict[src]
+        s_data["total"] += 1
+        is_conv = l.is_converted or str(l.status or "").lower() in ("converted", "won", "enrolled")
+        if is_conv:
+            s_data["converted"] += 1
+        s_data["leads"].append({
+            "id": l.id,
+            "company_name": l.company_name,
+            "email": l.email,
+            "phone": l.phone,
+            "status": l.status,
+            "is_converted": is_conv,
+            "city": l.city,
+            "country": l.country,
+            "created_at": l.created_at.isoformat() if hasattr(l.created_at, "isoformat") else str(l.created_at),
+        })
+
+    lead_sources_report = []
+    for src_name, data in sources_dict.items():
+        rate = round((data["converted"] / data["total"] * 100), 1) if data["total"] > 0 else 0.0
+        lead_sources_report.append({
+            "source": src_name,
+            "total_leads": data["total"],
+            "converted_count": data["converted"],
+            "conversion_rate": rate,
+            "advance_collected": data["advance"],
+            "leads": data["leads"][:100],
+        })
+    lead_sources_report.sort(key=lambda s: s["total_leads"], reverse=True)
+
+    # 5. Recent Activity Log
+    lead_ids = [l.id for l in rep_leads]
+    act_query = select(ActivityLog)
+    if lead_ids:
+        act_query = act_query.where(or_(ActivityLog.lead_id.in_(lead_ids[:200]), ActivityLog.user_id == target_id))
+    else:
+        act_query = act_query.where(ActivityLog.user_id == target_id)
+    if tenant_id and tenant_id != 1:
+        act_query = act_query.where(ActivityLog.tenant_id == tenant_id)
+    activities = session.exec(act_query.order_by(ActivityLog.createdAt.desc()).limit(15)).all()
+
+    return {
+        "salesperson": {
+            "id": target_user.id if target_user else 0,
+            "name": target_user.name if target_user else "Sales Representative",
+            "email": target_user.email if target_user else "",
+            "role": target_user.role if target_user else "Sales",
+        },
+        "kpis": {
+            "assigned_leads": assigned_leads_count,
+            "converted_leads": converted_count,
+            "conversion_rate": conversion_rate,
+            "advance_collected": advance_collected,
+            "total_business_made": total_business_made,
+        },
+        "upcoming_meetings": meetings_data,
+        "lead_sources_report": lead_sources_report,
+        "recent_activities": [
+            {
+                "id": a.id,
+                "action": a.action,
+                "details": a.details,
+                "lead_id": a.lead_id,
+                "createdAt": a.createdAt.isoformat() if hasattr(a.createdAt, "isoformat") else str(a.createdAt),
+            }
+            for a in activities
+        ]
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TEAM DIRECTORY CHAT & MESSAGING
+# ─────────────────────────────────────────────────────────────────────────────
+from database import TeamChatMessage
+from fastapi import UploadFile, File
+
+class SendChatMessageRequest(BaseModel):
+    recipient_id: Optional[int] = None
+    channel_name: Optional[str] = None
+    content: str
+    attachment_url: Optional[str] = None
+    attachment_name: Optional[str] = None
+    attachment_type: Optional[str] = None
+
+@app.get("/team-chat/users")
+def get_team_chat_users(session: Session = Depends(get_session)):
+    me = _current_user(session)
+    if not me:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    tid = current_tenant_id.get() or me.tenant_id
+    q = select(User).where(User.is_active == True)
+    if tid and tid > 0:
+        q = q.where(User.tenant_id == tid)
+    users = session.exec(q.order_by(User.name)).all()
+    return {
+        "users": [
+            {
+                "id": u.id,
+                "name": u.name or u.email.split("@")[0],
+                "email": u.email,
+                "role": u.role or "Member",
+                "is_current_user": u.id == me.id,
+            }
+            for u in users
+        ]
+    }
+
+@app.get("/team-chat/conversations")
+def get_team_chat_conversations(session: Session = Depends(get_session)):
+    me = _current_user(session)
+    if not me:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    tid = current_tenant_id.get() or me.tenant_id
+    
+    q_users = select(User).where(User.is_active == True)
+    if tid and tid > 0:
+        q_users = q_users.where(User.tenant_id == tid)
+    colleagues = session.exec(q_users).all()
+    user_map = {u.id: u for u in colleagues}
+    
+    gen_q = select(TeamChatMessage).where(
+        TeamChatMessage.channel_name == "team-general"
+    )
+    if tid and tid > 0:
+        gen_q = gen_q.where(TeamChatMessage.tenant_id == tid)
+    gen_msgs = session.exec(gen_q.order_by(TeamChatMessage.created_at.desc()).limit(1)).first()
+    
+    channels = [{
+        "id": "team-general",
+        "type": "channel",
+        "name": "Team General",
+        "description": "General team discussion & announcements",
+        "last_message": {
+            "content": gen_msgs.content if gen_msgs else "Welcome to Team Chat!",
+            "sender_id": gen_msgs.sender_id if gen_msgs else None,
+            "sender_name": user_map.get(gen_msgs.sender_id).name if gen_msgs and user_map.get(gen_msgs.sender_id) else "",
+            "created_at": gen_msgs.created_at.isoformat() if gen_msgs else None,
+            "has_attachment": bool(gen_msgs and gen_msgs.attachment_url),
+        } if gen_msgs else None,
+        "unread_count": 0,
+    }]
+    
+    direct_chats = []
+    for other in colleagues:
+        if other.id == me.id:
+            continue
+        dm_q = select(TeamChatMessage).where(
+            or_(
+                (TeamChatMessage.sender_id == me.id) & (TeamChatMessage.recipient_id == other.id),
+                (TeamChatMessage.sender_id == other.id) & (TeamChatMessage.recipient_id == me.id),
+            )
+        )
+        if tid and tid > 0:
+            dm_q = dm_q.where(TeamChatMessage.tenant_id == tid)
+        last_dm = session.exec(dm_q.order_by(TeamChatMessage.created_at.desc()).limit(1)).first()
+        
+        unread_q = select(func.count(TeamChatMessage.id)).where(
+            TeamChatMessage.sender_id == other.id,
+            TeamChatMessage.recipient_id == me.id,
+            TeamChatMessage.read_at == None,
+        )
+        if tid and tid > 0:
+            unread_q = unread_q.where(TeamChatMessage.tenant_id == tid)
+        unread_cnt = session.exec(unread_q).one() or 0
+        
+        direct_chats.append({
+            "id": f"dm_{other.id}",
+            "type": "direct",
+            "user_id": other.id,
+            "user": {
+                "id": other.id,
+                "name": other.name or other.email.split("@")[0],
+                "email": other.email,
+                "role": other.role or "Member",
+            },
+            "name": other.name or other.email.split("@")[0],
+            "email": other.email,
+            "role": other.role or "Member",
+            "last_message": {
+                "content": last_dm.content if last_dm else None,
+                "created_at": last_dm.created_at.isoformat() if last_dm else None,
+                "is_from_me": last_dm.sender_id == me.id if last_dm else False,
+                "has_attachment": bool(last_dm and last_dm.attachment_url),
+            } if last_dm else None,
+            "unread_count": int(unread_cnt),
+        })
+        
+    direct_chats.sort(key=lambda c: c["last_message"]["created_at"] if c.get("last_message") and c["last_message"].get("created_at") else "", reverse=True)
+    total_unread = sum(c["unread_count"] for c in direct_chats)
+    return {"channels": channels, "direct_chats": direct_chats, "conversations": direct_chats, "total_unread": total_unread}
+
+@app.get("/team-chat/unread-count")
+def get_team_chat_unread_count(session: Session = Depends(get_session)):
+    me = _current_user(session)
+    if not me:
+        return {"unread_count": 0}
+    tid = current_tenant_id.get() or me.tenant_id
+    unread_q = select(func.count(TeamChatMessage.id)).where(
+        TeamChatMessage.recipient_id == me.id,
+        TeamChatMessage.read_at == None,
+    )
+    if tid and tid > 0:
+        unread_q = unread_q.where(TeamChatMessage.tenant_id == tid)
+    unread_cnt = session.exec(unread_q).one() or 0
+    return {"unread_count": int(unread_cnt)}
+
+@app.get("/team-chat/messages")
+def get_team_chat_messages(
+    recipient_id: Optional[int] = None,
+    other_user_id: Optional[int] = None,
+    channel_name: Optional[str] = None,
+    limit: int = 100,
+    session: Session = Depends(get_session)
+):
+    me = _current_user(session)
+    if not me:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    tid = current_tenant_id.get() or me.tenant_id
+    
+    target_user_id = None
+    if other_user_id is not None:
+        try:
+            target_user_id = int(other_user_id)
+        except (ValueError, TypeError):
+            pass
+    elif recipient_id is not None:
+        try:
+            target_user_id = int(recipient_id)
+        except (ValueError, TypeError):
+            pass
+    
+    q = select(TeamChatMessage)
+    if tid and tid > 0:
+        q = q.where(TeamChatMessage.tenant_id == tid)
+        
+    if target_user_id:
+        q = q.where(
+            or_(
+                (TeamChatMessage.sender_id == me.id) & (TeamChatMessage.recipient_id == target_user_id),
+                (TeamChatMessage.sender_id == target_user_id) & (TeamChatMessage.recipient_id == me.id),
+            )
+        )
+        incoming_unread = session.exec(select(TeamChatMessage).where(
+            TeamChatMessage.sender_id == target_user_id,
+            TeamChatMessage.recipient_id == me.id,
+            TeamChatMessage.read_at == None
+        )).all()
+        now_dt = datetime.utcnow()
+        for msg in incoming_unread:
+            msg.read_at = now_dt
+        if incoming_unread:
+            session.commit()
+    else:
+        chan = channel_name or "general"
+        q = q.where(
+            TeamChatMessage.recipient_id == None,
+            or_(
+                TeamChatMessage.channel_name == chan,
+                (TeamChatMessage.channel_name == "team-general") if chan == "general" else False,
+            )
+        )
+        
+    messages = session.exec(q.order_by(TeamChatMessage.created_at.asc()).limit(limit)).all()
+    user_ids = {m.sender_id for m in messages}
+    users = session.exec(select(User).where(User.id.in_(user_ids))).all() if user_ids else []
+    umap = {u.id: u for u in users}
+    
+    return {
+        "messages": [
+            {
+                "id": m.id,
+                "sender_id": m.sender_id,
+                "sender_name": umap.get(m.sender_id).name if umap.get(m.sender_id) else "Colleague",
+                "sender_email": umap.get(m.sender_id).email if umap.get(m.sender_id) else "",
+                "sender_role": umap.get(m.sender_id).role if umap.get(m.sender_id) else "Member",
+                "recipient_id": m.recipient_id,
+                "channel_name": m.channel_name,
+                "content": m.content,
+                "attachment_url": m.attachment_url,
+                "attachment_name": m.attachment_name,
+                "attachment_type": m.attachment_type,
+                "created_at": m.created_at.isoformat() if hasattr(m.created_at, "isoformat") else str(m.created_at),
+                "is_from_me": m.sender_id == me.id,
+                "read_at": m.read_at.isoformat() if m.read_at else None,
+            }
+            for m in messages
+        ]
+    }
+
+@app.post("/team-chat/messages")
+def send_team_chat_message(
+    body: SendChatMessageRequest,
+    session: Session = Depends(get_session)
+):
+    me = _current_user(session)
+    if not me:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    tid = current_tenant_id.get() or me.tenant_id
+    if not tid or tid < 1:
+        tid = 1
+        
+    recip_id = None
+    if body.recipient_id:
+        try:
+            recip_id = int(body.recipient_id)
+        except (ValueError, TypeError):
+            pass
+            
+    msg = TeamChatMessage(
+        tenant_id=tid,
+        sender_id=me.id,
+        recipient_id=recip_id,
+        channel_name=None if recip_id else (body.channel_name or "general"),
+        content=body.content.strip() or ("Sent an attachment" if body.attachment_url else ""),
+        attachment_url=body.attachment_url,
+        attachment_name=body.attachment_name,
+        attachment_type=body.attachment_type,
+        created_at=datetime.utcnow()
+    )
+    session.add(msg)
+    session.commit()
+    session.refresh(msg)
+    
+    return {
+        "success": True,
+        "message": {
+            "id": msg.id,
+            "sender_id": msg.sender_id,
+            "sender_name": me.name or me.email,
+            "recipient_id": msg.recipient_id,
+            "channel_name": msg.channel_name,
+            "content": msg.content,
+            "attachment_url": msg.attachment_url,
+            "attachment_name": msg.attachment_name,
+            "attachment_type": msg.attachment_type,
+            "created_at": msg.created_at.isoformat(),
+            "is_from_me": True,
+        }
+    }
+
+@app.post("/team-chat/upload")
+async def upload_team_chat_file(file: UploadFile = File(...)):
+    import os, uuid
+    upload_dir = os.path.join("static", "uploads", "chat")
+    os.makedirs(upload_dir, exist_ok=True)
+    ext = os.path.splitext(file.filename)[1].lower() if file.filename else ""
+    unique_name = f"{uuid.uuid4().hex[:12]}_{file.filename}"
+    file_path = os.path.join(upload_dir, unique_name)
+    with open(file_path, "wb") as f:
+        content = await file.read()
+        f.write(content)
+        
+    file_url = f"/static/uploads/chat/{unique_name}"
+    is_image = ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]
+    return {
+        "url": file_url,
+        "filename": file.filename,
+        "type": "image" if is_image else "file",
+        "size": len(content),
+    }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CALENDAR AVAILABILITY & BLOCKED DATES
+# ─────────────────────────────────────────────────────────────────────────────
+class BlockSlotRequest(BaseModel):
+    date: str
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    reason: Optional[str] = "Blocked"
+    all_day: bool = True
+
+class SetAvailabilityRequest(BaseModel):
+    working_days: List[int] = [1, 2, 3, 4, 5]
+    start_time: str = "09:00"
+    end_time: str = "18:00"
+    slot_duration_minutes: int = 30
+
+@app.get("/calendar/availability")
+def get_calendar_availability(session: Session = Depends(get_session)):
+    tid = current_tenant_id.get() or 1
+    from modules import tenant_settings
+    default_avail = {
+        "working_days": [1, 2, 3, 4, 5],
+        "start_time": "09:00",
+        "end_time": "18:00",
+        "slot_duration_minutes": 30
+    }
+    avail = tenant_settings.get_setting(tid, "calendar_availability", default_avail) or default_avail
+    blocked = tenant_settings.get_setting(tid, "calendar_blocked_slots", []) or []
+    return {"availability": avail, "blocked_slots": blocked}
+
+@app.post("/calendar/availability")
+def update_calendar_availability(body: SetAvailabilityRequest, session: Session = Depends(get_session)):
+    _require_admin_user(session, "Only admins can change calendar availability")
+    tid = current_tenant_id.get() or 1
+    from modules import tenant_settings
+    tenant_settings.set_setting(tid, "calendar_availability", body.model_dump())
+    return {"success": True, "availability": body.model_dump()}
+
+@app.get("/calendar/blocked-slots")
+def get_calendar_blocked_slots(session: Session = Depends(get_session)):
+    tid = current_tenant_id.get() or 1
+    from modules import tenant_settings
+    blocked = tenant_settings.get_setting(tid, "calendar_blocked_slots", []) or []
+    return {"blocked_slots": blocked}
+
+@app.post("/calendar/blocked-slots")
+def add_calendar_blocked_slot(body: BlockSlotRequest, session: Session = Depends(get_session)):
+    me = _require_admin_user(session, "Only admins can block calendar dates/times")
+    tid = current_tenant_id.get() or 1
+    from modules import tenant_settings
+    blocked = tenant_settings.get_setting(tid, "calendar_blocked_slots", []) or []
+    slot = {
+        "id": uuid.uuid4().hex[:10],
+        "date": body.date,
+        "start_time": body.start_time or "00:00",
+        "end_time": body.end_time or "23:59",
+        "reason": body.reason or "Blocked",
+        "all_day": body.all_day,
+        "created_by": me.name or me.email,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    blocked.append(slot)
+    tenant_settings.set_setting(tid, "calendar_blocked_slots", blocked)
+    return {"success": True, "slot": slot, "blocked_slots": blocked}
+
+@app.delete("/calendar/blocked-slots/{slot_id}")
+def delete_calendar_blocked_slot(slot_id: str, session: Session = Depends(get_session)):
+    _require_admin_user(session, "Only admins can remove blocked slots")
+    tid = current_tenant_id.get() or 1
+    from modules import tenant_settings
+    blocked = tenant_settings.get_setting(tid, "calendar_blocked_slots", []) or []
+    blocked = [s for s in blocked if s.get("id") != slot_id]
+    tenant_settings.set_setting(tid, "calendar_blocked_slots", blocked)
+    return {"success": True, "blocked_slots": blocked}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LEAD SOURCES ADMIN REASSIGNMENT & RENAMING
+# ─────────────────────────────────────────────────────────────────────────────
+class ReassignLeadsBody(BaseModel):
+    from_source: str
+    to_source: str
+    to_source_id: Optional[int] = None
+
+@app.post("/lead-sources/reassign-leads")
+def reassign_lead_source(body: ReassignLeadsBody, session: Session = Depends(get_session)):
+    _require_admin_user(session, "Only admins can reassign lead sources")
+    tid = current_tenant_id.get() or 1
+    q = select(Lead).where(Lead.tenant_id == tid)
+    all_leads = session.exec(q).all()
+    
+    from_s = body.from_source.strip().lower()
+    to_s = body.to_source.strip()
+    
+    from addons.business_suite.scm2 import LeadSource, _ensure_default_sources
+    sources = _ensure_default_sources(session)
+    target_src = next((s for s in sources if s.name.lower() == to_s.lower()), None)
+    if not target_src and body.to_source_id:
+        target_src = session.get(LeadSource, body.to_source_id)
+    if not target_src:
+        target_src = LeadSource(name=to_s, channel="Direct", tenant_id=tid)
+        session.add(target_src)
+        session.commit()
+        session.refresh(target_src)
+        
+    count = 0
+    for l in all_leads:
+        match_unassigned = from_s in ("unassigned", "none", "null", "") and (not l.source or l.source.strip().lower() in ("unassigned", "none", "null", ""))
+        match_name = (l.source or "").strip().lower() == from_s
+        if match_unassigned or match_name:
+            l.source = target_src.name
+            l.lead_source_id = target_src.id
+            session.add(l)
+            count += 1
+            
+    session.commit()
+    return {"success": True, "updated_count": count, "target_source": target_src.name}
+
+@app.post("/lead-sources/auto-reattribute-unassigned")
+def auto_reattribute_unassigned_leads(session: Session = Depends(get_session)):
+    _require_admin_user(session, "Only admins can reattribute lead sources")
+    tid = current_tenant_id.get() or 1
+    from addons.business_suite.scm2 import LeadSource, _ensure_default_sources
+    sources = _ensure_default_sources(session)
+    radar_src = next((s for s in sources if s.name.lower() == "radar scan"), None)
+    import_src = next((s for s in sources if s.name.lower() == "import"), None)
+    
+    all_leads = session.exec(select(Lead).where(Lead.tenant_id == tid)).all()
+    radar_cnt = 0
+    import_cnt = 0
+    for l in all_leads:
+        is_unassigned = not l.source or l.source.strip().lower() in ("unassigned", "none", "null", "")
+        if is_unassigned or "radar" in (l.source or "").lower() or "import" in (l.source or "").lower() or "csv" in (l.source or "").lower():
+            if "radar" in (l.source or "").lower():
+                is_radar = True
+            elif "import" in (l.source or "").lower() or "csv" in (l.source or "").lower():
+                is_radar = False
+            else:
+                is_radar = bool(l.ai_analysis_results or l.swot_analysis or (l.website and not l.phone))
+                
+            tgt = radar_src if is_radar else import_src
+            if tgt:
+                l.source = tgt.name
+                l.lead_source_id = tgt.id
+                session.add(l)
+                if is_radar:
+                    radar_cnt += 1
+                else:
+                    import_cnt += 1
+    session.commit()
+    return {"success": True, "radar_leads": radar_cnt, "import_leads": import_cnt, "total_updated": radar_cnt + import_cnt}

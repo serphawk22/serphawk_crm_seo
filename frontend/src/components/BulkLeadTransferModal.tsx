@@ -58,6 +58,31 @@ export default function BulkLeadTransferModal({
   const [busy, setBusy] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [internalEmployees, setInternalEmployees] = useState<{ id: number; name: string }[]>([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (employees && employees.length > 0) {
+        setInternalEmployees(employees);
+      } else {
+        const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+        fetch(`${API_BASE_URL}/employees/workload`, {
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          }
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (data?.employees?.length) {
+              setInternalEmployees(data.employees);
+            }
+          })
+          .catch(() => {});
+      }
+    }
+  }, [isOpen, employees]);
+
+  const activeEmployeeList = internalEmployees.length > 0 ? internalEmployees : employees;
 
   // Initialize source if role changes or modal opens
   useEffect(() => {
@@ -296,7 +321,7 @@ export default function BulkLeadTransferModal({
                       className="w-full text-xs font-medium bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-xs"
                     >
                       <option value="0">{language === "es" ? "No asignados (Sin vendedor)" : "Unassigned Leads"}</option>
-                      {employees.map((emp) => (
+                      {activeEmployeeList.map((emp) => (
                         <option key={emp.id} value={emp.id}>
                           {emp.name}
                         </option>
@@ -506,7 +531,7 @@ export default function BulkLeadTransferModal({
                   className="w-full text-xs font-semibold bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-xs"
                 >
                   <option value="">{language === "es" ? "Selecciona un vendedor..." : "Select destination salesperson..."}</option>
-                  {employees
+                  {activeEmployeeList
                     .filter((e) => String(e.id) !== String(sourceId))
                     .map((emp) => (
                       <option key={emp.id} value={emp.id}>

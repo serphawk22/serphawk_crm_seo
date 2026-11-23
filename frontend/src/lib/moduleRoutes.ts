@@ -10,7 +10,7 @@ const PAGE_MODULES: ReadonlyArray<readonly [string, string]> = [
   ["/meetings", "meetings"], ["/calls", "calls"], ["/teams", "teams"], ["/admin/leaderboard", "leaderboard"],
   ["/admin/telemetry", "demo_accounts"],
   // communication / AI agents
-  ["/inbox", "inbox"], ["/followups", "followups"], ["/follow-ups", "followup_board"],
+  ["/inbox", "inbox"], ["/followups", "followups"], ["/follow-ups", "followup_board"], ["/messages", "messages"],
   ["/email-agent", "email_agent"], ["/voice-agent", "voice_agent"],
   // sales operations / support / system
   ["/inventory", "inventory"], ["/orders", "inventory"], ["/products", "products"],
@@ -41,7 +41,7 @@ export function moduleForPath(pathname: string | null | undefined): string | nul
 const LABELS: Record<string, string> = {
   contacts: "Contacts", clients: "Clients", work_queue: "My Work Queue", projects: "Projects", task_sheet: "Task Sheet",
   reports: "Reports", meetings: "Meetings", calls: "Calls", teams: "Team Directory", leaderboard: "Leaderboard",
-  demo_accounts: "Demo account data", inbox: "Inbox", followups: "Follow-ups", followup_board: "Follow-up board",
+  demo_accounts: "Demo account data", inbox: "Inbox", messages: "Messages", followups: "Follow-ups", followup_board: "Follow-up board",
   email_agent: "Email Agent", voice_agent: "AI Voice Caller", inventory: "Inventory & orders", products: "Products catalog",
   billing: "Quotes & billing", invoices: "Invoices", cases: "Cases", support_sh: "Support @SH", proposals: "Proposals", marketplace: "Marketplace", support: "Solutions",
   import_data: "Import data", api_intelligence: "API Intelligence", command_center: "Dashboard B2B", dashboard_b2c: "Dashboard B2C", dashboard: "Command Center", finance_suite: "Revenue & business costs",

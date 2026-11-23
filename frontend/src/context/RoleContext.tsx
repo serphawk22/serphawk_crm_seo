@@ -174,7 +174,8 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       if (!isAuthenticated && signingOut.current) {
         if (pathname === '/login') signingOut.current = false;
       } else if (!isAuthenticated && pathname === '/') {
-        window.location.replace('/showcase');
+        if (company) router.replace('/login');
+        else window.location.replace('/showcase');
       } else if (!isAuthenticated && !isPublicPage(pathname)) {
         router.replace('/login');
       } else if (isAuthenticated && (pathname === '/login' || pathname === '/signup' || pathname === '/register')) {
