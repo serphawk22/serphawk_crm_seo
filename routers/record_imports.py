@@ -11,6 +11,7 @@ from sqlalchemy import func
 
 from database import ClientProfile, Lead, Tenant, User
 from main import get_session
+from modules import auto_calling
 from modules.tenant_scope import current_tenant_id
 
 router = APIRouter(tags=["import"])
@@ -37,6 +38,7 @@ async def import_records(
     from main import _hash_password, _require_roles
     actor = _require_roles(session, ["Admin", "SalesManager", "Employee", "Sales", "Demo"])
     tid = current_tenant_id.get()
+    auto_calling.mark_bulk_import(session)
     clients = request.url.path == "/import/clients/csv"
     model = ClientProfile if clients else Lead
     content = await file.read(10 * 1024 * 1024 + 1)

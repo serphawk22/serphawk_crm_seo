@@ -14,7 +14,8 @@ class FeatureUnit(unittest.TestCase):
         f = features.feature_for_path
         self.assertEqual(f("/inbox/messages"), "inbox")
         self.assertEqual(f("/inbox"), "inbox")
-        self.assertEqual(f("/voice-agent/pitches"), "voice_agent")
+        self.assertEqual(f("/voice-agent/pitches"), "calls", "AI calling APIs belong to the Calls module")
+        self.assertEqual(f("/calls"), "calls")
         self.assertIsNone(f("/voice-agent/twilio/voice"), "Twilio webhooks must stay reachable")
         self.assertIsNone(f("/inboxes"), "prefix match must respect segment boundaries")
         self.assertEqual(f("/leads"), "leads")
@@ -101,6 +102,32 @@ class FeatureApi(TenantIsolationBase):
     def test_unknown_feature_rejected(self):
         r = self.client.put("/superadmin/tenants/2/features", json={"features": {"teleport": True}}, headers=self.sa())
         self.assertEqual(r.status_code, 422)
+        r = self.client.put("/superadmin/tenants/2/features", json={"features": {"voice_agent": True}}, headers=self.sa())
+        self.assertEqual(r.status_code, 422)
+
+    def test_legacy_voice_entitlement_is_folded_into_calls(self):
+        with Session(S.ENGINE) as s:
+            s.add(TenantFeature(tenant_id=2, feature_key="voice_agent", enabled=True))
+            calls = s.exec(select(TenantFeature).where(TenantFeature.tenant_id == 2,
+                                                        TenantFeature.feature_key == "calls")
+                           .execution_options(skip_tenant=True)).first()
+            if calls:
+                calls.enabled = False
+                s.add(calls)
+            else:
+                s.add(TenantFeature(tenant_id=2, feature_key="calls", enabled=False))
+            s.commit()
+        features.invalidate(2)
+        r = self.client.get("/me/features", headers=self.as_tenant(2))
+        self.assertEqual(r.status_code, 200, r.text)
+        body = r.json()
+        self.assertTrue(body["features"]["calls"], "legacy AI callers must keep the merged module")
+        self.assertNotIn("voice_agent", body["features"])
+        with Session(S.ENGINE) as s:
+            rows = {row.feature_key: bool(row.enabled) for row in s.exec(
+                select(TenantFeature).where(TenantFeature.tenant_id == 2).execution_options(skip_tenant=True)).all()}
+        self.assertNotIn("voice_agent", rows)
+        self.assertTrue(rows["calls"])
 
     def test_only_superadmin_manages_features(self):
         r = self.client.put("/superadmin/tenants/3/features", json={"features": {"inbox": False}},
@@ -108,6 +135,29 @@ class FeatureApi(TenantIsolationBase):
         self.assertEqual(r.status_code, 403)
         self.assertEqual(self.client.get("/superadmin/tenants/3/config", headers=self.as_tenant(2)).status_code, 403)
         self.assertEqual(self.client.get("/superadmin/features/catalog", headers=self.as_tenant(2)).status_code, 403)
+
+    def test_admissions_access_is_operator_managed_and_role_specific(self):
+        with Session(S.ENGINE) as session:
+            features.set_features(session, 2, {"institute": True})
+            admissions = User(tenant_id=2, role="Admissions", name="Admissions", email="admissions@t2.test", password="x")
+            session.add(admissions)
+            session.commit()
+            headers = {"X-User-ID": str(admissions.id)}
+        path = "/superadmin/tenants/2/admissions-access"
+        self.assertEqual(self.client.get("/admissions/students", headers=headers).status_code, 200)
+        self.assertEqual(self.client.put(path, json={"institute": False}, headers=self.as_tenant(2)).status_code, 403)
+        self.assertEqual(self.client.put("/tenant/settings", json={"settings": {"admissions_module_access": {}}},
+                                        headers=self.as_tenant(2)).status_code, 403)
+        response = self.client.put(path, json={"institute": False}, headers=self.sa())
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertFalse(self.client.get("/me/features", headers=headers).json()["features"]["institute"])
+        self.assertEqual(self.client.get("/admissions/students", headers=headers).status_code, 403)
+        self.assertEqual(self.client.get("/admissions/students", headers=self.as_tenant(2)).status_code, 200)
+        self.assertEqual(self.client.put(path, json={}, headers=self.sa()).status_code, 200)
+        self.assertEqual(self.client.get("/admissions/students", headers=headers).status_code, 200)
+        with Session(S.ENGINE) as session:
+            features.set_features(session, 2, {"institute": False})
+        self.assertFalse(self.client.put(path, json={"institute": True}, headers=self.sa()).json()["access"]["institute"])
 
     def test_tenant_admin_edits_own_settings_only(self):
         r = self.client.put("/tenant/settings", json={"settings": {"brand_name": "Alpha Co", "locale": "es"}},
@@ -139,7 +189,8 @@ class FeatureApi(TenantIsolationBase):
         self.assertNotIn("generated_admin_password", out)
         self.assertTrue(out["features"]["inventory"])
         self.assertFalse(out["features"]["marketplace"])
-        self.assertFalse(out["features"]["voice_agent"])
+        self.assertTrue(out["features"]["calls"])
+        self.assertNotIn("voice_agent", out["features"])
         self.assertEqual(out["settings"]["brand_name"], "Acme Logistics")
         self.assertEqual(out["settings"]["default_currency"], "INR")
         login = self.client.post("/login", json={"email": "boss@acme.test", "password": "s3cret-pw"})

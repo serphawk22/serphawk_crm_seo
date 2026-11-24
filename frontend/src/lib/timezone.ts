@@ -8,10 +8,20 @@ export const FALLBACK_ZONES = [
 
 export function detectTimeZone(): string {
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz && isValidTimeZone(tz)) return tz;
+    return "Asia/Kolkata";
   } catch {
-    return "UTC";
+    return "Asia/Kolkata";
   }
+}
+
+/** Parses an ISO date string, ensuring naive strings from UTC backends are properly parsed with Z. */
+export function parseUtcIso(str?: string | null): Date | null {
+  if (!str) return null;
+  const s = str.includes("Z") || str.includes("+") ? str : `${str}Z`;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? new Date(str) : d;
 }
 
 let _zones: string[] | null = null;
@@ -62,9 +72,10 @@ export function zonedWallToUtc(local: string, tz: string): Date | null {
 /** Format an instant in a zone, e.g. "Mon, Oct 12, 7:30 PM". */
 export function formatInZone(d: Date | string | number, tz: string, opts?: Intl.DateTimeFormatOptions): string {
   try {
+    const parsed = typeof d === 'string' ? (parseUtcIso(d) || new Date(d)) : new Date(d);
     return new Intl.DateTimeFormat("en-US", {
       timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", ...opts,
-    }).format(new Date(d));
+    }).format(parsed);
   } catch {
     return String(d);
   }

@@ -124,9 +124,504 @@ def log_activity(session: Session, fu: FollowUp, action: str, details: str = "",
 
 
 def sync_call_followup(session: Session, fu: FollowUp, deleted=False):
-    if fu.conversation_id:
+    src = fu.source_ref or ""
+    if fu.conversation_id or src.startswith("ai_call:"):
         from modules.lead_calls import sync_task_state
         sync_task_state(session, fu, deleted)
+    if src.startswith("call_log:"):
+        try:
+            call_log_id = int(src.split(":", 1)[1])
+        except ValueError:
+            call_log_id = None
+        if call_log_id:
+            from database import CallLog
+            cl = session.get(CallLog, call_log_id)
+            if cl and (fu.tenant_id is None or cl.tenant_id == fu.tenant_id):
+                needed = not deleted and fu.status in OPEN_STATES
+                cl.followup_needed = needed
+                cl.followup_date = as_utc(fu.due_at).date().isoformat() if (needed and fu.due_at) else None
+                session.add(cl)
+    elif src.startswith("call_question:"):
+        try:
+            q_id = int(src.split(":", 1)[1])
+        except ValueError:
+            q_id = None
+        if q_id:
+            from database import CallQuestion
+            q = session.get(CallQuestion, q_id)
+            if q and (fu.tenant_id is None or q.tenant_id == fu.tenant_id):
+                if not deleted and fu.status == DONE:
+                    q.status = "resolved"
+                    q.resolved_at = q.resolved_at or utcnow()
+                elif not deleted and fu.status in OPEN_STATES:
+                    if q.status == "resolved":
+                        q.status = "open"
+                        q.resolved_at = None
+                    if fu.due_at:
+                        q.follow_up_date = as_utc(fu.due_at).date().isoformat()
+                session.add(q)
+    elif src.startswith("scheduled_call:"):
+        try:
+            sc_id = int(src.split(":", 1)[1])
+        except ValueError:
+            sc_id = None
+        if sc_id:
+            from database import ScheduledCall
+            sc = session.get(ScheduledCall, sc_id)
+            if sc and (fu.tenant_id is None or sc.tenant_id == fu.tenant_id):
+                if deleted:
+                    sc.status = "cancelled"
+                elif fu.status == DONE:
+                    sc.status = "completed"
+                elif fu.status in OPEN_STATES:
+                    if sc.status in ("completed", "cancelled"):
+                        sc.status = "scheduled"
+                    if fu.due_at:
+                        sc.scheduled_at = as_utc(fu.due_at)
+                session.add(sc)
+    elif src.startswith("lead_followup:") and fu.lead_id:
+        lead = session.get(Lead, fu.lead_id)
+        if lead and (fu.tenant_id is None or lead.tenant_id == fu.tenant_id):
+            needed = not deleted and fu.status in OPEN_STATES
+            lead.follow_up_needed = needed
+            lead.next_follow_up_at = as_utc(fu.due_at) if (needed and fu.due_at) else None
+            lead.follow_up_reason = (fu.ai_reason or fu.notes) if needed else None
+            session.add(lead)
+
+
+def parse_due_datetime(value, tenant_id: Optional[int] = None) -> Optional[datetime]:
+    """Parse a date/datetime/ISO string into aware UTC using the tenant's CRM timezone for naive values."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            return value.astimezone(timezone.utc)
+        from modules import followup_ai
+        tz = followup_ai._crm_tz(tenant_id)[0]
+        return value.replace(tzinfo=tz).astimezone(timezone.utc)
+    raw = str(value).strip()
+    if not raw:
+        return None
+    from modules import followup_ai
+    tz = followup_ai._crm_tz(tenant_id)[0]
+    try:
+        if len(raw) == 10:
+            d = date.fromisoformat(raw)
+            return datetime(d.year, d.month, d.day, 10, 0, tzinfo=tz).astimezone(timezone.utc)
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=tz)
+    return dt.astimezone(timezone.utc)
+
+
+def _find_by_keys(session: Session, tenant_id: Optional[int], keys: list) -> Optional[FollowUp]:
+    valid_keys = [k for k in keys if k]
+    if not valid_keys:
+        return None
+    stmt = select(FollowUp).where(FollowUp.idempotency_key.in_(valid_keys)).execution_options(skip_tenant=True)
+    stmt = stmt.where(FollowUp.tenant_id == tenant_id) if tenant_id is not None else stmt.where(FollowUp.tenant_id.is_(None))
+    fu = session.exec(stmt.order_by(FollowUp.id.desc())).first()
+    if fu:
+        return fu
+    stmt2 = select(FollowUp).where(FollowUp.source_ref.in_(valid_keys)).execution_options(skip_tenant=True)
+    stmt2 = stmt2.where(FollowUp.tenant_id == tenant_id) if tenant_id is not None else stmt2.where(FollowUp.tenant_id.is_(None))
+    return session.exec(stmt2.order_by(FollowUp.id.desc())).first()
+
+
+def upsert_source_followup(
+    session: Session,
+    *,
+    tenant_id: Optional[int],
+    idempotency_key: str,
+    source: str = "manual",
+    source_ref: Optional[str] = None,
+    fallback_keys: tuple = (),
+    lead_id: Optional[int] = None,
+    client_id: Optional[int] = None,
+    contact_id: Optional[int] = None,
+    contact_name: Optional[str] = None,
+    contact_email: Optional[str] = None,
+    company_name: Optional[str] = None,
+    title: Optional[str] = None,
+    notes: Optional[str] = None,
+    ai_reason: Optional[str] = None,
+    channel: str = "call",
+    priority: str = "medium",
+    follow_up_type: Optional[str] = None,
+    due_at: Optional[datetime] = None,
+    assigned_to: Optional[int] = None,
+    created_by: Optional[int] = None,
+    conversation_id: Optional[int] = None,
+    ai_detected: bool = False,
+    schedule_status: str = "confirmed",
+    timezone_name: Optional[str] = None,
+    completed: bool = False,
+    completed_by: Optional[int] = None,
+    deleted: bool = False,
+) -> tuple:
+    """Create, update, complete, or delete a single centralized FollowUp row for a given source key.
+
+    Returns ``(follow_up_or_none, created_bool)``. Never creates duplicates for the same key.
+    """
+    keys = [idempotency_key, source_ref, *fallback_keys]
+    existing = _find_by_keys(session, tenant_id, keys)
+    if deleted:
+        if existing:
+            session.delete(existing)
+        return None, False
+    if completed:
+        if existing and existing.status in OPEN_STATES:
+            now = utcnow()
+            existing.status = DONE
+            existing.completed_at = now
+            existing.completed_by = completed_by
+            existing.updated_at = now
+            session.add(existing)
+            log_activity(session, existing, "Follow-up completed", "", completed_by)
+        return existing, False
+
+    from modules import followup_ai
+    tz_obj, crm_tz_name = followup_ai._crm_tz(tenant_id)
+    tz_label = timezone_name or crm_tz_name
+    due = as_utc(due_at) if due_at else None
+    if due is None:
+        local_tomorrow = (utcnow().astimezone(tz_obj) + timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+        due = local_tomorrow.astimezone(timezone.utc)
+
+    info = record_info(session, lead_id if not client_id else None, client_id) if (lead_id or client_id) else {}
+    resolved_tenant = info.get("tenant_id") if info.get("tenant_id") is not None else tenant_id
+    resolved_assignee = assigned_to or info.get("owner_id") or created_by
+
+    if existing:
+        if title and title.strip():
+            existing.title = title.strip()[:500]
+        if notes is not None:
+            existing.notes = (notes or "").strip() or None
+        if ai_reason is not None:
+            existing.ai_reason = (ai_reason or "").strip() or None
+        if channel:
+            existing.channel = channel.strip().lower()[:30]
+        if priority:
+            existing.priority = priority.strip().lower()[:20]
+        if follow_up_type:
+            existing.follow_up_type = follow_up_type
+        if lead_id and not client_id:
+            existing.lead_id = lead_id
+            existing.client_id = None
+        elif client_id:
+            existing.client_id = client_id
+            existing.lead_id = None
+        if contact_id:
+            existing.contact_id = contact_id
+        if resolved_assignee:
+            existing.assigned_to = resolved_assignee
+        if conversation_id and not existing.conversation_id:
+            existing.conversation_id = conversation_id
+        if tz_label and not existing.timezone:
+            existing.timezone = tz_label
+        if existing.due_at is None or as_utc(existing.due_at) != due:
+            existing.due_at = due
+            existing.remind_at = due
+            existing.reminder_sent_at = None
+            existing.overdue_notified_at = None
+            existing.schedule_status = schedule_status
+        if existing.status not in OPEN_STATES:
+            existing.status = OPEN
+            existing.completed_at = None
+            existing.completed_by = None
+        existing.updated_at = utcnow()
+        session.add(existing)
+        return existing, False
+
+    label = company_name or info.get("label") or contact_name
+    fu_title = (title or "").strip()[:500] or f"Follow up with {label or 'contact'}"
+    fu = FollowUp(
+        tenant_id=resolved_tenant,
+        lead_id=lead_id if not client_id else None,
+        client_id=client_id,
+        contact_id=contact_id,
+        contact_name=(contact_name or "").strip() or info.get("contact_name"),
+        contact_email=(contact_email or "").strip() or info.get("contact_email"),
+        company_name=(company_name or "").strip() or info.get("label"),
+        title=fu_title,
+        notes=(notes or "").strip() or None,
+        ai_reason=(ai_reason or "").strip() or None,
+        channel=(channel or "call").strip().lower()[:30],
+        priority=(priority or "medium").strip().lower()[:20],
+        follow_up_type=follow_up_type,
+        status=OPEN,
+        due_at=due,
+        remind_at=due,
+        timezone=tz_label,
+        source=source,
+        source_ref=source_ref or idempotency_key,
+        idempotency_key=idempotency_key,
+        conversation_id=conversation_id,
+        ai_detected=ai_detected,
+        schedule_status=schedule_status,
+        assigned_to=resolved_assignee,
+        created_by=created_by,
+    )
+    try:
+        with session.begin_nested():
+            session.add(fu)
+            session.flush()
+            log_activity(session, fu, "Follow-up scheduled", f"Due {due.date().isoformat()} via {fu.channel}", created_by)
+            if fu.assigned_to and fu.assigned_to != created_by:
+                notify(session, fu.assigned_to, fu.tenant_id, f"New follow-up assigned: {fu.title}",
+                       fu.notes or f"Scheduled for {due.date().isoformat()}.", record_path(fu.lead_id, fu.client_id))
+        return fu, True
+    except IntegrityError:
+        existing = _find_by_keys(session, resolved_tenant, keys)
+        return existing, False
+
+
+def is_meeting_intent(*texts: Optional[str], outcome: Optional[str] = None) -> bool:
+    """Return True when a call outcome or summary/notes indicate a scheduled meeting or demo."""
+    if (outcome or "").strip().lower() in ("meeting_booked", "meeting", "demo_booked"):
+        return True
+    combined = " ".join((t or "") for t in texts).lower()
+    if not combined.strip():
+        return False
+    return any(k in combined for k in ("meeting", "demo", "appointment", "zoom", "google meet", "walk-in", "webinar"))
+
+
+def sync_existing_call_followups(session: Session, tenant_id: Optional[int], lead_id: Optional[int] = None) -> int:
+    """Idempotently backfill existing AI calls, lead follow-up flags, manual call logs, and scheduled calls
+    into the centralized ``follow_ups`` table so pre-existing records appear in both the Lead Follow-ups tab
+    and the Global Follow-ups section without duplicates or reopening closed items."""
+    from modules import features, followup_ai, lead_calls
+    if tenant_id is not None and not (
+        features.is_enabled(tenant_id, "followups") or features.is_enabled(tenant_id, "followup_board")
+    ):
+        return 0
+
+    from database import AICall, CallLog, ScheduledCall
+
+    changed = 0
+    tz_obj, crm_tz_name = followup_ai._crm_tz(tenant_id)
+
+    # 1. AI Voice Calls with follow-up intent/date
+    ai_stmt = select(AICall).where(or_(
+        AICall.follow_up_needed.is_(True),
+        AICall.followup_needed.is_(True),
+        AICall.follow_up_at.is_not(None),
+    )).execution_options(skip_tenant=True)
+    if tenant_id is not None:
+        ai_stmt = ai_stmt.where(AICall.tenant_id == tenant_id)
+    if lead_id is not None:
+        ai_stmt = ai_stmt.where(or_(
+            AICall.lead_id == lead_id,
+            and_(AICall.entity_type == "lead", AICall.entity_id == lead_id),
+        ))
+    ai_calls = session.exec(ai_stmt.order_by(AICall.id.desc()).limit(200)).all()
+    if ai_calls:
+        call_refs = [f"ai_call:{c.id}" for c in ai_calls]
+        convs_stmt = select(ConversationLog).where(ConversationLog.source_ref.in_(call_refs)).execution_options(skip_tenant=True)
+        if tenant_id is not None:
+            convs_stmt = convs_stmt.where(ConversationLog.tenant_id == tenant_id)
+        conv_by_ref = {cv.source_ref: cv for cv in session.exec(convs_stmt).all()}
+
+        for call in ai_calls:
+            tid = call.tenant_id if call.tenant_id is not None else tenant_id
+            conv = conv_by_ref.get(f"ai_call:{call.id}")
+            keys = [f"conv-{conv.id}" if conv else None, f"ai_call:{call.id}"]
+            existing = _find_by_keys(session, tid, keys)
+            if not existing and conv:
+                existing = session.exec(
+                    select(FollowUp).where(FollowUp.conversation_id == conv.id)
+                    .execution_options(skip_tenant=True)
+                ).first()
+            lead = lead_calls.resolve_lead(
+                session, lead_id=call.lead_id, entity_type=call.entity_type,
+                entity_id=call.entity_id, to_number=call.to_number, tenant_id=tid,
+            )
+            client_id = call.entity_id if call.entity_type == "client" else None
+            meeting = is_meeting_intent(
+                call.follow_up_reason, call.important_notes, call.next_steps, call.summary,
+                outcome=call.outcome,
+            )
+            if existing:
+                updated = False
+                if meeting and existing.source == "ai_auto" and existing.channel in ("call", "email", "other"):
+                    existing.channel = "meeting"
+                    existing.follow_up_type = "Meeting"
+                    updated = True
+                if lead and not existing.lead_id and not existing.client_id:
+                    existing.lead_id = lead.id
+                    updated = True
+                if updated:
+                    existing.updated_at = utcnow()
+                    session.add(existing)
+                    changed += 1
+                continue
+
+            due_utc = as_utc(call.follow_up_at) if call.follow_up_at else parse_due_datetime(call.followup_date, tenant_id=tid)
+            sched_status = "confirmed" if due_utc else "needs_confirmation"
+            if due_utc is None:
+                base_local = as_utc(call.ended_at or call.created_at or utcnow()).astimezone(tz_obj)
+                due_utc = (base_local.replace(hour=10, minute=0, second=0, microsecond=0) + timedelta(days=3)).astimezone(timezone.utc)
+            label = call.entity_name or (lead.company_name if lead else None) or call.to_number
+            reason_text = (call.follow_up_reason or call.important_notes or call.next_steps or "").strip()
+            channel = "meeting" if meeting else "call"
+            title = f"Meeting with {label}" if meeting else f"Follow-up call with {label}"
+            fu, created = upsert_source_followup(
+                session,
+                tenant_id=tid,
+                idempotency_key=f"conv-{conv.id}" if conv else f"ai_call:{call.id}",
+                source="ai_auto",
+                source_ref=f"ai_call:{call.id}",
+                fallback_keys=(f"ai_call:{call.id}",),
+                lead_id=lead.id if lead else None,
+                client_id=client_id,
+                contact_name=call.to_number if not (lead or client_id) else None,
+                title=title,
+                notes=reason_text or call.summary,
+                ai_reason=reason_text or None,
+                channel=channel,
+                priority="high" if meeting else "medium",
+                follow_up_type="Meeting" if meeting else "Call",
+                due_at=due_utc,
+                assigned_to=(lead.owner_id if lead else None) or call.started_by,
+                created_by=call.started_by,
+                conversation_id=conv.id if conv else None,
+                ai_detected=True,
+                schedule_status=sched_status,
+                timezone_name=crm_tz_name,
+            )
+            if created and fu:
+                changed += 1
+                if conv:
+                    conv.follow_up_date = fu.due_at
+                    session.add(conv)
+
+    # 2. Leads flagged follow_up_needed=True with next_follow_up_at that still have no open FollowUp
+    lead_stmt = select(Lead).where(
+        Lead.follow_up_needed.is_(True),
+        Lead.next_follow_up_at.is_not(None),
+    ).execution_options(skip_tenant=True)
+    if tenant_id is not None:
+        lead_stmt = lead_stmt.where(Lead.tenant_id == tenant_id)
+    if lead_id is not None:
+        lead_stmt = lead_stmt.where(Lead.id == lead_id)
+    flagged_leads = session.exec(lead_stmt.limit(200)).all()
+    for lead in flagged_leads:
+        tid = lead.tenant_id if lead.tenant_id is not None else tenant_id
+        has_open = session.exec(
+            select(FollowUp.id).where(
+                FollowUp.lead_id == lead.id,
+                FollowUp.status.in_(OPEN_STATES),
+            ).execution_options(skip_tenant=True).limit(1)
+        ).first()
+        if has_open:
+            continue
+        if _find_by_keys(session, tid, [f"lead_followup:{lead.id}"]):
+            continue
+        meeting = is_meeting_intent(lead.follow_up_reason)
+        channel = "meeting" if meeting else "call"
+        label = lead.company_name or f"Lead #{lead.id}"
+        fu, created = upsert_source_followup(
+            session,
+            tenant_id=tid,
+            idempotency_key=f"lead_followup:{lead.id}",
+            source="ai_auto",
+            source_ref=f"lead_followup:{lead.id}",
+            lead_id=lead.id,
+            title=f"Meeting with {label}" if meeting else f"Follow-up call with {label}",
+            notes=lead.follow_up_reason,
+            ai_reason=lead.follow_up_reason,
+            channel=channel,
+            priority="high" if meeting else "medium",
+            follow_up_type="Meeting" if meeting else "Call",
+            due_at=as_utc(lead.next_follow_up_at),
+            assigned_to=lead.owner_id,
+            ai_detected=True,
+            schedule_status="confirmed",
+            timezone_name=crm_tz_name,
+        )
+        if created and fu:
+            changed += 1
+
+    # 3. Manual CallLogs with followup_needed=True
+    if lead_id is None:
+        cl_stmt = select(CallLog).where(CallLog.followup_needed.is_(True)).execution_options(skip_tenant=True)
+        if tenant_id is not None:
+            cl_stmt = cl_stmt.where(CallLog.tenant_id == tenant_id)
+        for cl in session.exec(cl_stmt.order_by(CallLog.id.desc()).limit(200)).all():
+            tid = cl.tenant_id if cl.tenant_id is not None else tenant_id
+            if _find_by_keys(session, tid, [f"call_log:{cl.id}"]):
+                continue
+            lead = lead_calls.resolve_lead(session, to_number=cl.phone_number, tenant_id=tid) if not cl.client_id else None
+            due_utc = parse_due_datetime(cl.followup_date, tenant_id=tid)
+            notes = (cl.work_done or cl.description or cl.summary or "").strip() or None
+            meeting = is_meeting_intent(notes)
+            label = (lead.company_name if lead else None) or cl.phone_number
+            assigned_id = int(cl.assigned_to) if (cl.assigned_to and str(cl.assigned_to).isdigit()) else None
+            fu, created = upsert_source_followup(
+                session,
+                tenant_id=tid,
+                idempotency_key=f"call_log:{cl.id}",
+                source="manual",
+                source_ref=f"call_log:{cl.id}",
+                lead_id=lead.id if lead else None,
+                client_id=cl.client_id,
+                contact_name=cl.phone_number if not (lead or cl.client_id) else None,
+                title=f"Meeting with {label}" if meeting else f"Follow-up call: {label}",
+                notes=notes,
+                channel="meeting" if meeting else "call",
+                due_at=due_utc,
+                assigned_to=assigned_id or (lead.owner_id if lead else None),
+                created_by=cl.created_by,
+                timezone_name=crm_tz_name,
+            )
+            if created and fu:
+                changed += 1
+
+    # 4. ScheduledCalls with scheduled_at
+    sc_stmt = select(ScheduledCall).where(
+        ScheduledCall.scheduled_at.is_not(None),
+        ScheduledCall.status.notin_(("completed", "cancelled")),
+    ).execution_options(skip_tenant=True)
+    if tenant_id is not None:
+        sc_stmt = sc_stmt.where(ScheduledCall.tenant_id == tenant_id)
+    if lead_id is not None:
+        sc_stmt = sc_stmt.where(ScheduledCall.entity_type == "lead", ScheduledCall.entity_id == lead_id)
+    for sc in session.exec(sc_stmt.order_by(ScheduledCall.id.desc()).limit(200)).all():
+        tid = sc.tenant_id if sc.tenant_id is not None else tenant_id
+        if _find_by_keys(session, tid, [f"scheduled_call:{sc.id}"]):
+            continue
+        sc_lead_id = sc.entity_id if sc.entity_type == "lead" else None
+        sc_client_id = sc.entity_id if sc.entity_type == "client" else None
+        sc_contact_id = sc.entity_id if sc.entity_type == "contact" else None
+        assigned_id = int(sc.assigned_to) if (sc.assigned_to and str(sc.assigned_to).isdigit()) else None
+        meeting = is_meeting_intent(sc.title, sc.notes)
+        fu, created = upsert_source_followup(
+            session,
+            tenant_id=tid,
+            idempotency_key=f"scheduled_call:{sc.id}",
+            source="manual",
+            source_ref=f"scheduled_call:{sc.id}",
+            lead_id=sc_lead_id,
+            client_id=sc_client_id,
+            contact_id=sc_contact_id,
+            contact_name=sc.entity_name if not (sc_lead_id or sc_client_id) else None,
+            contact_email=sc.entity_email,
+            title=sc.title or f"Scheduled call: {sc.entity_name or 'contact'}",
+            notes=(sc.notes or sc.pitch or "").strip() or None,
+            channel="meeting" if meeting else "call",
+            due_at=parse_due_datetime(sc.scheduled_at, tenant_id=tid),
+            assigned_to=assigned_id,
+            created_by=sc.created_by,
+            timezone_name=crm_tz_name,
+        )
+        if created and fu:
+            changed += 1
+
+    if changed:
+        session.commit()
+    return changed
 
 
 def notify(session: Session, user_id: Optional[int], tenant_id: Optional[int], title: str, message: str, link: str):

@@ -12,7 +12,7 @@ Demo accounts: self-service sign-up and their management in Demo Account Data (`
 
 Rules (who sees and may change what) live in ``modules/demo_accounts.py``.
 """
-from typing import Dict, Optional
+from typing import Dict, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -55,11 +55,17 @@ class DemoSignupRequest(BaseModel):
     name: str
     email: str
     password: str
+    model: Literal["b2b", "b2c"] = "b2b"
+    company_name: Optional[str] = None
 
 
 @router.post("/demo/signup")
 def demo_signup(body: DemoSignupRequest, request: Request, session: Session = Depends(get_session)):
     from main import _EMAIL_RE, _hash_password, _user_dict  # lazy: main imports this router
+    from modules.company_domains import request_company
+
+    if request_company.get():
+        raise HTTPException(403, detail="Create demo workspaces on serphawk.in.")
 
     ratelimit.hit(f"demo-signup-ip:{ratelimit.client_ip(request)}", 10, 3600)
     name, email = body.name.strip(), body.email.strip()
@@ -74,7 +80,8 @@ def demo_signup(body: DemoSignupRequest, request: Request, session: Session = De
     otp.require_verified(session, email, "signup")
     try:
         out = demo_accounts.create_self_service_demo(session, name=name, email=email,
-                                                     password_hash=_hash_password(body.password))
+                                                     password_hash=_hash_password(body.password), model=body.model,
+                                                     company_name=(body.company_name or "").strip() or None)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     otp.consume(session, email, "signup")

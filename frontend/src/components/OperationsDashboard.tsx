@@ -244,35 +244,32 @@ export default function OperationsDashboard({
   ].filter(chart => show(chart.key, chart.module));
 
   return (
-    <div className="space-y-6 max-w-[1600px] mx-auto w-full pb-12">
+    <div className="space-y-3.5 max-w-[1600px] mx-auto w-full pb-8">
       <DemoUsageMeter />
 
       {isDemo && (
-        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100 shadow-xs">
-          <h2 className="font-bold">{t("admin_dashboard.demo_banner_title")}</h2>
-          <p className="text-sm">{t("Demo includes 5 records per module, 5 AI API calls and 2 phone calls per workspace.")}</p>
-          <button disabled={upgrading || upgradeRequested} onClick={upgrade} className="mt-3 rounded-xl bg-amber-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100 shadow-2xs">
+          <h2 className="font-bold text-sm">{t("admin_dashboard.demo_banner_title")}</h2>
+          <p className="text-xs">{t("Demo includes 5 records per module, 5 AI API calls and 2 phone calls per workspace.")}</p>
+          <button disabled={upgrading || upgradeRequested} onClick={upgrade} className="mt-2 rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">
             {t(upgradeRequested ? "admin_dashboard.upgrade_sent" : "admin_dashboard.request_full_access")}
           </button>
           {upgradeError && <p role="alert">{upgradeError}</p>}
         </div>
       )}
 
-      {/* 360 Header & Quick Actions */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-purple-600/10 border border-blue-500/20 p-5 rounded-2xl backdrop-blur-sm shadow-xs">
+      {/* 360 High-Density Header & Quick Actions - Zero Wasted Space */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-purple-600/10 border border-blue-500/20 px-4 py-3 rounded-2xl backdrop-blur-sm shadow-2xs">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-md text-[10px] font-extrabold tracking-wider uppercase bg-blue-600 text-white">
-              360° Executive View
+            <span className="px-2 py-0.5 rounded-md text-[9px] font-extrabold tracking-wider uppercase bg-blue-600 text-white">
+              360° Live Cockpit
             </span>
-            <span className="text-xs text-slate-400 font-medium">Real-Time Operational Cockpit</span>
+            <span className="text-[11px] text-slate-500 dark:text-zinc-400 font-medium">Real-Time Operational Intelligence</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight mt-1">
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight mt-0.5">
             {variant === "dashboard_b2c" ? t("Dashboard") : "Company 360° Command Center"}
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-zinc-400 mt-0.5">
-            Holistic management across meetings, live calls, follow-ups, leads, client accounts, sales velocity, and executive reports.
-          </p>
         </div>
 
         {/* Quick 1-Click Operational Actions */}

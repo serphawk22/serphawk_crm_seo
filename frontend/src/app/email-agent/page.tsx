@@ -156,6 +156,7 @@ function BottomUpFillMail() {
 
 export default function EmailAgentPage() {
   const { role, user } = useRole();
+  const canManageOutreach = role === "Admin" || role === "Demo";
   const { t } = useLanguage();
   const [mode, setMode] = useState<"single" | "excel">("single");
   const [companyName, setCompanyName] = useState("");
@@ -238,8 +239,8 @@ export default function EmailAgentPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("settings") === "email") setShowSettings(true);
-    if (params.get("campaign") || params.get("mode") === "excel") setMode("excel");
-  }, []);
+    if (canManageOutreach && (params.get("campaign") || params.get("mode") === "excel")) setMode("excel");
+  }, [canManageOutreach]);
 
   const handleSaveProfile = async () => {
     if (savingProfile) return;
@@ -370,6 +371,7 @@ export default function EmailAgentPage() {
 
 
   useEffect(() => {
+    if (!canManageOutreach) return;
     const fetchEmailsData = async (signal: AbortSignal) => {
       await fetch(`${API_BASE_URL}/sent-emails?limit=30`, { cache: 'no-store', signal })
         .then((r) => r.json())
@@ -402,7 +404,7 @@ export default function EmailAgentPage() {
     setSentEmails([]);
     const poll = createVisiblePoll(fetchEmailsData, 10000);
     return () => poll.dispose();
-  }, [role, user?.id]);
+  }, [canManageOutreach, role, user?.id]);
 
   const handleDeleteEmail = async (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
@@ -597,6 +599,7 @@ export default function EmailAgentPage() {
       }
 
       const data = await res.json();
+      if (!canManageOutreach) return data;
       fetch(`${API_BASE_URL}/sent-emails?limit=30`, { cache: 'no-store' })
         .then((r) => r.json())
         .then((d) => {
@@ -682,7 +685,7 @@ export default function EmailAgentPage() {
               <h1 className="text-xl font-black text-slate-800 dark:text-zinc-100">{t('email_agent.title')}</h1>
               <p className="text-slate-500 dark:text-zinc-400 text-xs font-medium">{t('email_agent.subtitle')}</p>
             </div>
-            <div className="flex bg-slate-200 dark:bg-zinc-800 p-1 rounded-lg ml-4">
+            {canManageOutreach && <div className="flex bg-slate-200 dark:bg-zinc-800 p-1 rounded-lg ml-4">
               <button
                 onClick={() => setMode("single")}
                 className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${mode === "single" ? "bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700"}`}
@@ -695,9 +698,9 @@ export default function EmailAgentPage() {
               >
                 {t('email_agent.mode_excel')}
               </button>
-            </div>
+            </div>}
           </div>
-          <div className="flex gap-4 hidden sm:flex">
+          {canManageOutreach && <div className="flex gap-4 hidden sm:flex">
             {[
               { label: t('email_agent.stat_total_sent'), value: totalSent },
               { label: t('email_agent.stat_auto'), value: autoCount },
@@ -708,17 +711,17 @@ export default function EmailAgentPage() {
                 <p className="text-lg font-black">{s.value}</p>
               </div>
             ))}
-          </div>
+          </div>}
         </div>
 
         <div className="bg-slate-50 dark:bg-zinc-950 p-0 rounded-2xl mb-2">
           {/* PageGuide components uses white text on dark variants, but we will leave it as is if it handles its own styles, though it floats */}
         </div>
 
-        <div className="mb-4"><ManualEmailActions /></div>
+        {canManageOutreach && <div className="mb-4"><ManualEmailActions /></div>}
 
         {/* Chatbot Interface Top Box - HAS BLUR and WHITE TEXT */}
-        {mode === "single" ? (
+        {!canManageOutreach || mode === "single" ? (
           <>
             <div className="relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl w-full max-w-4xl mx-auto flex flex-col h-[400px] shadow-sm">
           <PageGuide
@@ -810,7 +813,7 @@ export default function EmailAgentPage() {
         )}
 
         {/* Recent Outreach Section Down Below */}
-        <div className="w-full mt-12 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 md:p-8 relative overflow-hidden shadow-sm">
+        {canManageOutreach && <div className="w-full mt-12 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 md:p-8 relative overflow-hidden shadow-sm">
           <div className="flex items-center justify-between mb-6 relative z-10">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-inner">
@@ -1010,7 +1013,7 @@ export default function EmailAgentPage() {
               })}
             </div>
           )}
-        </div>
+        </div>}
         {/* Profile Settings Modal — in-page panel, stays on the Email Agent route */}
         <AnimatePresence>
           {showProfile && (

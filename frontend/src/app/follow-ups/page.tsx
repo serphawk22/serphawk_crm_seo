@@ -2,18 +2,20 @@
 import LocalizedText from "@/components/LocalizedText";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, X, Clock, CheckCircle2, AlertTriangle, CalendarClock, Search, Loader2, Mail, Phone, Video,
   MessageCircle, Bell, BellOff, Pencil, Trash2, Sparkles, Send, RotateCcw, Hourglass, User, Building2,
-  RefreshCw, ChevronRight, Flag, LayoutGrid, Table, Check, ExternalLink, Calendar, ChevronDown, UserCheck, Presentation,
+  RefreshCw, ChevronRight, Flag, LayoutGrid, Table, Check, ExternalLink, Calendar, ChevronDown, UserCheck, Presentation, Lock, CalendarDays, ChevronLeft, Bot,
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
 import TimezonePicker from "@/components/TimezonePicker";
 import EmailFollowUpsView from "@/components/followups/EmailFollowUpsView";
 import ManualFollowUpActions from "@/components/followups/ManualFollowUpActions";
+import CalendarAvailabilityModal from "@/components/CalendarAvailabilityModal";
 import { ListChecks as SectionBoardIcon, Mail as SectionEmailIcon } from "lucide-react";
 import {
   detectTimeZone, formatInZone, relativeTime, toZonedInput, zonedWallToUtc, gmtLabel,
@@ -46,6 +48,10 @@ interface FollowUp {
   owner_name?: string | null;
   last_email_at?: string | null;
   phone?: string | null;
+  source?: string | null;
+  ai_detected?: boolean;
+  ai_reason?: string | null;
+  conversation_id?: number | null;
 }
 
 interface Employee {
@@ -192,17 +198,140 @@ function Sheet({ open, onClose, title, children, footer }: { open: boolean; onCl
 function RemindersBoard({ revision = 0 }: { revision?: number }) {
   const { role, user } = useRole();
   const viewerTz = useMemo(() => detectTimeZone(), []);
-  const canSeeAll = role === "Admin" || role === "SuperAdmin";
+  const canSeeAll = role === "Admin" || role === "SuperAdmin" || role === "Demo";
 
   const [items, setItems] = useState<FollowUp[]>([]);
   const [counts, setCounts] = useState<Record<Bucket, number>>({ overdue: 0, pending: 0, upcoming: 0, completed: 0 });
   const [bucket, setBucket] = useState<Bucket>("pending");
   const [autoPicked, setAutoPicked] = useState(false);
-  const [scope, setScope] = useState<"mine" | "all">("mine");
+  const [scope, setScope] = useState<"mine" | "all">("all");
   const [search, setSearch] = useState("");
   const [channelFilter, setChannelFilter] = useState<string>("All");
   const [priorityFilter, setPriorityFilter] = useState<string>("All");
-  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
+  const [viewMode, setViewMode] = useState<"cards" | "table" | "calendar">("cards");
+  const [calendarSubView, setCalendarSubView] = useState<"Year" | "Month" | "Week" | "Day" | "Agenda">("Month");
+  const [calendarDate, setCalendarDate] = useState<Date>(new Date());
+  const [blockedSlots, setBlockedSlots] = useState<any[]>([]);
+  const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
+  const [availabilityHours, setAvailabilityHours] = useState({
+    start_time: "09:00",
+    end_time: "18:00",
+    work_days: [1, 2, 3, 4, 5],
+  });
+  const [blockForm, setBlockForm] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    start_time: "",
+    end_time: "",
+    reason: "Blocked slot",
+  });
+  const [savingBlock, setSavingBlock] = useState(false);
+
+  const fetchBlockedSlots = async () => {
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(`${API_BASE_URL}/calendar/blocked-slots`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setBlockedSlots(d.blocked_slots || []);
+      }
+    } catch (e) {
+      console.error("Failed to load blocked slots", e);
+    }
+  };
+
+  const fetchAvailability = async () => {
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(`${API_BASE_URL}/calendar/availability`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.availability) {
+          setAvailabilityHours({
+            start_time: d.availability.start_time || "09:00",
+            end_time: d.availability.end_time || "18:00",
+            work_days: d.availability.work_days || [1, 2, 3, 4, 5],
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load availability", e);
+    }
+  };
+
+  const handleCreateBlockedSlot = async () => {
+    if (!blockForm.date) return;
+    setSavingBlock(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(`${API_BASE_URL}/calendar/blocked-slots`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(blockForm),
+      });
+      if (res.ok) {
+        showToast("Date/Time slot blocked successfully");
+        setBlockForm({
+          date: new Date().toISOString().slice(0, 10),
+          start_time: "",
+          end_time: "",
+          reason: "Blocked slot",
+        });
+        fetchBlockedSlots();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.detail || "Failed to block slot", false);
+      }
+    } catch {
+      showToast("Error blocking slot", false);
+    } finally {
+      setSavingBlock(false);
+    }
+  };
+
+  const handleDeleteBlockedSlot = async (slotId: number) => {
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(`${API_BASE_URL}/calendar/blocked-slots/${slotId}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        showToast("Blocked slot removed");
+        fetchBlockedSlots();
+      }
+    } catch {
+      showToast("Failed to remove blocked slot", false);
+    }
+  };
+
+  const handleSaveAvailability = async () => {
+    setSavingBlock(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(`${API_BASE_URL}/calendar/availability`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(availabilityHours),
+      });
+      if (res.ok) {
+        showToast("Working hours saved successfully");
+      }
+    } catch {
+      showToast("Failed to save working hours", false);
+    } finally {
+      setSavingBlock(false);
+    }
+  };
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -247,6 +376,16 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
 
   useEffect(() => { const controller = new AbortController(); void load(false, controller.signal); return () => controller.abort(); }, [load, revision]);
 
+  useEffect(() => {
+    const sync = () => { if (document.visibilityState === "visible") void load(true); };
+    window.addEventListener("focus", sync);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      window.removeEventListener("focus", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [load]);
+
   // first load: land on the most urgent non-empty tab
   useEffect(() => {
     if (autoPicked || loading) return;
@@ -290,11 +429,10 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
     }
   }, [loadEntities, viewerTz]);
 
-  // Filtered visible items
-  const visible = useMemo(() => {
+  // Items matching search + channel + priority across all buckets
+  const matchedAllBuckets = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter(i => {
-      if (i.bucket !== bucket) return false;
       if (channelFilter !== "All" && i.channel !== channelFilter) return false;
       if (priorityFilter !== "All" && i.priority !== priorityFilter) return false;
       if (q) {
@@ -302,11 +440,37 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
         const matchesEntity = (i.entity_name || "").toLowerCase().includes(q);
         const matchesNotes = (i.notes || "").toLowerCase().includes(q);
         const matchesOwner = (i.owner_name || "").toLowerCase().includes(q);
-        if (!matchesTitle && !matchesEntity && !matchesNotes && !matchesOwner) return false;
+        const matchesPhone = (i.phone || "").toLowerCase().includes(q);
+        if (!matchesTitle && !matchesEntity && !matchesNotes && !matchesOwner && !matchesPhone) return false;
       }
       return true;
     });
-  }, [items, bucket, search, channelFilter, priorityFilter]);
+  }, [items, search, channelFilter, priorityFilter]);
+
+  // Bucket counts reflecting active channel/priority/search filters
+  const displayCounts = useMemo<Record<Bucket, number>>(() => {
+    const hasFilter = channelFilter !== "All" || priorityFilter !== "All" || search.trim().length > 0;
+    if (!hasFilter) return counts;
+    const c: Record<Bucket, number> = { overdue: 0, pending: 0, upcoming: 0, completed: 0 };
+    for (const i of matchedAllBuckets) {
+      if (i.bucket in c) c[i.bucket] += 1;
+    }
+    return c;
+  }, [counts, matchedAllBuckets, channelFilter, priorityFilter, search]);
+
+  // When a channel/priority filter is picked and the current bucket has 0 matches, jump to the first bucket that has matches.
+  useEffect(() => {
+    if (loading) return;
+    if (channelFilter === "All" && priorityFilter === "All" && !search.trim()) return;
+    if (displayCounts[bucket] > 0) return;
+    const next = (["pending", "upcoming", "overdue", "completed"] as Bucket[]).find(b => displayCounts[b] > 0);
+    if (next) setBucket(next);
+  }, [channelFilter, priorityFilter, search, displayCounts, bucket, loading]);
+
+  // Filtered visible items for the active bucket
+  const visible = useMemo(() => {
+    return matchedAllBuckets.filter(i => i.bucket === bucket);
+  }, [matchedAllBuckets, bucket]);
 
   // When user selects a related Lead / Client in the creation form,
   // automatically detect that Lead's assigned salesperson!
@@ -362,12 +526,21 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
   }, [form.linked, leads, clients, employees]);
 
   // ── Open Create / Edit ──
-  const openCreate = () => {
+  const openCreate = (initialDate?: string) => {
     setEditing(null);
-    setForm(emptyForm(viewerTz));
+    const ef = emptyForm(viewerTz);
+    if (initialDate) {
+      ef.due_local = `${initialDate}T10:00`;
+    }
+    setForm(ef);
     loadEntities();
     setShowForm(true);
   };
+
+  useEffect(() => {
+    fetchBlockedSlots();
+    fetchAvailability();
+  }, []);
 
   const openEdit = (f: FollowUp) => {
     const tz = f.timezone || viewerTz;
@@ -601,6 +774,72 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
     })),
   };
 
+  // Calendar days helper (Monday-first)
+  const year = calendarDate.getFullYear();
+  const month = calendarDate.getMonth();
+  const rawFirstDay = new Date(year, month, 1).getDay(); // 0 = Sun, 1 = Mon, ...
+  const firstDayIndex = (rawFirstDay + 6) % 7; // 0 = Mon, 1 = Tue, ..., 6 = Sun
+  const totalDaysInMonth = new Date(year, month + 1, 0).getDate();
+  const prevMonthTotalDays = new Date(year, month, 0).getDate();
+
+  const calendarDays = useMemo(() => {
+    const days: { dayNumber: number; isCurrentMonth: boolean; dateStr: string; displayLabel: string }[] = [];
+    // Previous month filler days
+    for (let i = firstDayIndex - 1; i >= 0; i--) {
+      const d = prevMonthTotalDays - i;
+      const prevDate = new Date(year, month - 1, d);
+      const mStr = String(prevDate.getMonth() + 1).padStart(2, "0");
+      const dStr = String(d).padStart(2, "0");
+      const dateStr = `${prevDate.getFullYear()}-${mStr}-${dStr}`;
+      const displayLabel = d === 1 ? `${mStr}-01` : dStr;
+      days.push({ dayNumber: d, isCurrentMonth: false, dateStr, displayLabel });
+    }
+    // Current month days
+    for (let d = 1; d <= totalDaysInMonth; d++) {
+      const mStr = String(month + 1).padStart(2, "0");
+      const dStr = String(d).padStart(2, "0");
+      const dateStr = `${year}-${mStr}-${dStr}`;
+      const displayLabel = d === 1 ? `${mStr}-01` : dStr;
+      days.push({ dayNumber: d, isCurrentMonth: true, dateStr, displayLabel });
+    }
+    // Next month filler days (fill to 35 or 42 grid cells)
+    const targetTotal = days.length > 35 ? 42 : 35;
+    const remaining = targetTotal - days.length;
+    for (let d = 1; d <= remaining; d++) {
+      const nextDate = new Date(year, month + 1, d);
+      const mStr = String(nextDate.getMonth() + 1).padStart(2, "0");
+      const dStr = String(d).padStart(2, "0");
+      const dateStr = `${nextDate.getFullYear()}-${mStr}-${dStr}`;
+      const displayLabel = d === 1 ? `${mStr}-01` : dStr;
+      days.push({ dayNumber: d, isCurrentMonth: false, dateStr, displayLabel });
+    }
+    return days;
+  }, [year, month, firstDayIndex, totalDaysInMonth, prevMonthTotalDays]);
+
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  const EVENT_COLORS = [
+    "bg-[#4ade80] text-slate-900", // Soft green (like Peter Müller)
+    "bg-[#22c55e] text-white",     // Emerald green (like Klaus Lewandowski)
+    "bg-[#fb7185] text-white",     // Coral / red (like Stefan Groß)
+    "bg-[#a3e635] text-slate-900", // Lime (like Nicole Haupt)
+    "bg-[#e879f9] text-slate-900", // Magenta / purple (like Christina Wolf)
+    "bg-[#38bdf8] text-slate-900", // Sky blue
+    "bg-[#f97316] text-white",     // Warm orange
+  ];
+
+  const getEventBarColor = (f: FollowUp) => {
+    if (f.status === "Completed") {
+      return "bg-slate-400 dark:bg-zinc-700 text-white line-through opacity-75";
+    }
+    const name = f.entity_name || f.owner_name || f.title || "";
+    const seed = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) + (f.id || 0);
+    return EVENT_COLORS[seed % EVENT_COLORS.length];
+  };
+
   const totalFollowups = items.length;
   const activeFollowups = counts.overdue + counts.pending + counts.upcoming;
 
@@ -671,10 +910,30 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
               <Table className="w-3.5 h-3.5" />
               <span className="hidden md:inline">Table</span>
             </button>
+            <button
+              onClick={() => setViewMode("calendar")}
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition ${
+                viewMode === "calendar" ? "bg-white dark:bg-white/10 text-slate-900 dark:text-white shadow-xs" : "text-slate-500 hover:text-slate-700 dark:text-zinc-400"
+              }`}
+              title="Interactive calendar view"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Calendar</span>
+            </button>
           </div>
 
           <button
-            onClick={openCreate}
+            type="button"
+            onClick={() => setShowAvailabilityModal(true)}
+            title="Configure working hours & blocked dates / blackout times"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 text-xs font-semibold transition shadow-xs cursor-pointer"
+          >
+            <Clock className="w-3.5 h-3.5 text-amber-500" />
+            <span className="hidden sm:inline">Availability & Blocked Times</span>
+          </button>
+
+          <button
+            onClick={() => openCreate()}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-semibold text-xs shadow-xs transition"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -700,7 +959,7 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
             >
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">{t.label}</p>
-                <p className={`text-base sm:text-lg font-bold leading-tight mt-0.5 ${t.tone}`}>{loading ? "–" : counts[t.key]}</p>
+                <p className={`text-base sm:text-lg font-bold leading-tight mt-0.5 ${t.tone}`}>{loading ? "–" : displayCounts[t.key]}</p>
                 <p className="text-[10px] text-slate-400 dark:text-zinc-500 leading-tight truncate mt-0.5">{t.hint}</p>
               </div>
               <div className={`p-1.5 rounded-lg bg-slate-50 dark:bg-white/5 ${t.tone}`}>
@@ -800,6 +1059,384 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
           <Loader2 className="animate-spin text-amber-500 w-9 h-9" />
           <p className="text-sm font-semibold text-slate-400">Loading follow-ups & reminders…</p>
         </div>
+      ) : viewMode === "calendar" ? (
+        /* ── Vacation-Style Calendar View ── */
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 rounded-2xl shadow-sm overflow-hidden p-3.5 sm:p-5 space-y-3 relative">
+          {/* Calendar Top Navigation Bar */}
+          <div className="flex flex-col md:flex-row items-center justify-between gap-3 border-b border-slate-200/70 dark:border-zinc-800 pb-3">
+            {/* Left Nav Controls: < > Today */}
+            <div className="flex items-center gap-1.5 w-full md:w-auto justify-between md:justify-start">
+              <button
+                type="button"
+                onClick={() => {
+                  if (calendarSubView === "Year") setCalendarDate(new Date(year - 1, month, 1));
+                  else if (calendarSubView === "Week") setCalendarDate(new Date(calendarDate.getTime() - 7 * 86400000));
+                  else if (calendarSubView === "Day") setCalendarDate(new Date(calendarDate.getTime() - 86400000));
+                  else setCalendarDate(new Date(year, month - 1, 1));
+                }}
+                className="p-1.5 rounded border border-slate-200 dark:border-zinc-700 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-200 transition cursor-pointer"
+                title="Previous"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (calendarSubView === "Year") setCalendarDate(new Date(year + 1, month, 1));
+                  else if (calendarSubView === "Week") setCalendarDate(new Date(calendarDate.getTime() + 7 * 86400000));
+                  else if (calendarSubView === "Day") setCalendarDate(new Date(calendarDate.getTime() + 86400000));
+                  else setCalendarDate(new Date(year, month + 1, 1));
+                }}
+                className="p-1.5 rounded border border-slate-200 dark:border-zinc-700 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-200 transition cursor-pointer"
+                title="Next"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setCalendarDate(new Date())}
+                className="px-3 py-1 rounded text-xs font-semibold border border-orange-200 dark:border-orange-900/60 bg-orange-100/70 hover:bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 transition cursor-pointer"
+              >
+                Today
+              </button>
+            </div>
+
+            {/* Center: Month Year Title */}
+            <div className="text-center">
+              <h3 className="text-base sm:text-lg font-bold text-slate-800 dark:text-zinc-100 tracking-tight">
+                {calendarSubView === "Year"
+                  ? `${year}`
+                  : calendarSubView === "Day"
+                  ? calendarDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })
+                  : `${monthNames[month]} ${year}`}
+              </h3>
+            </div>
+
+            {/* Right: Subview Switches [Year] [Month] [Week] [Day] [Agenda] */}
+            <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-zinc-800/80 p-0.5 rounded border border-slate-200/60 dark:border-zinc-700/60">
+              {(["Year", "Month", "Week", "Day", "Agenda"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setCalendarSubView(mode)}
+                  className={`px-2.5 sm:px-3 py-1 text-xs font-semibold rounded transition cursor-pointer ${
+                    calendarSubView === mode
+                      ? "bg-[#f97316] text-white shadow-xs font-bold"
+                      : "text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white"
+                  }`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Subview: Month ── */}
+          {calendarSubView === "Month" && (
+            <div className="border border-slate-200/90 dark:border-zinc-800 rounded-lg overflow-hidden bg-white dark:bg-zinc-950">
+              {/* Monday-first Column Headers */}
+              <div className="grid grid-cols-7 border-b border-slate-200/90 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((dayName) => (
+                  <div
+                    key={dayName}
+                    className="py-2 text-center text-xs font-semibold text-slate-500 dark:text-zinc-400 select-none"
+                  >
+                    {dayName}
+                  </div>
+                ))}
+              </div>
+
+              {/* Day Cells Grid */}
+              <div className="grid grid-cols-7 divide-x divide-y divide-slate-100 dark:divide-zinc-800">
+                {calendarDays.map((cd, idx) => {
+                  const dayFollowUps = items.filter((f) =>
+                    (f.due_at_local || f.due_at || "").startsWith(cd.dateStr)
+                  );
+                  const dayBlocked = blockedSlots.filter((b) =>
+                    (b.date || "").startsWith(cd.dateStr)
+                  );
+                  const isToday = cd.dateStr === new Date().toISOString().slice(0, 10);
+
+                  return (
+                    <div
+                      key={`${cd.dateStr}-${idx}`}
+                      onClick={() => openCreate(cd.dateStr)}
+                      className={`min-h-[105px] sm:min-h-[120px] p-1.5 flex flex-col justify-between cursor-pointer group hover:bg-slate-50/70 dark:hover:bg-zinc-900/50 transition ${
+                        !cd.isCurrentMonth
+                          ? "bg-slate-50/30 dark:bg-zinc-950/40 opacity-40"
+                          : "bg-white dark:bg-zinc-950"
+                      }`}
+                    >
+                      {/* Top Date Label */}
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={`text-xs ${
+                            isToday
+                              ? "bg-[#f97316] text-white rounded px-1.5 py-0.5 font-bold shadow-xs"
+                              : "text-slate-700 dark:text-zinc-300 font-medium"
+                          }`}
+                        >
+                          {cd.displayLabel}
+                        </span>
+
+                        <span className="opacity-0 group-hover:opacity-100 text-[10px] text-amber-600 dark:text-amber-400 font-bold flex items-center">
+                          <Plus className="w-2.5 h-2.5" />
+                        </span>
+                      </div>
+
+                      {/* Stacked Full-Width Event Bars */}
+                      <div className="space-y-1 my-1 overflow-y-auto max-h-20 scrollbar-none">
+                        {/* Blocked Slots */}
+                        {dayBlocked.map((b) => (
+                          <div
+                            key={b.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowAvailabilityModal(true);
+                            }}
+                            className="w-full px-2 py-0.5 rounded-xs bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-semibold truncate flex items-center gap-1 shadow-xs transition"
+                            title={`Blocked: ${b.reason || "Blackout"}`}
+                          >
+                            <Lock className="w-2.5 h-2.5 shrink-0" />
+                            <span className="truncate">Blocked: {b.reason || "Unavailable"}</span>
+                          </div>
+                        ))}
+
+                        {/* Events */}
+                        {dayFollowUps.map((f) => {
+                          const barColor = getEventBarColor(f);
+                          const displayName = f.entity_name || f.owner_name || f.title;
+                          return (
+                            <div
+                              key={f.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEdit(f);
+                              }}
+                              className={`w-full px-2 py-0.5 rounded-xs text-[11px] font-semibold truncate cursor-pointer transition shadow-xs hover:opacity-90 ${barColor}`}
+                              title={`${f.title} (${f.status}) - ${f.entity_name || ""}`}
+                            >
+                              {displayName}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Subview: Week ── */}
+          {calendarSubView === "Week" && (
+            <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
+              {Array.from({ length: 7 }).map((_, i) => {
+                const currentDayOfWeek = (calendarDate.getDay() + 6) % 7;
+                const dayOffset = i - currentDayOfWeek;
+                const d = new Date(calendarDate);
+                d.setDate(calendarDate.getDate() + dayOffset);
+                const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                const isToday = dStr === new Date().toISOString().slice(0, 10);
+                const dayFollowUps = items.filter((f) => (f.due_at_local || f.due_at || "").startsWith(dStr));
+                const dayBlocked = blockedSlots.filter((b) => (b.date || "").startsWith(dStr));
+                const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+                return (
+                  <div
+                    key={dStr}
+                    onClick={() => openCreate(dStr)}
+                    className="p-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 min-h-[220px] flex flex-col justify-between cursor-pointer hover:border-orange-400 transition"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-zinc-800">
+                        <span className="text-xs font-bold text-slate-500">{dayNames[i]}</span>
+                        <span className={`text-xs font-bold ${isToday ? "bg-[#f97316] text-white rounded px-1.5 py-0.5" : "text-slate-800 dark:text-zinc-200"}`}>
+                          {d.getDate()}
+                        </span>
+                      </div>
+                      <div className="space-y-1.5 mt-2">
+                        {dayBlocked.map((b) => (
+                          <div key={b.id} className="p-1 rounded bg-rose-600 text-white text-[10px] font-bold truncate flex items-center gap-1">
+                            <Lock className="w-2.5 h-2.5" /> Blocked: {b.reason}
+                          </div>
+                        ))}
+                        {dayFollowUps.map((f) => {
+                          const barColor = getEventBarColor(f);
+                          return (
+                            <div
+                              key={f.id}
+                              onClick={(e) => { e.stopPropagation(); openEdit(f); }}
+                              className={`p-1.5 rounded text-xs font-semibold truncate ${barColor}`}
+                            >
+                              <div className="font-bold truncate">{f.entity_name || f.title}</div>
+                              <div className="text-[10px] opacity-80">{f.title}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-slate-400 text-center pt-2">Click to schedule</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── Subview: Day ── */}
+          {calendarSubView === "Day" && (() => {
+            const dStr = `${calendarDate.getFullYear()}-${String(calendarDate.getMonth() + 1).padStart(2, "0")}-${String(calendarDate.getDate()).padStart(2, "0")}`;
+            const dayFollowUps = items.filter((f) => (f.due_at_local || f.due_at || "").startsWith(dStr));
+            const dayBlocked = blockedSlots.filter((b) => (b.date || "").startsWith(dStr));
+
+            return (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 rounded-xl bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-900/50">
+                  <div className="font-bold text-orange-900 dark:text-orange-200 text-sm">
+                    {calendarDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openCreate(dStr)}
+                    className="px-3 py-1.5 rounded-lg bg-[#f97316] text-white text-xs font-bold hover:bg-[#ea580c] transition flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Book Follow-up
+                  </button>
+                </div>
+
+                {dayBlocked.map((b) => (
+                  <div key={b.id} className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-200 flex items-center gap-2">
+                    <Lock className="w-4 h-4 shrink-0 text-rose-600" />
+                    <div>
+                      <div className="font-bold text-xs">Blocked Time Slot</div>
+                      <div className="text-xs text-rose-600 dark:text-rose-400">{b.reason || "Blackout period"}</div>
+                    </div>
+                  </div>
+                ))}
+
+                {dayFollowUps.length === 0 && dayBlocked.length === 0 ? (
+                  <div className="text-center py-12 text-slate-400 text-sm">
+                    No follow-ups or blocked times scheduled for this day.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {dayFollowUps.map((f) => {
+                      const barColor = getEventBarColor(f);
+                      return (
+                        <div
+                          key={f.id}
+                          onClick={() => openEdit(f)}
+                          className="p-3.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 hover:border-orange-400 transition cursor-pointer flex items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className={`px-2.5 py-1 rounded text-xs font-bold ${barColor}`}>
+                              {f.channel || "Follow-up"}
+                            </span>
+                            <div>
+                              <div className="font-bold text-slate-900 dark:text-white text-xs">{f.title}</div>
+                              <div className="text-xs text-slate-500">{f.entity_name ? `${f.entity_name} (${f.entity_type})` : "General"}</div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xs font-bold text-slate-700 dark:text-zinc-300">
+                              {f.due_at ? formatInZone(f.due_at, viewerTz, { hour: "2-digit", minute: "2-digit" }) : "Any time"}
+                            </div>
+                            <div className="text-[10px] text-slate-400">{f.status}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* ── Subview: Agenda ── */}
+          {calendarSubView === "Agenda" && (
+            <div className="space-y-2">
+              {items
+                .filter((f) => f.due_at)
+                .sort((a, b) => (a.due_at || "").localeCompare(b.due_at || ""))
+                .map((f) => {
+                  const barColor = getEventBarColor(f);
+                  return (
+                    <div
+                      key={f.id}
+                      onClick={() => openEdit(f)}
+                      className="p-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 hover:border-orange-400 transition cursor-pointer flex items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className={`px-2.5 py-1 rounded text-xs font-bold shrink-0 ${barColor}`}>
+                          {f.channel || "Follow-up"}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="font-bold text-slate-900 dark:text-white text-xs truncate">{f.title}</div>
+                          <div className="text-xs text-slate-500 truncate">{f.entity_name ? `${f.entity_name} · ${f.owner_name || ""}` : (f.owner_name || "")}</div>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                          {formatInZone(f.due_at!, viewerTz, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                        <div className="text-[10px] text-slate-400">{f.status}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+
+          {/* ── Subview: Year ── */}
+          {calendarSubView === "Year" && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {monthNames.map((mName, mIdx) => {
+                const isCurrentMonth = mIdx === new Date().getMonth() && year === new Date().getFullYear();
+                const countInMonth = items.filter((f) => {
+                  const dateStr = f.due_at_local || f.due_at || "";
+                  return dateStr.startsWith(`${year}-${String(mIdx + 1).padStart(2, "0")}`);
+                }).length;
+
+                return (
+                  <div
+                    key={mName}
+                    onClick={() => {
+                      setCalendarDate(new Date(year, mIdx, 1));
+                      setCalendarSubView("Month");
+                    }}
+                    className={`p-3 rounded-xl border cursor-pointer hover:border-orange-500 transition flex flex-col justify-between min-h-[90px] ${
+                      isCurrentMonth
+                        ? "border-orange-400 bg-orange-50/40 dark:bg-orange-950/20"
+                        : "border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-slate-800 dark:text-zinc-200">{mName}</span>
+                      {isCurrentMonth && (
+                        <span className="w-2 h-2 rounded-full bg-orange-500" />
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-2">
+                      <span className="font-extrabold text-[#f97316]">{countInMonth}</span> follow-ups
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Floating Action Button (Orange Round Plus) in Bottom Right */}
+          <button
+            type="button"
+            onClick={() => openCreate()}
+            className="fixed bottom-6 right-6 z-40 w-12 h-12 rounded-full bg-[#f97316] hover:bg-[#ea580c] text-white shadow-xl shadow-orange-500/30 flex items-center justify-center transition hover:scale-105 active:scale-95 cursor-pointer"
+            title="Schedule New Follow-up"
+          >
+            <Plus className="w-6 h-6 stroke-[2.5]" />
+          </button>
+        </div>
       ) : visible.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 px-4 text-center bg-white dark:bg-zinc-900 border border-dashed border-slate-300 dark:border-zinc-800 rounded-3xl shadow-sm">
           <div className="w-16 h-16 rounded-3xl bg-amber-500/10 flex items-center justify-center mb-4">
@@ -816,7 +1453,7 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
               : "Everything looks clear! Schedule a new follow-up to stay ahead on your sales pipeline."}
           </p>
           <button
-            onClick={openCreate}
+            onClick={() => openCreate()}
             className="px-5 h-11 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs sm:text-sm font-bold flex items-center gap-2 shadow-md shadow-amber-500/20 hover:opacity-90 transition"
           >
             <Plus className="w-4 h-4" /> Schedule New Follow-up
@@ -909,6 +1546,11 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
                           <ChIcon className="w-3 h-3 text-amber-500" />
                           {f.channel}
                         </span>
+                        {(f.ai_detected || f.source === "ai_auto") && (
+                          <span className="text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-md border border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-300 flex items-center gap-1">
+                            <Bot className="w-3 h-3" /> AI Call
+                          </span>
+                        )}
                         {f.reminder_minutes > 0 && f.status !== "Completed" ? (
                           <span className="text-[11px] text-slate-400 flex items-center gap-1 px-1.5 py-0.5">
                             <Bell className="w-3 h-3 text-amber-500" />
@@ -921,15 +1563,30 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
                       <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-zinc-800/80 space-y-1.5">
                         {f.entity_name && (
                           <div className="flex items-center justify-between gap-2 text-xs">
-                            <span className="text-slate-600 dark:text-zinc-300 flex items-center gap-1.5 font-bold truncate">
-                              {f.entity_type === "contact" ? (
-                                <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              ) : (
-                                <Building2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                              )}
-                              <span className="truncate">{f.entity_name}</span>
-                              <span className="text-slate-400 font-normal capitalize">({f.entity_type})</span>
-                            </span>
+                            {f.lead_id || f.client_id ? (
+                              <Link
+                                href={f.client_id ? `/admin/clients/${f.client_id}?tab=followups` : `/leads/${f.lead_id}?tab=followups`}
+                                className="text-slate-600 dark:text-zinc-300 hover:text-amber-600 dark:hover:text-amber-400 flex items-center gap-1.5 font-bold truncate transition-colors"
+                              >
+                                {f.entity_type === "contact" ? (
+                                  <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                ) : (
+                                  <Building2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                )}
+                                <span className="truncate">{f.entity_name}</span>
+                                <span className="text-slate-400 font-normal capitalize">({f.entity_type})</span>
+                              </Link>
+                            ) : (
+                              <span className="text-slate-600 dark:text-zinc-300 flex items-center gap-1.5 font-bold truncate">
+                                {f.entity_type === "contact" ? (
+                                  <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                ) : (
+                                  <Building2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                )}
+                                <span className="truncate">{f.entity_name}</span>
+                                <span className="text-slate-400 font-normal capitalize">({f.entity_type})</span>
+                              </span>
+                            )}
 
                             {/* Direct Communication Quick Buttons */}
                             <div className="flex items-center gap-1 shrink-0">
@@ -942,6 +1599,16 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
                                 </button>
                               )}
                             </div>
+                          </div>
+                        )}
+
+                        {/* Phone Number */}
+                        {f.phone && (
+                          <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-zinc-300">
+                            <Phone className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                            <a href={`tel:${f.phone}`} className="font-semibold hover:text-amber-600 dark:hover:text-amber-400 transition-colors">
+                              {f.phone}
+                            </a>
                           </div>
                         )}
 
@@ -1124,12 +1791,28 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
                       {/* Entity & Rep */}
                       <td className="py-3 px-4">
                         {f.entity_name ? (
-                          <div className="font-semibold text-slate-700 dark:text-zinc-200 truncate">
-                            {f.entity_name}
-                            <span className="text-[10px] text-slate-400 ml-1 font-normal capitalize">({f.entity_type})</span>
-                          </div>
+                          f.lead_id || f.client_id ? (
+                            <Link
+                              href={f.client_id ? `/admin/clients/${f.client_id}?tab=followups` : `/leads/${f.lead_id}?tab=followups`}
+                              className="font-semibold text-slate-700 dark:text-zinc-200 hover:text-amber-600 dark:hover:text-amber-400 truncate block transition-colors"
+                            >
+                              {f.entity_name}
+                              <span className="text-[10px] text-slate-400 ml-1 font-normal capitalize">({f.entity_type})</span>
+                            </Link>
+                          ) : (
+                            <div className="font-semibold text-slate-700 dark:text-zinc-200 truncate">
+                              {f.entity_name}
+                              <span className="text-[10px] text-slate-400 ml-1 font-normal capitalize">({f.entity_type})</span>
+                            </div>
+                          )
                         ) : (
                           <span className="text-slate-400 italic">—</span>
+                        )}
+                        {f.phone && (
+                          <div className="text-[11px] text-sky-600 dark:text-sky-400 font-semibold flex items-center gap-1 mt-0.5">
+                            <Phone className="w-3 h-3 shrink-0" />
+                            <a href={`tel:${f.phone}`} className="hover:underline">{f.phone}</a>
+                          </div>
                         )}
                         {f.owner_name && (
                           <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 mt-0.5">
@@ -1550,6 +2233,16 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
           </div>
         )}
       </Sheet>
+
+      {/* ── Admin Availability & Blocked Slots Modal ── */}
+      <CalendarAvailabilityModal
+        isOpen={showAvailabilityModal}
+        onClose={() => setShowAvailabilityModal(false)}
+        onUpdated={() => {
+          fetchBlockedSlots();
+          fetchAvailability();
+        }}
+      />
     </div>
   );
 }

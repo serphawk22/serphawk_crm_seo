@@ -6,5 +6,6 @@ export function homeModule(role: string | null, features: Record<string, boolean
   if (["Client", "Intern", "ProjectMember", "Developer"].includes(role || "") && features.dashboard !== false) return "dashboard";
   if (features.command_center === true) return "command_center";
   if (features.dashboard_b2c === true) return "dashboard_b2c";
+  if (["SalesManager", "Sales", "Employee"].includes(role || "")) return "dashboard";
   return "none";
 }

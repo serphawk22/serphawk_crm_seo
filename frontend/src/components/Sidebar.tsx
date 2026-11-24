@@ -8,7 +8,7 @@ import {
   Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
   Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar, X,
   Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Edit2, GripVertical, Check,
-  Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb, LogOut, Sparkles, Archive, Trash2
+  Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb, LogOut, Sparkles, Archive, Trash2, MessageCircle
 } from "lucide-react";
 import { createVisiblePoll } from "@/lib/visiblePoll";
 import { cn } from "@/lib/utils";
@@ -49,7 +49,7 @@ const iconMap: Record<string, LucideIcon> = {
   LayoutDashboard, Bell, Users, FolderOpen, CheckSquare, CheckCircle, Radar, Mail,
   Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
   Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar, X,
-  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb, Sparkles, Archive, Trash2
+  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb, Sparkles, Archive, Trash2, MessageCircle
 };
 
 // Roles that can open /inbox (routers/inbox.py enforces the same list server-side).
@@ -60,11 +60,11 @@ const ITEM_FEATURE: Record<string, string> = {
   "item-dashboard": "dashboard",
   "item-dashboard-b2c": "dashboard_b2c",
   "item-admissions": "institute",
-  "item-work-queue": "work_queue", "item-inbox": "inbox", "item-followups": "followups",
+  "item-work-queue": "work_queue", "item-inbox": "inbox", "item-messages": "messages", "item-followups": "followups",
   "item-leads": "leads", "item-temp-leads": "leads", "item-contacts": "contacts", "item-clients": "clients",
   "item-projects": "projects", "item-task-sheet": "task_sheet", "item-reports": "reports",
   "item-meetings": "meetings", "item-calls": "calls", "item-teams": "teams", "item-leaderboard": "leaderboard",
-  "item-email-agent": "email_agent", "item-voice-agent": "voice_agent",
+  "item-email-agent": "email_agent",
   "item-inventory": "inventory", "item-orders": "inventory", "item-products": "products",
   "item-billing": "billing", "item-invoices": "invoices", "item-proposals": "proposals", "item-marketplace": "marketplace",
   "item-cases": "cases", "item-solutions": "support", "item-support-sh": "support_sh",
@@ -83,8 +83,14 @@ const ITEM_ADDON: Record<string, string> = {
 };
 
 // Live count shown next to a sidebar item, if any.
-function badgeCount(item: SidebarItem, unreadCount: number, inboxUnread: number): number {
-  return item.id === "item-notifications" ? unreadCount : item.id === "item-inbox" ? inboxUnread : item.badge || 0;
+function badgeCount(item: SidebarItem, unreadCount: number, inboxUnread: number, chatUnread: number = 0): number {
+  return item.id === "item-notifications"
+    ? unreadCount
+    : item.id === "item-inbox"
+    ? inboxUnread
+    : item.id === "item-messages"
+    ? chatUnread
+    : item.badge || 0;
 }
 
 interface SidebarItem {
@@ -116,8 +122,10 @@ const defaultSidebarSections: SidebarSection[] = [
       { id: "item-command-center", name: "Dashboard", icon: "LayoutDashboard", href: "/command-center", roles: ["Admin", "SalesManager", "Sales", "Demo"] },
       { id: "item-work-queue", name: "My Work Queue", icon: "LayoutList", href: "/work-queue", roles: ["Admin", "Demo", "SalesManager", "Employee", "ProjectMember", "Intern", "Developer"] },
       { id: "item-notifications", name: "Notifications", icon: "Bell", href: "/notifications", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
+      { id: "item-messages", name: "Messages", icon: "MessageCircle", href: "/messages", roles: ["Admin", "Demo", "SalesManager", "Employee", "Sales"] },
       { id: "item-inbox", name: "Inbox", icon: "Inbox", href: "/inbox", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
-      { id: "item-followups", name: "Follow-ups", icon: "CalendarClock", href: "/followups", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
+      { id: "item-followups", name: "Follow-ups", icon: "CalendarClock", href: "/follow-ups", roles: ["Admin", "Demo", "SalesManager", "Employee", "Sales", "Admissions"] },
+      { id: "item-blogs", name: "Blogs & Knowledge Hub", icon: "BookOpen", href: "/blogs", roles: ["Admin", "Demo", "SalesManager", "Employee", "Sales", "ProjectMember", "Intern", "Client", "Developer"] },
     ],
   },
   {
@@ -181,8 +189,7 @@ const defaultSidebarSections: SidebarSection[] = [
     id: "section-ai-agents",
     heading: "AI AGENTS",
     items: [
-      { id: "item-email-agent", name: "Email Agent", icon: "Mail", href: "/email-agent", roles: ["Admin", "Demo"] },
-      { id: "item-voice-agent", name: "AI Voice Caller", icon: "PhoneCall", href: "/voice-agent", roles: ["Admin", "SalesManager", "Employee", "Demo"] },
+      { id: "item-email-agent", name: "Email Agent", icon: "Mail", href: "/email-agent", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
     ],
   },
   {
@@ -196,12 +203,14 @@ const defaultSidebarSections: SidebarSection[] = [
       { id: "item-invoices", name: "Invoices", icon: "FileText", href: "/invoices", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-proposals", name: "Proposals", icon: "FileEdit", href: "/proposals", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-marketplace", name: "Marketplace", icon: "ShoppingBag", href: "/admin/marketplace", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-storefront", name: "Storefront & Shop", icon: "ShoppingBag", href: "/shop", roles: ["Admin", "SalesManager", "Demo", "Client", "Employee", "Sales", "ProjectMember"] },
     ],
   },
   {
     id: "section-support",
     heading: "SUPPORT",
     items: [
+      { id: "item-product-guide", name: "Product Overview", icon: "BookOpen", href: "/product-guide", roles: ["Admin", "SalesManager", "Sales", "Employee", "Demo", "Intern", "Admissions"] },
       { id: "item-support-sh", name: "Support @SH", icon: "HeadphonesIcon", href: "/support/helpdesk", roles: ["Admin", "SalesManager", "Sales", "Employee", "ProjectMember", "Demo"] },
       { id: "item-cases", name: "Cases", icon: "HeadphonesIcon", href: "/support/cases", roles: ["Admin", "SalesManager", "Employee", "ProjectMember", "Demo"] },
       { id: "item-solutions", name: "Solutions", icon: "BookOpen", href: "/support/solutions", roles: ["Admin", "SalesManager", "Demo"] },
@@ -246,6 +255,7 @@ interface SortableSectionProps {
   onRenameItem: (itemId: string, name: string) => void;
   unreadCount: number;
   inboxUnread: number;
+  chatUnread?: number;
   favourites: string[];
   onToggleFavourite: (id: string) => void;
   searchQuery: string;
@@ -253,8 +263,9 @@ interface SortableSectionProps {
   onToggleSection: (sectionId: string) => void;
 }
 
-function SortableSection({ section, role, pathname, collapsed, isEditMode, onRenameSection, onRenameItem, unreadCount, inboxUnread, favourites, onToggleFavourite, searchQuery, isOpen, onToggleSection }: SortableSectionProps) {
+function SortableSection({ section, role, pathname, collapsed, isEditMode, onRenameSection, onRenameItem, unreadCount, inboxUnread, chatUnread = 0, favourites, onToggleFavourite, searchQuery, isOpen, onToggleSection }: SortableSectionProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id, disabled: !isEditMode || collapsed });
+  const { setMobileOpen } = useSidebar();
   const { t } = useLanguage();
   const { hasFeature, isOn } = useTenantConfig();
   const itemLabel = (item: SidebarItem) => {
@@ -292,8 +303,8 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
     .filter((item: SidebarItem) => !ITEM_ADDON[item.id] || isOn(ITEM_ADDON[item.id]))
     .filter((item: SidebarItem) => item.id !== "item-dashboard-b2c" || isOn("institute"))
     .filter((item: SidebarItem) => !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    // a company with the follow-up board gets the board (which has the email follow-ups as a tab) behind the same menu entry
-    .map((item: SidebarItem) => (item.id === "item-followups" && isOn("followup_board") ? { ...item, href: "/follow-ups" } : item));
+    // a company gets the rich follow-up board with calendar view, availability & blackout slots
+    .map((item: SidebarItem) => (item.id === "item-followups" ? { ...item, href: "/follow-ups" } : item));
 
   if (visibleItems.length === 0) return null;
 
@@ -310,11 +321,11 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
                 <GripVertical className="w-2.5 h-2.5 text-slate-400" />
               </div>
             )}
-            
+
             {isEditing && isEditMode ? (
               <div className="flex items-center gap-1 flex-1">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
                   className="bg-transparent text-[9px] font-bold tracking-[0.1em] uppercase text-slate-600 dark:text-slate-300 outline-none w-full border-b border-blue-500"
@@ -364,11 +375,12 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
                 const isActive = sidebarPathMatches(pathname, item.href);
                 const IconComp = iconMap[item.icon] || LayoutDashboard;
                 const isFav = favourites?.includes(item.id);
-                const badge = badgeCount(item, unreadCount, inboxUnread);
+                const badge = badgeCount(item, unreadCount, inboxUnread, chatUnread);
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={() => setMobileOpen(false)}
                     title={collapsed ? itemLabel(item) : undefined}
                     aria-label={itemLabel(item)}
                     aria-current={isActive ? "page" : undefined}
@@ -463,18 +475,18 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
                         title={isFav ? t("sidebar.remove_favourite") : t("sidebar.add_favourite")}
                         className={cn(
                           "p-0.5 rounded transition-all shrink-0 hover:scale-110 focus-visible:opacity-100",
-                          isFav 
-                            ? "opacity-100" 
+                          isFav
+                            ? "opacity-100"
                             : "opacity-0 group-hover:opacity-40 hover:!opacity-100"
                         )}
                       >
-                        <Star 
+                        <Star
                           className={cn(
                             "w-3.5 h-3.5 transition-colors",
-                            isFav 
-                              ? "fill-amber-400 text-amber-400" 
+                            isFav
+                              ? "fill-amber-400 text-amber-400"
                               : "text-slate-400 dark:text-slate-500 hover:text-amber-400"
-                          )} 
+                          )}
                         />
                       </button>
                     )}
@@ -503,10 +515,10 @@ function SidebarContent({ role }: SidebarProps) {
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const inboxEnabled = hasFeature("inbox");
   const userId = user?.id;
-  const { collapsed, setCollapsed } = useSidebar();
+  const { collapsed, setCollapsed, mobileOpen, setMobileOpen } = useSidebar();
   const { theme, toggleTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
-  
+
   const [sections, setSections] = useState<SidebarSection[]>(defaultSidebarSections);
   const navigationSections = pinDashboardNavigation(sections);
   const [favourites, setFavourites] = useState<string[]>(() => {
@@ -519,12 +531,46 @@ function SidebarContent({ role }: SidebarProps) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) return [...new Set(parsed.filter(value => typeof value === "string"))];
       }
-    } catch {}
+    } catch { }
     return [];
   });
   const [isEditMode, setIsEditMode] = useState(false);
   const { unreadCount } = useNotifications();
   const [inboxUnread, setInboxUnread] = useState(0);
+  const [chatUnread, setChatUnread] = useState(0);
+
+  // Chat unread count: light poll + instant update when chat reads or receives a message
+  useEffect(() => {
+    if (!user?.id) return;
+    let alive = true;
+    const fetchChatUnread = async () => {
+      try {
+        const t = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+        const res = await fetch(`${API_BASE_URL}/team-chat/unread-count`, {
+          headers: t ? { Authorization: `Bearer ${t}` } : {},
+        });
+        if (res.ok && alive) {
+          const d = await res.json();
+          setChatUnread(d.unread_count || 0);
+        }
+      } catch {}
+    };
+    fetchChatUnread();
+    const interval = setInterval(fetchChatUnread, 15000);
+    const handleChatUnreadChanged = (e: Event) => {
+      if (e instanceof CustomEvent && typeof e.detail?.unread === "number") {
+        setChatUnread(e.detail.unread);
+      } else {
+        void fetchChatUnread();
+      }
+    };
+    window.addEventListener("chat-unread-changed", handleChatUnreadChanged);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+      window.removeEventListener("chat-unread-changed", handleChatUnreadChanged);
+    };
+  }, [user?.id]);
 
   // Inbox unread badge: light poll, plus an immediate refresh whenever the Inbox page changes read state.
   useEffect(() => {
@@ -537,7 +583,7 @@ function SidebarContent({ role }: SidebarProps) {
           const data = await res.json();
           if (alive && !signal.aborted) setInboxUnread(data.unread || 0);
         }
-      } catch {}
+      } catch { }
     };
     const poll = createVisiblePoll(load, 60000);
     const refresh = (event?: Event) => {
@@ -569,7 +615,7 @@ function SidebarContent({ role }: SidebarProps) {
           const parsed = JSON.parse(saved);
           if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return { ...initial, ...Object.fromEntries(Object.entries(parsed).filter(([, value]) => typeof value === "boolean").map(([key, value]) => [key, Boolean(value)])) };
         }
-      } catch {}
+      } catch { }
     }
     return initial;
   });
@@ -603,7 +649,7 @@ function SidebarContent({ role }: SidebarProps) {
   const toggleSection = (sectionId: string) => {
     setOpenSections(prev => {
       const next = { ...prev, [sectionId]: !prev[sectionId] };
-      try { localStorage.setItem(`crm_sections_open_${userId || 'default'}`, JSON.stringify(next)); } catch {}
+      try { localStorage.setItem(`crm_sections_open_${userId || 'default'}`, JSON.stringify(next)); } catch { }
       return next;
     });
   };
@@ -630,7 +676,7 @@ function SidebarContent({ role }: SidebarProps) {
               if (!ignore) setFavourites([...new Set<string>(data.sidebar_preferences.favourites.filter((value: unknown) => typeof value === "string"))]);
               try {
                 localStorage.setItem(localFavKey, JSON.stringify(data.sidebar_preferences.favourites));
-              } catch {}
+              } catch { }
             }
           }
         }
@@ -655,20 +701,20 @@ function SidebarContent({ role }: SidebarProps) {
     const localFavKey = `crm_favourites_${user?.id || 'default'}`;
     try {
       localStorage.setItem(localFavKey, JSON.stringify(favsToSave));
-    } catch {}
+    } catch { }
 
     if (!user?.id) return;
 
     try {
       const url = `${API_BASE_URL}/users/me/sidebar-preferences?user_id=${user.id}`;
-      saveQueue.current = saveQueue.current.catch(() => {}).then(() => fetch(url, {
+      saveQueue.current = saveQueue.current.catch(() => { }).then(() => fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          sidebar_preferences: { 
+        body: JSON.stringify({
+          sidebar_preferences: {
             sections: newSections,
-            favourites: favsToSave 
-          } 
+            favourites: favsToSave
+          }
         }),
       }));
       await saveQueue.current;
@@ -740,7 +786,7 @@ function SidebarContent({ role }: SidebarProps) {
     .filter(item => ((role === "SuperAdmin" && isPlatformManagementPage(item.href)) || hasFeature(ITEM_FEATURE[item.id])) && (!ITEM_ADDON[item.id] || isOn(ITEM_ADDON[item.id])))
     .filter(item => item.id !== "item-dashboard-b2c" || isOn("institute"))
     .filter(item => !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    .map(item => item.id === "item-followups" && isOn("followup_board") ? { ...item, href: "/follow-ups" } : item);
+    .map(item => item.id === "item-followups" ? { ...item, href: "/follow-ups" } : item);
 
   const labelFor = (item: SidebarItem) => {
     if (item.customName) return item.customName;
@@ -760,11 +806,21 @@ function SidebarContent({ role }: SidebarProps) {
 
   return (
     <>
+      {/* Mobile backdrop overlay */}
+      {mobileOpen && (
+        <div
+          onClick={() => setMobileOpen(false)}
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs md:hidden"
+        />
+      )}
       <motion.div
         initial={false}
         animate={{ width: collapsed ? 72 : 280 }}
         transition={{ duration: reducedMotion ? 0 : 0.2, ease: "easeInOut" }}
-        className="app-sidebar fixed left-0 top-0 z-50 flex flex-col overflow-hidden"
+        className={cn(
+          "app-sidebar fixed left-0 top-0 z-50 flex flex-col overflow-hidden transition-transform duration-300 md:translate-x-0",
+          mobileOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full md:translate-x-0"
+        )}
         style={{
           background: "var(--sidebar-bg)",
           boxShadow: "4px 0 24px rgba(0,0,0,0.06)",
@@ -773,15 +829,13 @@ function SidebarContent({ role }: SidebarProps) {
       >
         {/* ── TOP BRANDING ── */}
         <div className={cn("shrink-0 flex items-center py-3 border-b border-slate-200/80 dark:border-white/10", collapsed ? "justify-center px-2" : "px-3.5 gap-2.5")}>
-          <div className="shrink-0 w-8 h-8 rounded-lg border border-slate-200/90 dark:border-white/10 shadow-xs flex items-center justify-center overflow-hidden bg-white dark:bg-zinc-900">
+          <div className="shrink-0 w-8 h-8 flex items-center justify-center overflow-hidden">
             <BrandMark size={28} fallback={
-              <div className="w-full h-full bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center">
-                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4">
-                  <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="white" fillOpacity="0.9" />
-                  <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="white" fillOpacity="0.5" />
-                  <circle cx="12" cy="12" r="2" fill="white" />
-                </svg>
-              </div>
+              <img
+                src="/Serp%20Hawk%20Logo.png"
+                alt="Serp Hawk Logo"
+                className="w-full h-full object-contain"
+              />
             } />
           </div>
 
@@ -806,8 +860,8 @@ function SidebarContent({ role }: SidebarProps) {
                   >
                     {theme === "dark" ? <Sun className="w-3.5 h-3.5 text-amber-500" /> : <Moon className="w-3.5 h-3.5 text-indigo-500" />}
                   </button>
-                  <button 
-                    onClick={() => setIsEditMode(!isEditMode)} 
+                  <button
+                    onClick={() => setIsEditMode(!isEditMode)}
                     className={cn("p-1 rounded-lg border transition-colors shadow-xs", isEditMode ? "bg-indigo-50 text-indigo-600 border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-400 dark:border-indigo-500/30" : "border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-white/10")}
                     title={t("sidebar.customize_sidebar")}
                   >
@@ -830,7 +884,7 @@ function SidebarContent({ role }: SidebarProps) {
               >
                 {activeLang === "en" ? "🇺🇸" : "🇪🇸"}
               </button>
-              
+
               <button
                 onClick={toggleTheme}
                 title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
@@ -846,8 +900,8 @@ function SidebarContent({ role }: SidebarProps) {
                 title={t("sidebar.switch_en")}
                 className={cn(
                   "flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold transition-all",
-                  activeLang === "en" 
-                    ? "bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/70 dark:border-white/10" 
+                  activeLang === "en"
+                    ? "bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/70 dark:border-white/10"
                     : "text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white"
                 )}
               >
@@ -860,8 +914,8 @@ function SidebarContent({ role }: SidebarProps) {
                 title={t("sidebar.switch_es")}
                 className={cn(
                   "flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold transition-all",
-                  activeLang === "es" 
-                    ? "bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/70 dark:border-white/10" 
+                  activeLang === "es"
+                    ? "bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/70 dark:border-white/10"
                     : "text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white"
                 )}
               >
@@ -902,13 +956,13 @@ function SidebarContent({ role }: SidebarProps) {
 
         {/* ── MAIN NAVIGATION ── */}
         <nav className={cn("flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 flex flex-col gap-0.5 pb-2", collapsed ? "px-2" : "px-3")}>
-          
+
           {/* ── FAVOURITES SECTION ── */}
           {favouriteItems.length > 0 && (
             <div className="flex flex-col mb-1 pb-2 border-b border-slate-100 dark:border-slate-800/80">
               {!collapsed && (
                 <div className="flex items-center justify-between px-2 pt-1 pb-1">
-                  <span 
+                  <span
                     className="text-[9px] font-bold tracking-[0.1em] uppercase flex items-center gap-1.5"
                     style={{ color: "var(--text-secondary)" }}
                   >
@@ -924,11 +978,12 @@ function SidebarContent({ role }: SidebarProps) {
                 {favouriteItems.map((item: SidebarItem) => {
                   const isActive = sidebarPathMatches(pathname, item.href);
                   const IconComp = iconMap[item.icon] || LayoutDashboard;
-                  const badge = badgeCount(item, unreadCount, inboxUnread);
+                  const badge = badgeCount(item, unreadCount, inboxUnread, chatUnread);
                   return (
                     <Link
                       key={`fav-${item.id}-${item.href}`}
                       href={item.href}
+                      onClick={() => setMobileOpen(false)}
                       title={collapsed ? labelFor(item) : undefined}
                       aria-label={labelFor(item)}
                       aria-current={isActive ? "page" : undefined}
@@ -986,14 +1041,15 @@ function SidebarContent({ role }: SidebarProps) {
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={navigationSections.map(s => s.id)} strategy={verticalListSortingStrategy}>
               {navigationSections.map((section) => (
-                <SortableSection 
+                <SortableSection
                   key={section.id}
                   section={section}
                   unreadCount={unreadCount}
                   inboxUnread={inboxUnread}
-                  role={role} 
-                  pathname={pathname} 
-                  collapsed={collapsed} 
+                  chatUnread={chatUnread}
+                  role={role}
+                  pathname={pathname}
+                  collapsed={collapsed}
                   isEditMode={isEditMode}
                   onRenameSection={handleRenameSection}
                   onRenameItem={handleRenameItem}
@@ -1022,7 +1078,7 @@ function SidebarContent({ role }: SidebarProps) {
                   {user?.name || user?.email || t("User")}
                 </p>
                 <p className="truncate text-[10px] text-slate-400 dark:text-zinc-500 font-medium">
-                  {t(role === "SalesManager" || role === "Employee" || role === "Sales" ? "Sales Manager" : role)}
+                  {t(role === "SalesManager" || role === "Employee" || role === "Sales" ? "Salesperson" : role)}
                 </p>
               </div>
               <button

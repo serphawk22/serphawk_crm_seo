@@ -293,18 +293,19 @@ class Stabilization(TenantIsolationBase):
     def test_sections_disable_per_tenant_including_specialized_handlers(self):
         with Session(S.ENGINE) as s:
             features.set_features(s, 2, {'leads': False, 'clients': False, 'calls': False, 'institute': True})
-        for path in ('/leads', '/leads/export-csv', f'/leads/{self.leads[2]}/follow-ups', '/clients', '/clients/export-csv', '/calls', '/scheduled-calls'):
+        for path in ('/leads', '/leads/export-csv', f'/leads/{self.leads[2]}/follow-ups', '/clients', '/clients/export-csv', '/calls', '/scheduled-calls', '/voice-agent/calls'):
             self.assertEqual(self.client.get(path, headers=self.signed()).status_code, 403, path)
         self.assertEqual(self.client.get('/leads', headers=self.signed(tid=3)).status_code, 200)
 
-    def test_institute_voice_requires_explicit_entitlement(self):
+    def test_ai_voice_api_uses_the_calls_gate(self):
         with Session(S.ENGINE) as s:
-            features.set_features(s, 2, {'institute': True})
+            features.set_features(s, 2, {'calls': False})
         r = self.client.get('/voice-agent/calls', headers=self.signed())
         self.assertEqual(r.status_code, 403, r.text)
-        self.assertEqual(r.json().get('feature'), 'voice_agent')
+        self.assertEqual(r.json().get('feature'), 'calls')
         with Session(S.ENGINE) as s:
-            self.assertTrue(features.set_features(s, 2, {'voice_agent': True})['voice_agent'])
+            features.set_features(s, 2, {'calls': True})
+        self.assertNotEqual(self.client.get('/voice-agent/calls', headers=self.signed()).status_code, 403)
 
     def test_tenant_mailbox_never_adopts_foreign_reply_tenant(self):
         with Session(S.ENGINE) as s:
@@ -324,7 +325,8 @@ class Stabilization(TenantIsolationBase):
         config = self.client.get('/me/features', headers=self.signed()).json()
         self.assertTrue(config['features']['lead_sources'])
         self.assertIn('Webinar Scheduled', config['settings']['lead_statuses'])
-        self.assertFalse(config['features']['voice_agent'])
+        self.assertTrue(config['features']['calls'])
+        self.assertNotIn('voice_agent', config['features'])
         for suffix, status in (('webinars', 'Webinar Scheduled'), ('walk-ins', 'Walk-in Scheduled'), ('follow-ups', 'Follow-up')):
             body = {'scheduled_at': '2026-12-01T10:00:00+00:00', 'notes': 'Test schedule'}
             r = self.client.post(f'/leads/{self.leads[2]}/{suffix}', json=body, headers=self.signed())

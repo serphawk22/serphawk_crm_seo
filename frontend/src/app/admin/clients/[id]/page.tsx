@@ -21,6 +21,8 @@ import { useLanguage } from '@/context/LanguageContext';
 import ClientHeader from './components/ClientHeader';
 import ClientSidebarPanel from './components/ClientSidebarPanel';
 import AiCopilotPanel from './components/AiCopilotPanel';
+import SalesNextSteps from '@/components/SalesNextSteps';
+import { OutreachResearch, readOutreachResearch } from '@/components/email-agent/OutreachResearch';
 import TimelineTab from './components/tabs/TimelineTab';
 import ConversationsTab from './components/tabs/ConversationsTab';
 import NotesTab from './components/tabs/NotesTab';
@@ -104,6 +106,7 @@ function CollapsibleSection({ title, icon: Icon, count, defaultOpen = false, acc
 
 // ─── Overview Tab — premium light ──────────────────────────────────────────
 function OverviewTab({ client, employees, serviceRequests, activities, timeline, research, notes, conversations, clientId, onNotesRefresh, onConversationsRefresh, emails, onRefresh, onActivitySelect }: any) {
+  const outreach = readOutreachResearch(research?.email_agent_data);
   const { t, language } = useLanguage();
   const recentActivities = (activities || []).slice(0, 8);
 
@@ -171,9 +174,11 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
             <div style={{ background: 'var(--accent)', borderRadius: 8, padding: '4px 7px', display: 'flex' }}><Building2 size={13} color="#fff" /></div>
             <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}><LocalizedText text={"Company Overview"} /></span>
           </div>
-          <p style={{ fontSize: 13.5, color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>{research.company_overview}</p>
+          <p className="whitespace-pre-wrap break-words" style={{ fontSize: 13.5, color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>{research.company_overview}</p>
         </div>
       )}
+      {outreach && <OutreachResearch research={outreach} showSummary={outreach.summary !== research?.company_overview} />}
+      <SalesNextSteps key={clientId} kind="clients" id={Number(clientId)} email={client.email || client.customFields?.email} />
       {/* Key Decision Makers */}
       {(() => {
         let people: any[] = [];

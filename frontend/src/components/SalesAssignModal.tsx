@@ -66,20 +66,31 @@ export default function SalesAssignModal({
   const [assigning, setAssigning] = useState(false);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<'assign' | 'history'>('assign');
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   const fetchWorkload = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/employees/workload`);
       if (res.ok) {
         const data = await res.json();
         setEmployees(data.employees || []);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        const msg = typeof data?.detail === 'string'
+          ? data.detail
+          : data?.details || data?.message || `HTTP ${res.status}`;
+        setEmployees([]);
+        setLoadError(`Failed to load sales team: ${msg}`);
       }
     } catch (e) {
       console.error('Failed to fetch employee workload:', e);
+      setEmployees([]);
+      setLoadError(e instanceof Error ? `Failed to load sales team: ${e.message}` : 'Failed to load sales team.');
     } finally {
       setLoading(false);
     }
@@ -271,6 +282,11 @@ export default function SalesAssignModal({
                   <div className="flex items-center justify-center py-10 gap-2 text-slate-400 text-xs font-bold">
                     <Loader2 size={16} className="animate-spin text-violet-600" />
                     Loading team workload…
+                  </div>
+                ) : loadError ? (
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 rounded-xl flex items-start gap-2 text-rose-600 dark:text-rose-400 text-xs font-semibold">
+                    <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                    <span className="break-words">{loadError}</span>
                   </div>
                 ) : employees.length === 0 ? (
                   <div className="text-center py-8 text-slate-400 text-xs">

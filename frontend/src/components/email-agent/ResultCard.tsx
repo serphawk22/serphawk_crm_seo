@@ -2,6 +2,13 @@ import LocalizedText from "@/components/LocalizedText";
 import React, { useState, useEffect, useRef } from "react";
 import { isEmailAddress, researchEmails, researchRecipient } from '@/lib/researchContacts';
 import Link from "next/link";
+import { API_BASE_URL } from "@/config";
+import { useLanguage } from "@/context/LanguageContext";
+import { useTenantConfig } from "@/context/TenantConfigContext";
+import BookingLinkPicker from "./BookingLinkPicker";
+import { OutreachResearch, type OutreachResearchData } from "./OutreachResearch";
+import { CopyButton } from "./CopyButton";
+export { CopyButton } from "./CopyButton";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Send, Sparkles, Mail, Clock, User, Globe, ChevronDown, ChevronUp,
@@ -39,6 +46,8 @@ export type RecommendedService = {
 };
 
 export interface ResearchResultData {
+  lead_id?: number;
+  outreach_research?: OutreachResearchData;
   company_info?: {
     company_name?: string;
     likely_industry?: string;
@@ -124,18 +133,6 @@ export type SendEmailResult = {
 } | null;
 
 
-export function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-      className="p-1.5 rounded-lg hover:bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:text-zinc-100 transition-all"
-      title="Copy"
-    >
-      {copied ? <Check className="w-3.5 h-3.5 text-slate-800 dark:text-zinc-100" /> : <Copy className="w-3.5 h-3.5" />}
-    </button>
-  );
-}
 
 function buildProspectingPoints(result: ResearchResultData) {
   const hasServices = (result.recommended_services || []).map((s) => typeof s === 'string' ? s : s.service_name).filter(Boolean) as string[];
@@ -238,6 +235,11 @@ function CopyableEmailItem({ email }: { email: string }) {
 
 
 export function ResultCard({ historyId, result, companyName, companyUrl, onSendManually, onSendAutomatically, onSaveFollowUp, onRemove }: { historyId: string; result: ResearchResultData; companyName: string; companyUrl: string; onSendManually: (r: ResearchResultData, name: string, url: string, skip_send?: boolean, action_type?: string) => Promise<SendEmailResult>; onSendAutomatically: (r: ResearchResultData, name: string, url: string) => Promise<SendEmailResult>; onSaveFollowUp: (r: ResearchResultData, note: string, title: string) => Promise<boolean>; onRemove: (id: string) => void; }) {
+  const { language } = useLanguage();
+  const { features } = useTenantConfig();
+  const [savedClientId, setSavedClientId] = useState<number>();
+  const [savingClient, setSavingClient] = useState(false);
+  const [clientSaveError, setClientSaveError] = useState("");
   const [activeTab, setActiveTab] = useState<"english" | "spanish" | "whatsapp">("english");
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
@@ -281,6 +283,32 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
   const [editableSpanishBody, setEditableSpanishBody] = useState(formatBody(result.draft?.spanish_body));
   const [editableWhatsappBody, setEditableWhatsappBody] = useState(formatBody(result.draft?.whatsapp_draft));
   const [fromEmail, setFromEmail] = useState("crm@serphawk.in");
+
+  function insertBookingLink(url: string) {
+    const spanish = activeTab === "spanish" || (activeTab === "whatsapp" && language === "es");
+    const line = spanish ? `Reserva una reunión: ${url}` : `Book a meeting: ${url}`;
+    const update = (body: string) => body.includes(url) ? body : [body.trimEnd(), line].filter(Boolean).join("\n\n");
+    if (activeTab === "spanish") setEditableSpanishBody(update);
+    else if (activeTab === "whatsapp") setEditableWhatsappBody(update);
+    else setEditableEnglishBody(update);
+  }
+
+  async function saveClient() {
+    setSavingClient(true);
+    setClientSaveError("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/leads/${result.lead_id}/save-research-to-client`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(typeof data.detail === "string" ? data.detail : data.detail?.message || "Could not save company research.");
+      }
+      setSavedClientId(data.client_id);
+    } catch (error) {
+      setClientSaveError(error instanceof Error ? error.message : "Could not save company research.");
+    } finally {
+      setSavingClient(false);
+    }
+  }
 
   const extractedEmailsArray = researchEmails(result);
   const initialContactEmail = researchRecipient(result);
@@ -475,6 +503,25 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
           <p className="text-slate-500 dark:text-zinc-400 text-sm leading-relaxed mb-5">
             {result.company_info?.summary || result.company_info?.what_they_do || "Company information gathered successfully."}
           </p>
+
+          {result.outreach_research && (
+            <div className="mb-5 space-y-2">
+              <OutreachResearch research={result.outreach_research} />
+              {result.lead_id && result.outreach_research.summary && features.clients !== false && features.leads !== false && (
+                savedClientId ? (
+                  <Link href={`/admin/clients/${savedClientId}`} className="inline-block text-sm font-semibold text-indigo-600 underline dark:text-indigo-400">
+                    Open saved client
+                  </Link>
+                ) : (
+                  <button type="button" onClick={saveClient} disabled={savingClient}
+                    className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                    {savingClient ? "Saving…" : "Save to Clients"}
+                  </button>
+                )
+              )}
+              {clientSaveError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{clientSaveError}</p>}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
@@ -800,7 +847,8 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
             ))}
           </div>
 
-          <div className="mb-6">
+          <div className="mb-6 space-y-2">
+            <BookingLinkPicker onInsert={insertBookingLink} />
             <textarea
               value={activeTab === "english" ? editableEnglishBody : activeTab === "spanish" ? editableSpanishBody : editableWhatsappBody}
               onChange={(e) => {

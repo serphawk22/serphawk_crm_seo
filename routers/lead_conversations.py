@@ -103,29 +103,46 @@ def _parse_lead_datetime(value: Optional[str]) -> Optional[datetime]:
 
 
 def _sync_latest_call_followup(session: Session, lead: Lead) -> None:
-    """Keep the most recent AI call's follow-up fields consistent with the lead."""
+    """Keep the most recent AI call and centralized FollowUp task consistent with the lead."""
     latest = session.exec(
         select(AICall).where(or_(
             AICall.lead_id == lead.id,
             (AICall.entity_type == "lead") & (AICall.entity_id == lead.id),
         )).order_by(AICall.created_at.desc())
     ).first()
-    if not latest:
-        return
-    latest.follow_up_needed = bool(lead.follow_up_needed)
-    latest.follow_up_at = lead.next_follow_up_at
-    latest.follow_up_reason = lead.follow_up_reason
-    latest.followup_needed = bool(lead.follow_up_needed)
-    latest.followup_date = (lead.next_follow_up_at.isoformat()
-                            if lead.next_follow_up_at else None)
-    session.add(latest)
-    # The banner edits the same task shown on the shared follow-up board.
+    conv = None
+    if latest:
+        latest.follow_up_needed = bool(lead.follow_up_needed)
+        latest.follow_up_at = lead.next_follow_up_at
+        latest.follow_up_reason = lead.follow_up_reason
+        latest.followup_needed = bool(lead.follow_up_needed)
+        latest.followup_date = (lead.next_follow_up_at.isoformat()
+                                if lead.next_follow_up_at else None)
+        session.add(latest)
+        conv = session.exec(select(ConversationLog).where(
+            ConversationLog.tenant_id == lead.tenant_id,
+            ConversationLog.source_ref == f"ai_call:{latest.id}",
+        ).order_by(ConversationLog.id.desc())).first()
+
+    # The banner edits the same task shown on the Lead Follow-ups tab and Global Follow-ups page.
     from database import FollowUp
-    task = session.exec(select(FollowUp).join(
-        ConversationLog, ConversationLog.id == FollowUp.conversation_id).where(
-        ConversationLog.tenant_id == lead.tenant_id,
-        ConversationLog.source_ref == f"ai_call:{latest.id}",
-        FollowUp.tenant_id == lead.tenant_id).order_by(FollowUp.id.desc())).first()
+    task = None
+    if conv:
+        task = session.exec(select(FollowUp).where(
+            FollowUp.tenant_id == lead.tenant_id,
+            or_(FollowUp.conversation_id == conv.id, FollowUp.idempotency_key == f"conv-{conv.id}"),
+        ).order_by(FollowUp.id.desc())).first()
+    if not task and latest:
+        task = session.exec(select(FollowUp).where(
+            FollowUp.tenant_id == lead.tenant_id,
+            or_(FollowUp.source_ref == f"ai_call:{latest.id}", FollowUp.idempotency_key == f"ai_call:{latest.id}"),
+        ).order_by(FollowUp.id.desc())).first()
+    if not task:
+        task = session.exec(select(FollowUp).where(
+            FollowUp.tenant_id == lead.tenant_id,
+            FollowUp.idempotency_key == f"lead_followup:{lead.id}",
+        ).order_by(FollowUp.id.desc())).first()
+
     if task:
         if not lead.follow_up_needed:
             task.status = followups.core.DONE
@@ -138,10 +155,36 @@ def _sync_latest_call_followup(session: Session, lead: Lead) -> None:
             if lead.next_follow_up_at:
                 task.due_at = task.remind_at = lead.next_follow_up_at
                 task.reminder_sent_at = None
+                task.overdue_notified_at = None
                 task.schedule_status = "confirmed"
-            task.notes = lead.follow_up_reason
+            if lead.follow_up_reason is not None:
+                task.notes = lead.follow_up_reason
         task.updated_at = datetime.now(timezone.utc)
         session.add(task)
+        if conv:
+            conv.follow_up_date = task.due_at if lead.follow_up_needed else None
+            session.add(conv)
+    elif lead.follow_up_needed and lead.next_follow_up_at:
+        key = f"conv-{conv.id}" if conv else (f"ai_call:{latest.id}" if latest else f"lead_followup:{lead.id}")
+        src_ref = f"ai_call:{latest.id}" if latest else f"lead_followup:{lead.id}"
+        fu, _ = followups.core.upsert_source_followup(
+            session,
+            tenant_id=lead.tenant_id,
+            idempotency_key=key,
+            source="manual",
+            source_ref=src_ref,
+            lead_id=lead.id,
+            title=f"Follow up with {lead.company_name or f'Lead #{lead.id}'}",
+            notes=lead.follow_up_reason,
+            channel="call",
+            due_at=lead.next_follow_up_at,
+            assigned_to=lead.owner_id or current_salesperson_id.get(),
+            created_by=current_salesperson_id.get(),
+            conversation_id=conv.id if conv else None,
+        )
+        if conv and fu:
+            conv.follow_up_date = fu.due_at
+            session.add(conv)
 
 
 @router.patch("/leads/{lead_id}/followup")

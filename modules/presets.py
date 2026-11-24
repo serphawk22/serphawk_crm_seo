@@ -20,6 +20,40 @@ _FLAGSHIP_SUITE = {"cases", "invoices", "support_sh", "lead_sources", "lead_sour
                    "ai_reports", "dropped_clients", "proposals_portal", "followup_board"}
 
 PRESETS: Dict[str, dict] = {
+    "sales_instance": {
+        "label": "Sales Instance",
+        "description": "Focused sales operations workspace: lead pipeline, salesperson activity dashboard, upcoming "
+                       "follow-ups, meetings, individual lead source reports per salesperson, and conversion tracking.",
+        "features": {"command_center", "leads", "contacts", "work_queue", "followups", "meetings", "calls", "teams",
+                     "leaderboard", "inbox", "email_agent", "lead_sources", "lead_source_analytics", "billing",
+                     "invoices", "proposals", "proposals_portal", "ai_reports", "followup_board"},
+        "settings": {"sales_scoping": True, "lead_auto_assign": True, "lead_assignment": "roundrobin",
+                     "home_dashboard": "command_center",
+                     "lead_statuses": ["New", "Contacted", "Not Responded", "Neutral", "Positive", "Negative", "Converted"]},
+    },
+    "administrator_instance": {
+        "label": "Administrator Instance (Admissions)",
+        "description": "Institute administration & admissions workspace: student directory, course batches, enrollments, "
+                       "fee collection on remaining balance, admission slips, advance slips, and payment recording.",
+        "features": {"dashboard_b2c", "institute", "work_queue", "teams", "leaderboard", "inbox",
+                     "reports", "billing", "invoices", "followups", "followup_board"},
+        "settings": {"sales_scoping": True, "home_dashboard": "dashboard_b2c", "default_currency": "INR",
+                     "timezone": "Asia/Kolkata",
+                     "lead_statuses": ["New", "Contacted", "Enrolled", "Lost"]},
+    },
+    "combined_instance": {
+        "label": "Combined (Sales + Administrator)",
+        "description": "Complete end-to-end workflow: Sales converts leads to students with advance payment, and Administrators "
+                       "follow up on remaining fees, issue admission/advance slips, and record fee collections.",
+        "features": {"dashboard_b2c", "leads", "contacts", "clients", "work_queue", "task_sheet", "reports",
+                     "meetings", "calls", "teams", "leaderboard", "inbox", "followups", "email_agent", "lead_sources",
+                     "lead_source_analytics", "institute", "billing", "invoices", "proposals", "proposals_portal",
+                     "ai_reports", "followup_board"},
+        "settings": {"sales_scoping": True, "lead_auto_assign": True, "lead_assignment": "roundrobin",
+                     "home_dashboard": "dashboard_b2c", "default_currency": "INR", "timezone": "Asia/Kolkata",
+                     "lead_statuses": ["New", "Contacted", "Not Responded", "Webinar Scheduled", "Walk-in Scheduled",
+                                       "Converted", "Enrolled", "Lost"]},
+    },
     "serphawk": {
         "label": "SerpHawk Flagship",
         "description": "What the main SerpHawk product itself ships: the full CRM plus the business suite (lead sources, "
@@ -34,7 +68,7 @@ PRESETS: Dict[str, dict] = {
         "description": "SCM HB-style: leads and admissions tracking, students, courses, batches, enrollments and fees, "
                        "attendance, portals, reports, inbox, follow-ups and email agent.",
         "features": {"dashboard_b2c", "cases", "leads", "work_queue", "task_sheet", "reports", "calls", "teams", "leaderboard", "inbox",
-                     "followups", "email_agent", "support", "institute", "ai_reports", "lead_sources", "lead_source_analytics"},
+                     "followups", "email_agent", "support", "institute", "ai_reports", "lead_sources", "lead_source_analytics", "followup_board"},
         "settings": {"default_currency": "INR", "timezone": "Asia/Kolkata", "lead_assignment": "revenue",
                      "sales_scoping": True, "home_dashboard": "dashboard_b2c",
                      "lead_statuses": ["New", "Contacted", "Not Responded", "Follow-up", "Webinar Scheduled",
@@ -75,22 +109,10 @@ _LEGACY_PRESETS: Dict[str, dict] = {
         "settings": {},
     },
     "agency-voice": {
-        "label": "Digital agency CRM + AI voice caller",
-        "description": "The agency preset plus the outbound AI voice agent.",
-        "features": _CRM_BASE | {"billing", "invoices", "proposals", "voice_agent"},
+        "label": "Digital agency CRM (legacy voice bundle)",
+        "description": "Legacy name kept for existing clients; AI voice calling is now part of the Calls module.",
+        "features": _CRM_BASE | {"billing", "invoices", "proposals"},
         "settings": {},
-    },
-    "institute": {
-        "label": "Training institute",
-        "description": "SCM HB-style: leads and admissions tracking, students, courses, batches, enrollments and fees, "
-                       "attendance, portals, reports, inbox, follow-ups and email agent.",
-        "features": {"dashboard_b2c", "cases", "leads", "work_queue", "task_sheet", "reports", "calls", "teams", "leaderboard", "inbox",
-                     "followups", "email_agent", "support", "institute", "ai_reports", "lead_sources", "lead_source_analytics"},
-        "settings": {"default_currency": "INR", "timezone": "Asia/Kolkata", "lead_assignment": "revenue",
-                     "sales_scoping": True, "home_dashboard": "dashboard_b2c",
-                     "lead_statuses": ["New", "Contacted", "Not Responded", "Follow-up", "Webinar Scheduled",
-                                       "Webinar Attended", "Webinar Not Attended", "Walk-in Scheduled",
-                                       "Walk-in Attended", "Walk-in Not Attended", "Converted", "Lost"]},
     },
     "design-agency": {
         "label": "Design / marketing agency (Spanish-first)",
@@ -132,6 +154,9 @@ def apply_preset(session: Session, tenant_id: int, name: str, settings_override:
             return "dashboard_b2c" in preset["features"]
         if key.startswith("dashboard_"):
             return "dashboard" in preset["features"]
+        # New automation is opt-in even on the voice preset; an admin turns it on per client.
+        if key == "auto_call_new_leads":
+            return False
         return key in preset["features"]
     applied = features.set_features(session, tenant_id, {k: included(k) for k in features.FEATURES}, commit=commit)
     merged = dict(preset["settings"])

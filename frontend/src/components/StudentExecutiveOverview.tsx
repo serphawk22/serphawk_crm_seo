@@ -68,6 +68,19 @@ interface StudentExecutiveOverviewProps {
     name?: string | null;
     email: string;
   } | null;
+  admissions_administrator?: {
+    id: number;
+    name?: string | null;
+    email: string;
+  } | null;
+  fee_summary?: {
+    total_business_made: number;
+    advance_collected_by_sales: number;
+    salesperson_name?: string | null;
+    fees_collected_by_admin: number;
+    administrator_name?: string | null;
+    remaining_fees_balance: number;
+  } | null;
   lead?: {
     id: number;
     source?: string | null;
@@ -82,6 +95,8 @@ export default function StudentExecutiveOverview({
   tasks,
   performance,
   salesperson,
+  admissions_administrator,
+  fee_summary,
   lead,
   onRecordPaymentClick,
 }: StudentExecutiveOverviewProps) {
@@ -234,23 +249,50 @@ export default function StudentExecutiveOverview({
 
             <div className="flex flex-col space-y-1 text-xs">
               <div>
-                <span className="text-[10px] text-[var(--text-secondary)]">Paid to Date</span>
-                <p className="font-bold text-emerald-700 dark:text-emerald-400">
-                  ₹{amountPaid.toLocaleString()}
+                <span className="text-[10px] text-[var(--text-secondary)]">Advance (Sales)</span>
+                <p className="font-bold text-sky-700 dark:text-sky-400" title={`Collected by ${fee_summary?.salesperson_name || salesperson?.name || "Salesperson"}`}>
+                  ₹{(fee_summary ? fee_summary.advance_collected_by_sales : amountPaid).toLocaleString()}
                 </p>
+                <span className="text-[9px] text-[var(--text-secondary)] truncate block max-w-[100px]">
+                  by {fee_summary?.salesperson_name || salesperson?.name || "Sales"}
+                </span>
               </div>
-              <div>
+              <div className="pt-1">
+                <span className="text-[10px] text-[var(--text-secondary)]">Fees (Admin)</span>
+                <p className="font-bold text-emerald-700 dark:text-emerald-400" title={`Collected by ${fee_summary?.administrator_name || admissions_administrator?.name || "Administrator"}`}>
+                  ₹{(fee_summary ? fee_summary.fees_collected_by_admin : 0).toLocaleString()}
+                </p>
+                <span className="text-[9px] text-[var(--text-secondary)] truncate block max-w-[100px]">
+                  by {fee_summary?.administrator_name || admissions_administrator?.name || "Admin"}
+                </span>
+              </div>
+              <div className="pt-1">
                 <span className="text-[10px] text-[var(--text-secondary)]">Remaining Due</span>
                 <p className={`font-bold ${amountDue > 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-500"}`}>
-                  ₹{amountDue.toLocaleString()}
+                  ₹{(fee_summary ? fee_summary.remaining_fees_balance : amountDue).toLocaleString()}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="border-t border-[var(--border)] pt-2 text-[11px] text-[var(--text-secondary)] flex justify-between">
-            <span>Total Fee:</span>
-            <span className="font-bold text-[var(--text-primary)]">₹{totalFee.toLocaleString()}</span>
+          <div className="border-t border-[var(--border)] pt-2 text-[11px] text-[var(--text-secondary)] space-y-1">
+            <div className="flex justify-between font-medium">
+              <span>Total Business Made:</span>
+              <span className="font-bold text-[var(--text-primary)]">₹{(fee_summary ? fee_summary.total_business_made : totalFee).toLocaleString()}</span>
+            </div>
+            {primaryEnrollment?.slip_number && (
+              <div className="flex items-center justify-between pt-1 border-t border-[var(--border)]/60 text-[10px]">
+                <span className="font-semibold text-slate-500">Slips:</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-mono font-bold" title="Admission Slip Number">
+                    {primaryEnrollment.slip_number}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 font-mono font-bold" title="Advance Slip Number">
+                    ADV-{primaryEnrollment.slip_number.replace('ADM-', '')}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

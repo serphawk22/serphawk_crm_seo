@@ -1,5 +1,6 @@
 "use client";
 import LocalizedText from "@/components/LocalizedText";
+import OCRScannerModal, { OCRResult } from "@/components/OCRScannerModal";
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -52,6 +53,7 @@ import AddFollowUpModal, { FollowUpTarget } from '@/components/AddFollowUpModal'
 import dynamic from 'next/dynamic';
 import { ContextMenu } from '@/components/ContextMenu';
 import { ViewSwitcher, ViewType } from '@/components/ViewSwitcher';
+import PipelineWorkflowFlowchart from "@/components/PipelineWorkflowFlowchart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const ClientMapView = dynamic(() => import('./ClientMapView'), {
@@ -107,6 +109,8 @@ interface Client {
   assignedEmployeeId?: number | null;
   lead_source?: string;
   industry?: string;
+  customFields?: any;
+  is_sample?: boolean;
 }
 
 interface ClientStatusOption {
@@ -199,6 +203,42 @@ export default function ClientsPage() {
   const [isDropModalOpen, setIsDropModalOpen] = useState(false);
   const droppedDropdownRef = useRef<HTMLDivElement>(null);
   const [employees, setEmployees] = useState<{ id: number; name: string }[]>([]);
+  const [sampleStats, setSampleStats] = useState<{ has_sample_data: boolean; sample_clients_count: number } | null>(null);
+  const [sampleBusy, setSampleBusy] = useState(false);
+
+  const fetchSampleStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/sample-data/status`);
+      if (res.ok) {
+        const d = await res.json();
+        setSampleStats(d);
+      }
+    } catch (e) {}
+  };
+
+  const handleDeleteSampleData = async () => {
+    if (!window.confirm("Delete all sample demo records? Your original real clients will remain untouched.")) return;
+    setSampleBusy(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/sample-data/delete`, { method: "DELETE" });
+      if (res.ok) {
+        await fetchClients();
+        await fetchSampleStatus();
+      }
+    } catch (e) {
+      alert("Failed to delete sample data.");
+    } finally {
+      setSampleBusy(false);
+    }
+  };
+
+  const clientStageCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    CLIENT_STAGES.forEach(st => {
+      c[st] = clients.filter(cl => ((cl as any).stage || cl.status) === st).length;
+    });
+    return c;
+  }, [clients]);
 
   const filteredClients = useMemo(() => {
     return clients.filter(client => {
@@ -251,42 +291,17 @@ export default function ClientsPage() {
     };
   }, []);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    const file = e.target.files[0];
-    setOcrLoading(true);
-
-    const formDataUpload = new FormData();
-    formDataUpload.append('file', file);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/documents/ocr`, {
-        method: 'POST',
-        body: formDataUpload,
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        // Pre-fill form from OCR result
-        setFormData(prev => ({
-          ...prev,
-          companyName: result.company_name || prev.companyName,
-          email: result.email || prev.email,
-          websiteUrl: result.website || prev.websiteUrl,
-        }));
-        setIsOCRModalOpen(false);
-        setIsModalOpen(true); // Open standard Add Client modal with prefilled data
-      } else {
-        alert(language === 'es' ? "Fallo al extraer datos de la imagen." : "Failed to extract data from image.");
-      }
-    } catch (error) {
-      console.error(error);
-      alert(language === 'es' ? "Ocurrió un error durante la extracción OCR." : "An error occurred during OCR extraction.");
-    } finally {
-      setOcrLoading(false);
-      // Reset input
-      e.target.value = '';
-    }
+  const handleOCRExtracted = (result: OCRResult) => {
+    setFormData(prev => ({
+      ...prev,
+      companyName: result.company_name || prev.companyName,
+      email: result.email || prev.email,
+      websiteUrl: result.website || prev.websiteUrl,
+      projectName: prev.projectName || (result.company_name ? `${result.company_name} SEO` : ""),
+      tagline: result.designation ? `${result.designation} - ${result.name}` : prev.tagline,
+    }));
+    setIsOCRModalOpen(false);
+    setIsModalOpen(true);
   };
 
   const [isAutofilling, setIsAutofilling] = useState(false);
@@ -362,6 +377,7 @@ export default function ClientsPage() {
     fetchStatuses();
     fetchActivities();
     fetchEmployees();
+    fetchSampleStatus();
   }, [role, user]);
 
   useEffect(() => { fetchDroppedClients(); }, [dropOn]);
@@ -454,6 +470,7 @@ export default function ClientsPage() {
   const [addLoading, setAddLoading] = useState(false);
   const [showSalesAssign, setShowSalesAssign] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<any>(null);
+  const [clientCustomFields, setClientCustomFields] = useState<{ key: string; value: string }[]>([]);
   const handleAddClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (addLoading) return;
@@ -472,9 +489,15 @@ export default function ClientsPage() {
     }
 
     // Store form data and open sales assign modal
+    const cfObj = clientCustomFields.reduce((acc, curr) => {
+      if (curr.key.trim()) acc[curr.key.trim()] = curr.value.trim();
+      return acc;
+    }, {} as Record<string, string>);
     setPendingFormData({
       ...formData,
-      targetKeywords: formData.targetKeywords.split(',').map((k: string) => k.trim())
+      targetKeywords: formData.targetKeywords.split(',').map((k: string) => k.trim()),
+      customFields: cfObj,
+      custom_fields: cfObj,
     });
     setIsModalOpen(false);
     setShowSalesAssign(true);
@@ -504,6 +527,7 @@ export default function ClientsPage() {
           tagline: '',
           targetKeywords: ''
         });
+        setClientCustomFields([]);
         setPendingFormData(null);
       } else {
         const data = await res.json().catch(() => ({}));
@@ -733,6 +757,37 @@ export default function ClientsPage() {
 
       </div>
 
+      {/* Sample Data Banner */}
+      {(sampleStats?.has_sample_data || clients.some(c => c.customFields?.is_sample || c.is_sample)) && (
+        <div className="mx-3 sm:mx-6 my-2 p-3 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/30 border border-amber-200 dark:border-amber-800/60 flex items-center justify-between flex-wrap gap-2 shadow-xs">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+            <span className="text-xs font-bold text-amber-900 dark:text-amber-200">
+              Sample Data Active: Demo client profiles loaded to preview client management.
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={sampleBusy}
+            onClick={handleDeleteSampleData}
+            className="px-3 py-1 rounded-xl text-xs font-bold bg-white dark:bg-zinc-900 text-rose-600 border border-rose-300 dark:border-rose-800 hover:bg-rose-50 transition shadow-xs cursor-pointer"
+          >
+            {sampleBusy ? "Removing..." : "Delete Sample Data"}
+          </button>
+        </div>
+      )}
+
+      {/* Interactive Workflow Flowchart */}
+      <div className="px-3 sm:px-6 pt-2">
+        <PipelineWorkflowFlowchart
+          entityType="clients"
+          stages={CLIENT_STAGES}
+          counts={clientStageCounts}
+          selectedStage={filter}
+          onSelectStage={(st) => setFilter(st)}
+        />
+      </div>
+
       {/* Toolbar */}
       <div className="flex items-center justify-between px-3 sm:px-6 py-3 bg-white dark:bg-[#1e293b] border-b border-slate-200 dark:border-slate-800 flex-wrap gap-3">
         <div className="relative w-full sm:w-72">
@@ -744,7 +799,7 @@ export default function ClientsPage() {
           />
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap max-w-full overflow-x-auto scrollbar-none pb-1 sm:pb-0">
-          <ViewSwitcher currentView={viewMode as any} onViewChange={(v: any) => setViewMode(v)} />
+          <ViewSwitcher currentView={viewMode as any} onViewChange={(v: any) => setViewMode(v)} storageKey="crm_pref_view_clients" />
           {["All", ...CLIENT_STAGES].map(s => (
             <button key={s} onClick={() => { setFilter(s === "All" ? "All" : s); setPage(1); }}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${(filter === "All" ? "All" : filter) === s ? (s === "Lost" ? "bg-rose-600 text-white shadow-sm shadow-rose-500/30" : "bg-blue-600 dark:bg-white text-white dark:text-black shadow-sm") : (s === "Lost" ? "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 border border-rose-200 dark:border-rose-900/40" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700")}`}>
@@ -1415,71 +1470,31 @@ export default function ClientsPage() {
           )}
         </div>
       </div>
-      {/* Modals remain structurally similar, but updated with glassmorphism */}
-      <AnimatePresence>
-        {isOCRModalOpen && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-50 p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-              className="bg-white dark:bg-zinc-900/80 backdrop-blur-2xl border border-white rounded-[2rem] shadow-2xl w-full max-w-lg p-8 text-center relative overflow-hidden"
-            >
-               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-zinc-500 to-slate-500"></div>
-               <div className="flex justify-between items-center mb-8">
-                 <h2 className="text-2xl font-black flex items-center gap-3 text-slate-800 dark:text-zinc-100">
-                    <div className="p-2 bg-zinc-50 rounded-xl text-zinc-600"><FileScan className="w-6 h-6" /></div>
-                    {language === 'es' ? 'Escaneo Inteligente' : 'Smart Scan'}
-                 </h2>
-                 <button onClick={() => setIsOCRModalOpen(false)} className="w-10 h-10 bg-white dark:bg-zinc-900 shadow-sm rounded-full flex items-center justify-center text-slate-400 hover:text-slate-800 dark:text-zinc-100 transition-colors">&times;</button>
-               </div>
-
-               <div className="border-2 border-dashed border-zinc-200/50 rounded-3xl p-12 flex flex-col items-center justify-center bg-white dark:bg-zinc-900/50 relative hover:bg-white dark:bg-zinc-900/80 hover:border-zinc-400 transition-all group">
-                   <input
-                     type="file"
-                     accept="image/*"
-                     onChange={handleFileUpload}
-                     disabled={ocrLoading}
-                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10"
-                   />
-
-                   {ocrLoading ? (
-                     <div className="flex flex-col items-center justify-center text-zinc-600">
-                       <Loader2 className="w-12 h-12 animate-spin mb-4" />
-                       <p className="font-bold text-lg">{language === 'es' ? 'Extrayendo Datos...' : 'Extracting Data...'}</p>
-                       <p className="text-xs text-zinc-400 mt-1 font-medium">{language === 'es' ? 'El motor neuronal está procesando la imagen' : 'Neural engine is processing the image'}</p>
-                     </div>
-                   ) : (
-                     <div className="flex flex-col items-center justify-center text-slate-500 dark:text-zinc-400 group-hover:text-zinc-600 transition-colors">
-                       <UploadCloud className="w-12 h-12 mb-4" />
-                       <p className="font-bold text-lg text-slate-700 dark:text-zinc-200">{language === 'es' ? 'Suelte la Tarjeta de Visita Aquí' : 'Drop Visiting Card Here'}</p>
-                       <p className="text-xs mt-2 font-medium">{language === 'es' ? 'Extrae Nombre, Email, Sitio Web automáticamente' : 'Auto-extracts Name, Email, Website'}</p>
-                     </div>
-                   )}
-               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* OCR Scanner with Live Camera & Photo Upload */}
+      <OCRScannerModal
+        isOpen={isOCRModalOpen}
+        onClose={() => setIsOCRModalOpen(false)}
+        onExtracted={handleOCRExtracted}
+        targetEntity="client"
+      />
 
       <AnimatePresence>
         {isModalOpen && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-50 p-3 sm:p-4"
           >
             <motion.div
                initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-               className="bg-white dark:bg-zinc-900/90 backdrop-blur-2xl rounded-[2rem] border border-white shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
+               className="bg-white dark:bg-zinc-900/90 backdrop-blur-2xl rounded-3xl border border-white/20 dark:border-white/10 shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col"
             >
-              <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-white dark:bg-zinc-900/50">
-                <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 tracking-tight">{language === 'es' ? 'Agregar Nuevo Cliente' : 'Add New Client'}</h2>
-                <button onClick={() => setIsModalOpen(false)} className="w-10 h-10 bg-white dark:bg-zinc-900 shadow-sm rounded-full flex items-center justify-center text-slate-400 hover:text-slate-800 dark:text-zinc-100 transition-colors">&times;</button>
+              <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-white dark:bg-zinc-900/50">
+                <h2 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-zinc-100 tracking-tight">{language === 'es' ? 'Agregar Nuevo Cliente' : 'Add New Client'}</h2>
+                <button onClick={() => setIsModalOpen(false)} className="w-9 h-9 sm:w-10 sm:h-10 bg-white dark:bg-zinc-900 shadow-sm rounded-full flex items-center justify-center text-slate-400 hover:text-slate-800 dark:text-zinc-100 transition-colors">&times;</button>
               </div>
-              <div className="overflow-y-auto p-8 custom-scrollbar">
-                <form onSubmit={handleAddClient} className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="overflow-y-auto p-4 sm:p-8 custom-scrollbar">
+                <form onSubmit={handleAddClient} className="space-y-4 sm:space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-700 dark:text-zinc-200 uppercase tracking-widest pl-1">{language === 'es' ? 'Nombre de Empresa' : 'Company Name'}</label>
                       <input required className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500 transition-all shadow-sm font-medium" value={formData.companyName} onChange={e => setFormData({...formData, companyName: e.target.value})} />
@@ -1519,9 +1534,65 @@ export default function ClientsPage() {
                     <textarea className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500 transition-all shadow-sm font-medium min-h-[100px]" value={formData.targetKeywords} onChange={e => setFormData({...formData, targetKeywords: e.target.value})} />
                   </div>
 
-                  <div className="pt-6 flex justify-end gap-3 border-t border-slate-100 dark:border-zinc-800">
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:bg-zinc-950 transition-colors shadow-sm">{language === 'es' ? 'Cancelar' : 'Cancel'}</button>
-                    <button type="submit" className="px-8 py-3 bg-gradient-to-r from-zinc-600 to-slate-600 text-white rounded-xl font-bold hover:shadow-[0_8px_30px_rgba(79,70,229,0.3)] shadow-[0_4px_15px_rgba(79,70,229,0.2)] hover:-translate-y-0.5 transition-all">{language === 'es' ? 'Crear Cliente' : 'Create Client'}</button>
+                  {/* Custom / Additional Fields */}
+                  <div className="border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 bg-slate-50/50 dark:bg-zinc-800/40 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                          {language === 'es' ? 'Campos Personalizados' : 'Custom / Additional Fields'}
+                        </h4>
+                        <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                          {language === 'es' ? 'Agregue campos que se mostrarán en el encabezado del cliente' : 'Add custom metadata fields that will be displayed in the client header'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setClientCustomFields(prev => [...prev, { key: "", value: "" }])}
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 transition flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" /> {language === 'es' ? 'Agregar Campo' : 'Add Field'}
+                      </button>
+                    </div>
+
+                    {clientCustomFields.length > 0 && (
+                      <div className="space-y-2 pt-1">
+                        {clientCustomFields.map((cf, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              placeholder="Field Name (e.g. Account Type, Contract Term)"
+                              value={cf.key}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setClientCustomFields(prev => prev.map((item, i) => i === idx ? { ...item, key: val } : item));
+                              }}
+                              className="w-1/2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Value"
+                              value={cf.value}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setClientCustomFields(prev => prev.map((item, i) => i === idx ? { ...item, value: val } : item));
+                              }}
+                              className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setClientCustomFields(prev => prev.filter((_, i) => i !== idx))}
+                              className="p-1.5 text-slate-400 hover:text-red-500 transition rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="pt-4 sm:pt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5 sm:gap-3 border-t border-slate-100 dark:border-zinc-800">
+                    <button type="button" onClick={() => setIsModalOpen(false)} className="w-full sm:w-auto px-6 py-2.5 sm:py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:bg-zinc-950 transition-colors shadow-sm">{language === 'es' ? 'Cancelar' : 'Cancel'}</button>
+                    <button type="submit" className="w-full sm:w-auto px-8 py-2.5 sm:py-3 bg-gradient-to-r from-zinc-600 to-slate-600 text-white rounded-xl font-bold hover:shadow-[0_8px_30px_rgba(79,70,229,0.3)] shadow-[0_4px_15px_rgba(79,70,229,0.2)] hover:-translate-y-0.5 transition-all">{language === 'es' ? 'Crear Cliente' : 'Create Client'}</button>
                   </div>
                 </form>
               </div>

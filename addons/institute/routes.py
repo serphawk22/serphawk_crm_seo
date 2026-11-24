@@ -75,6 +75,15 @@ def _as_utc(dt: datetime) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
+def _iso_dt(dt: Optional[datetime]) -> Optional[str]:
+    if not dt:
+        return None
+    s = dt.isoformat()
+    if "+" not in s and not s.endswith("Z"):
+        return s + "Z"
+    return s
+
+
 def _parse_dt(value: str) -> datetime:
     """ISO date / datetime text -> timezone-aware UTC datetime (naive input is taken as UTC)."""
     dt = datetime.fromisoformat(value)
@@ -372,11 +381,11 @@ def _lead_demo_dict(demo: LeadDemoSession):
     return {
         "id": demo.id,
         "lead_id": demo.lead_id,
-        "scheduled_at": demo.scheduled_at.isoformat(),
+        "scheduled_at": _iso_dt(demo.scheduled_at),
         "status": demo.status,
         "meeting_url": demo.meeting_url,
         "notes": demo.notes,
-        "created_at": demo.created_at.isoformat(),
+        "created_at": _iso_dt(demo.created_at),
     }
 
 
@@ -485,10 +494,10 @@ def _lead_followup_dict(fu: LeadFollowUp):
     return {
         "id": fu.id,
         "lead_id": fu.lead_id,
-        "scheduled_at": fu.scheduled_at.isoformat(),
+        "scheduled_at": _iso_dt(fu.scheduled_at),
         "status": fu.status,
         "notes": fu.notes,
-        "created_at": fu.created_at.isoformat(),
+        "created_at": _iso_dt(fu.created_at),
     }
 
 
@@ -507,10 +516,10 @@ def _unified_followup_dict(fu: FollowUp) -> dict:
     return {
         "id": fu.id,
         "lead_id": fu.lead_id,
-        "scheduled_at": fcore.as_utc(fu.due_at).isoformat(),
+        "scheduled_at": _iso_dt(fcore.as_utc(fu.due_at)),
         "status": fu.status,
         "notes": fu.notes,
-        "created_at": fcore.as_utc(fu.created_at).isoformat(),
+        "created_at": _iso_dt(fcore.as_utc(fu.created_at)),
         "source": "followups",
     }
 
@@ -578,11 +587,11 @@ def _lead_walkin_dict(wk: LeadWalkIn):
     return {
         "id": wk.id,
         "lead_id": wk.lead_id,
-        "scheduled_at": wk.scheduled_at.isoformat(),
+        "scheduled_at": _iso_dt(wk.scheduled_at),
         "status": wk.status,
         "location": wk.location,
         "notes": wk.notes,
-        "created_at": wk.created_at.isoformat(),
+        "created_at": _iso_dt(wk.created_at),
     }
 
 
@@ -638,11 +647,11 @@ def _lead_webinar_dict(wb: LeadWebinar):
     return {
         "id": wb.id,
         "lead_id": wb.lead_id,
-        "scheduled_at": wb.scheduled_at.isoformat(),
+        "scheduled_at": _iso_dt(wb.scheduled_at),
         "status": wb.status,
         "meeting_url": wb.meeting_url,
         "notes": wb.notes,
-        "created_at": wb.created_at.isoformat(),
+        "created_at": _iso_dt(wb.created_at),
     }
 
 
@@ -771,7 +780,7 @@ def _schedule_followup_items(session: Session, actor: User, include_done: bool) 
             "course": student.course_interest if student else None,
             "owner_id": fu.assigned_to, "owner_name": names["users"].get(fu.assigned_to),
             "lead_status": lead.status if lead else None,
-            "scheduled_at": due.isoformat(), "status": fu.status, "notes": fu.notes, "title": fu.title,
+            "scheduled_at": _iso_dt(due), "status": fu.status, "notes": fu.notes, "title": fu.title,
             "channel": fu.channel, "meeting_url": None,
             "_ts": due,
         })
@@ -819,7 +828,7 @@ def get_upcoming_schedule(kind: str = "all", include_done: bool = False, session
             fq = fq.where(LeadFollowUp.status == "Pending")
         for fu in session.exec(fq).all():
             items.append({**_base(leads[fu.lead_id]), "id": fu.id, "type": "followup", "source": "legacy",
-                          "scheduled_at": fu.scheduled_at.isoformat(), "status": fu.status, "notes": fu.notes,
+                          "scheduled_at": _iso_dt(fu.scheduled_at), "status": fu.status, "notes": fu.notes,
                           "meeting_url": None, "_ts": fu.scheduled_at})
         items += _schedule_followup_items(session, actor, include_done)
     if kind in ("all", "webinar", "demo"):
@@ -827,20 +836,20 @@ def get_upcoming_schedule(kind: str = "all", include_done: bool = False, session
         if not include_done:
             wb_q = wb_q.where(LeadWebinar.status == "Scheduled")
         for wb in session.exec(wb_q).all():
-            items.append({**_base(leads[wb.lead_id]), "id": wb.id, "type": "webinar", "scheduled_at": wb.scheduled_at.isoformat(),
+            items.append({**_base(leads[wb.lead_id]), "id": wb.id, "type": "webinar", "scheduled_at": _iso_dt(wb.scheduled_at),
                           "status": wb.status, "notes": wb.notes, "meeting_url": wb.meeting_url, "location": None, "_ts": wb.scheduled_at})
         dq = select(LeadDemoSession).where(LeadDemoSession.lead_id.in_(lead_ids))
         if not include_done:
             dq = dq.where(LeadDemoSession.status == "Scheduled")
         for dm in session.exec(dq).all():
-            items.append({**_base(leads[dm.lead_id]), "id": dm.id, "type": "webinar", "scheduled_at": dm.scheduled_at.isoformat(),
+            items.append({**_base(leads[dm.lead_id]), "id": dm.id, "type": "webinar", "scheduled_at": _iso_dt(dm.scheduled_at),
                           "status": dm.status, "notes": dm.notes, "meeting_url": dm.meeting_url, "location": None, "_ts": dm.scheduled_at})
     if kind in ("all", "walkin"):
         wq = select(LeadWalkIn).where(LeadWalkIn.lead_id.in_(lead_ids))
         if not include_done:
             wq = wq.where(LeadWalkIn.status == "Scheduled")
         for wk in session.exec(wq).all():
-            items.append({**_base(leads[wk.lead_id]), "id": wk.id, "type": "walkin", "scheduled_at": wk.scheduled_at.isoformat(),
+            items.append({**_base(leads[wk.lead_id]), "id": wk.id, "type": "walkin", "scheduled_at": _iso_dt(wk.scheduled_at),
                           "status": wk.status, "notes": wk.notes, "meeting_url": None, "location": wk.location, "_ts": wk.scheduled_at})
     items.sort(key=lambda i: _as_utc(i["_ts"]))
     for i in items:
@@ -945,6 +954,9 @@ class LeadStudentEnrollmentRequest(BaseModel):
     batch_id: int
     discount: Optional[float] = 0.0
     discount_reason: Optional[str] = None
+    advance_amount: Optional[float] = 0.0
+    payment_mode: Optional[str] = "Cash"
+    advance_notes: Optional[str] = None
 
 
 @router.post("/leads/{lead_id}/convert-to-student")
@@ -969,6 +981,16 @@ def convert_lead_to_student(
     if batch and (not course.is_active or batch.status in ("Completed", "Cancelled")):
         raise HTTPException(status_code=409, detail="This batch is not accepting enrollments")
 
+    # If lead has no assigned salesperson, auto-assign via round-robin with performance tie-breaker
+    assigned_sales_id = lead.owner_id
+    if not assigned_sales_id:
+        from modules.lead_assignment import choose_salesperson
+        sales_rep = choose_salesperson(session, lead.tenant_id or actor.tenant_id, strategy="roundrobin")
+        if sales_rep:
+            assigned_sales_id = sales_rep.id
+            lead.owner_id = sales_rep.id
+            session.add(lead)
+
     student = session.get(Student, lead.converted_student_id) if lead.converted_student_id else None
     if not student:
         student = session.exec(select(Student).where(Student.lead_id == lead.id)).first()
@@ -990,7 +1012,7 @@ def convert_lead_to_student(
             career_goal=lead.career_goal,
             course_plan=lead.course_plan,
             source=lead.source,
-            assigned_salesperson_id=lead.owner_id,
+            assigned_salesperson_id=assigned_sales_id,
             notes=lead.notes,
         )
         from addons.institute.admissions import choose_admissions_assignee
@@ -1000,7 +1022,7 @@ def convert_lead_to_student(
         session.flush()
     else:
         if not student.assigned_salesperson_id:
-            student.assigned_salesperson_id = lead.owner_id
+            student.assigned_salesperson_id = assigned_sales_id
         if batch:
             student.course_interest = course.title
             student.course_interest_id = course.id
@@ -1031,7 +1053,10 @@ def convert_lead_to_student(
             total_fee = course.price or 0.0
             discount_val = max(0.0, float(body.discount or 0.0)) if body else 0.0
             discount_reason_val = body.discount_reason if body else None
-            amount_due = max(0.0, total_fee - discount_val)
+            advance_val = max(0.0, float(body.advance_amount or 0.0)) if body else 0.0
+            amount_due = max(0.0, total_fee - discount_val - advance_val)
+            enrolled_sales_id = student.assigned_salesperson_id or _student_salesperson_id(student, session) or actor.id
+
             enrollment = Enrollment(
                 tenant_id=student.tenant_id or actor.tenant_id,
                 student_id=student.id,
@@ -1040,14 +1065,32 @@ def convert_lead_to_student(
                 total_fee=total_fee,
                 discount=discount_val,
                 discount_reason=discount_reason_val,
-                amount_paid=0.0,
+                amount_paid=advance_val,
                 amount_due=amount_due,
-                payment_status="Pending" if amount_due > 0 else "Paid",
-                enrolled_by=_student_salesperson_id(student, session) or actor.id,
+                payment_mode=body.payment_mode if (body and advance_val > 0) else None,
+                payment_status="Paid" if amount_due <= 0 else ("Partial" if advance_val > 0 else "Pending"),
+                enrolled_by=enrolled_sales_id,
                 slip_number="ADM-" + "".join(random.choices(string.digits, k=6)),
+                admission_slip_generated=True,
+                advance_slip_generated=(advance_val > 0),
                 notes=f"Enrolled from lead #{lead.id}",
             )
             session.add(enrollment)
+            session.flush()
+
+            # Record advance payment credited to the converting salesperson
+            if advance_val > 0:
+                payment = PaymentRecord(
+                    tenant_id=enrollment.tenant_id,
+                    enrollment_id=enrollment.id,
+                    student_id=student.id,
+                    amount=advance_val,
+                    payment_mode=body.payment_mode or "Cash",
+                    receipt_number="ADV-" + "".join(random.choices(string.digits, k=6)),
+                    notes=body.advance_notes or "Advance payment collected at enrollment by salesperson",
+                    recorded_by=enrolled_sales_id,
+                )
+                session.add(payment)
 
     lead.converted_student_id = student.id
     lead.is_converted = True
@@ -1249,6 +1292,7 @@ class CourseUpdateRequest(BaseModel):
 
 class InstructorCreateRequest(BaseModel):
     name: str
+    course_id: Optional[int] = None
     email: Optional[str] = None
     phone: Optional[str] = None
     bio: Optional[str] = None
@@ -1261,6 +1305,7 @@ class InstructorCreateRequest(BaseModel):
 
 class InstructorUpdateRequest(BaseModel):
     name: Optional[str] = None
+    course_id: Optional[int] = None
     email: Optional[str] = None
     phone: Optional[str] = None
     bio: Optional[str] = None
@@ -1721,6 +1766,7 @@ def get_instructors(session: Session = Depends(get_session)):
         result.append({
             "id": i.id, "name": i.name, "email": i.email, "phone": i.phone,
             "bio": i.bio, "expertise": i.expertise, "qualification": i.qualification,
+            "course_id": i.course_id,
             "experience_years": i.experience_years, "photo_url": i.photo_url, "is_active": i.is_active,
             "avg_rating": avg_rating, "batch_count": batch_count, "active_batches": active_batches,
             "upcoming_batches": upcoming_batches, "past_batches": past_batches,
@@ -1732,11 +1778,15 @@ def get_instructors(session: Session = Depends(get_session)):
 
 @router.post("/instructors")
 def create_instructor(body: InstructorCreateRequest, session: Session = Depends(get_session)):
-    _require_roles(session, ["Admin"])
-    instructor = Instructor(**body.dict())
+    actor = _require_roles(session, ["Admin", "SuperAdmin", "SalesManager", "Employee", "Demo"])
+    data = body.dict()
+    if not data.get("tenant_id") and hasattr(actor, "tenant_id"):
+        data["tenant_id"] = actor.tenant_id
+    instructor = Instructor(**data)
     session.add(instructor)
     session.commit()
-    return {"instructor": {"id": instructor.id, "name": instructor.name, "email": instructor.email, "phone": instructor.phone, "expertise": instructor.expertise, "is_active": instructor.is_active}}
+    session.refresh(instructor)
+    return {"instructor": {"id": instructor.id, "name": instructor.name, "email": instructor.email, "phone": instructor.phone, "expertise": instructor.expertise, "course_id": instructor.course_id, "is_active": instructor.is_active}}
 
 
 @router.get("/instructors/{instructor_id}")
@@ -2266,6 +2316,35 @@ def get_student(student_id: int, session: Session = Depends(get_session)):
     lead = session.get(Lead, student.lead_id) if student.lead_id else None
     salesperson_id = student.assigned_salesperson_id or (lead.owner_id if lead else None)
     salesperson = session.get(User, salesperson_id) if salesperson_id else None
+    admissions_admin = session.get(User, student.admissions_assignee_id) if student.admissions_assignee_id else None
+
+    # Compute fee split: Advance collected by Sales vs Remaining Fees collected by Administrator
+    all_enrollment_ids = [e.id for e in enrollments]
+    all_payments = session.exec(select(PaymentRecord).where(PaymentRecord.enrollment_id.in_(all_enrollment_ids))).all() if all_enrollment_ids else []
+    total_business_made = sum(max(0.0, float(e.total_fee or 0.0) - float(e.discount or 0.0)) for e in enrollments)
+    advance_collected_by_sales = 0.0
+    fees_collected_by_admin = 0.0
+    for p in all_payments:
+        is_sales = (salesperson_id and p.recorded_by == salesperson_id) or (p.receipt_number and p.receipt_number.startswith("ADV-")) or ("advance" in (p.notes or "").lower())
+        if is_sales:
+            advance_collected_by_sales += float(p.amount or 0.0)
+        else:
+            fees_collected_by_admin += float(p.amount or 0.0)
+    if not all_payments and enrollments:
+        advance_collected_by_sales = sum(float(e.amount_paid or 0.0) for e in enrollments)
+    remaining_fees_balance = max(0.0, total_business_made - advance_collected_by_sales - fees_collected_by_admin)
+
+    fee_summary = {
+        "total_business_made": total_business_made,
+        "advance_collected_by_sales": advance_collected_by_sales,
+        "salesperson_id": salesperson.id if salesperson else None,
+        "salesperson_name": salesperson.name if salesperson else "Sales Rep",
+        "fees_collected_by_admin": fees_collected_by_admin,
+        "administrator_id": admissions_admin.id if admissions_admin else None,
+        "administrator_name": admissions_admin.name if admissions_admin else "Admissions Administrator",
+        "remaining_fees_balance": remaining_fees_balance,
+    }
+
     notes = session.exec(select(StudentNote).where(StudentNote.student_id == student_id).order_by(StudentNote.created_at.desc())).all()
     uploads = session.exec(select(StudentUpload).where(StudentUpload.student_id == student_id).order_by(StudentUpload.created_at.desc())).all()
     tasks = session.exec(select(Task).where(Task.student_id == student_id).order_by(Task.created_at.desc())).all()
@@ -2274,6 +2353,8 @@ def get_student(student_id: int, session: Session = Depends(get_session)):
         "student": student.dict(),
         "lead": {"id": lead.id, "source": lead.source, "created_at": lead.created_at.isoformat()} if lead else None,
         "salesperson": {"id": salesperson.id, "name": salesperson.name, "email": salesperson.email} if salesperson else None,
+        "admissions_administrator": {"id": admissions_admin.id, "name": admissions_admin.name, "email": admissions_admin.email} if admissions_admin else None,
+        "fee_summary": fee_summary,
         "enrollments": enrollment_list,
         "tasks": tasks_list,
         "performance": {
@@ -2620,7 +2701,7 @@ def update_enrollment(enrollment_id: int, body: EnrollmentUpdateRequest, session
 
 @router.post("/enrollments/{enrollment_id}/generate-admission-slip")
 def generate_admission_slip(enrollment_id: int, session: Session = Depends(get_session)):
-    actor = _require_roles(session, ["Admin", "Employee", "SalesManager", "Sales", "Demo", "Student"])
+    actor = _require_roles(session, ["Admin", "Employee", "SalesManager", "Sales", "Demo", "Student", "Admissions"])
     enrollment = session.get(Enrollment, enrollment_id)
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
@@ -2657,7 +2738,7 @@ def generate_admission_slip(enrollment_id: int, session: Session = Depends(get_s
 
 @router.post("/enrollments/{enrollment_id}/generate-advance-slip")
 def generate_advance_slip(enrollment_id: int, session: Session = Depends(get_session)):
-    actor = _require_roles(session, ["Admin", "Employee", "SalesManager", "Sales", "Demo", "Student"])
+    actor = _require_roles(session, ["Admin", "Employee", "SalesManager", "Sales", "Demo", "Student", "Admissions"])
     enrollment = session.get(Enrollment, enrollment_id)
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
@@ -2678,6 +2759,35 @@ def generate_advance_slip(enrollment_id: int, session: Session = Depends(get_ses
         "payment_mode": enrollment.payment_mode,
         "enrollment_date": enrollment.enrollment_date.isoformat(),
         "generated_at": _utcnow().isoformat()
+    }
+
+
+@router.get("/payments/{payment_id}/slip")
+def get_payment_slip(payment_id: int, session: Session = Depends(get_session)):
+    actor = _require_roles(session, ["Admin", "Employee", "SalesManager", "Sales", "Demo", "Student", "Admissions"])
+    payment = session.get(PaymentRecord, payment_id)
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment record not found")
+    enrollment = session.get(Enrollment, payment.enrollment_id)
+    student = session.get(Student, payment.student_id) if payment.student_id else (session.get(Student, enrollment.student_id) if enrollment else None)
+    course = session.get(Course, enrollment.course_id) if enrollment else None
+    batch = session.get(Batch, enrollment.batch_id) if enrollment else None
+    return {
+        "payment_id": payment.id,
+        "receipt_number": payment.receipt_number or f"REC-{payment.id:06d}",
+        "student_name": student.name if student else "Student",
+        "student_email": student.email if student else "",
+        "student_phone": student.phone if student else "",
+        "course_title": course.title if course else "",
+        "batch_name": batch.batch_name if batch else "",
+        "amount": payment.amount,
+        "payment_mode": payment.payment_mode,
+        "payment_date": payment.payment_date.isoformat(),
+        "total_fee": enrollment.total_fee if enrollment else 0,
+        "amount_paid": enrollment.amount_paid if enrollment else 0,
+        "amount_due": enrollment.amount_due if enrollment else 0,
+        "notes": payment.notes,
+        "generated_at": _utcnow().isoformat(),
     }
 
 
@@ -2804,8 +2914,8 @@ def _institute_session_payload(class_session: InstituteSession) -> dict:
         "session_number": class_session.session_number,
         "title": class_session.title,
         "topic": class_session.topic,
-        "scheduled_start": class_session.scheduled_start.isoformat(),
-        "scheduled_end": class_session.scheduled_end.isoformat() if class_session.scheduled_end else None,
+        "scheduled_start": _iso_dt(class_session.scheduled_start),
+        "scheduled_end": _iso_dt(class_session.scheduled_end),
         "status": class_session.status,
         "is_live": class_session.status == "Live" or (start <= now <= end and class_session.status == "Scheduled"),
         "meeting_url": class_session.meeting_url,

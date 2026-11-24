@@ -1172,15 +1172,15 @@ function ProposalsPageContent() {
       {/* PROPOSAL CREATION WIZARD (WITH TWO-WAY USD <-> INR CONVERSION)     */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {showWizard && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#111] rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[92vh] overflow-hidden">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white dark:bg-[#111] rounded-3xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[92vh] overflow-hidden">
             {/* Wizard Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161616]">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161616]">
               <div>
                 <h2 className="text-base font-bold text-slate-900 dark:text-white">Create Commercial Proposal</h2>
                 <p className="text-xs text-slate-500">Currency: {curSym} {workspaceCur}</p>
               </div>
-              <button onClick={() => setShowWizard(false)} className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400">
+              <button onClick={() => setShowWizard(false)} className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1189,22 +1189,23 @@ function ProposalsPageContent() {
             {!createdProposal && (
             <div className="flex border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111]">
               {[
-                { id: "recipient", num: "1", title: "Select Client" },
-                { id: "cart",      num: "2", title: `Products & Pricing (${curSym})` },
-                { id: "details",   num: "3", title: "Terms & Send" },
+                { id: "recipient", num: "1", title: "Select Client", shortTitle: "Client" },
+                { id: "cart",      num: "2", title: `Products & Pricing (${curSym})`, shortTitle: "Pricing" },
+                { id: "details",   num: "3", title: "Terms & Send", shortTitle: "Terms" },
               ].map(s => {
                 const isActive = step === s.id;
                 return (
                   <div key={s.id}
-                    className={`flex-1 py-3 px-4 flex items-center gap-2 border-b-2 font-medium text-xs transition-colors ${
+                    className={`flex-1 py-2.5 sm:py-3 px-2 sm:px-4 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 border-b-2 font-medium text-xs transition-colors ${
                       isActive ? "border-blue-600 text-blue-600 dark:text-blue-400 font-bold bg-blue-50/50 dark:bg-blue-950/20" : "border-transparent text-slate-400"
                     }`}>
-                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
                       isActive ? "bg-blue-600 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
                     }`}>
                       {s.num}
                     </span>
-                    <span>{s.title}</span>
+                    <span className="hidden sm:inline">{s.title}</span>
+                    <span className="sm:hidden">{s.shortTitle}</span>
                   </div>
                 );
               })}

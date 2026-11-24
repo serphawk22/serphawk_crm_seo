@@ -96,10 +96,11 @@ Use the [Cloudflare email tracking tunnel setup](docs/email-tracking-tunnel.md)
 to expose port 8000 without ngrok's free-tier browser warning. The launcher
 verifies the public pixel and updates `PUBLIC_BASE_URL` in `.env`.
 
-### The AI voice agent (Twilio)
+### AI voice calling in Calls (Twilio)
 
-The voice agent needs to know its own public address: Twilio fetches the TwiML of every call
-from there, and the backend verifies that address before each call. See
+The Calls module includes normal call logging and AI voice calling. The voice agent needs to know
+its own public address: Twilio fetches the TwiML of every call from there, and the backend verifies
+that address before each call. See
 [docs/VOICE_AGENT_DEPLOYMENT.md](docs/VOICE_AGENT_DEPLOYMENT.md) for the variables
 (`PUBLIC_BASE_URL`, `VOICE_AGENT_BASE_URL`), the pre-call check and the deployment checklist.
 

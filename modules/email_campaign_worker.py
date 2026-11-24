@@ -317,23 +317,34 @@ def refresh_counts(session: Session, campaign: EmailCampaign):
 def _link_or_create_lead(session: Session, campaign: EmailCampaign, r: EmailCampaignRecipient) -> tuple:
     """(lead_id, client_id, created) — an existing lead/client by email, else a new lead if enabled."""
     from modules.inbox_sync import match_address
-    links = match_address(session, r.email, campaign.tenant_id)
-    lead_id, client_id = links.get("lead_id"), links.get("client_id")
-    created = False
-    if not lead_id and not client_id and campaign.create_leads:
-        domain = r.email.split("@")[-1]
-        lead = Lead(tenant_id=campaign.tenant_id, company_name=(r.company or r.name or domain)[:255], email=r.email,
-                    source="Email Campaign", status="Contacted", owner_id=campaign.created_by,
-                    notes=f"Imported from email campaign “{campaign.name}”.")
-        session.add(lead)
-        session.flush()
-        lead_id, created = lead.id, True
-        if r.name:
-            parts = r.name.split()
-            session.add(Contact(tenant_id=campaign.tenant_id, first_name=parts[0][:100],
-                                last_name=" ".join(parts[1:])[:100] or None, full_name=r.name[:255], email=r.email,
-                                lead_id=lead.id, owner_id=campaign.created_by))
-    return lead_id, client_id, created
+    from modules import auto_calling
+    # A campaign-created lead is a bulk import, not a hand-entered hot lead. Restore any previous
+    # marker so a later non-bulk lead in the same session is never misclassified.
+    previous_bulk = session.info.get("bulk_lead_import")
+    auto_calling.mark_bulk_import(session)
+    try:
+        links = match_address(session, r.email, campaign.tenant_id)
+        lead_id, client_id = links.get("lead_id"), links.get("client_id")
+        created = False
+        if not lead_id and not client_id and campaign.create_leads:
+            domain = r.email.split("@")[-1]
+            lead = Lead(tenant_id=campaign.tenant_id, company_name=(r.company or r.name or domain)[:255], email=r.email,
+                        source="Email Campaign", status="Contacted", owner_id=campaign.created_by,
+                        notes=f"Imported from email campaign “{campaign.name}”.")
+            session.add(lead)
+            session.flush()
+            lead_id, created = lead.id, True
+            if r.name:
+                parts = r.name.split()
+                session.add(Contact(tenant_id=campaign.tenant_id, first_name=parts[0][:100],
+                                    last_name=" ".join(parts[1:])[:100] or None, full_name=r.name[:255], email=r.email,
+                                    lead_id=lead.id, owner_id=campaign.created_by))
+        return lead_id, client_id, created
+    finally:
+        if previous_bulk is None:
+            session.info.pop("bulk_lead_import", None)
+        else:
+            session.info["bulk_lead_import"] = previous_bulk
 
 
 def _discard_new_lead(session: Session, lead_id: Optional[int]):

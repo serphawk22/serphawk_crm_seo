@@ -38,7 +38,12 @@ export default function CommandCenter() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/command-center/overview?months=${months}`);
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(`${API_BASE_URL}/command-center/overview?months=${months}`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
       if (!res.ok) {
         throw new Error("Failed to load command center");
       }

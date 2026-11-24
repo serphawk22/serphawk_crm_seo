@@ -820,6 +820,21 @@ class SentEmail(SQLModel, table=True):
     reply_body: Optional[str] = Field(default=None, sa_column=Column(Text))
 
 
+class SalesPlanDraft(SQLModel, table=True):
+    """An unsent sales plan draft that belongs to the salesperson who saved it."""
+    __tablename__ = "sales_plan_drafts"
+    __table_args__ = (Index("ix_sales_plan_drafts_record", "tenant_id", "kind", "record_id", "author_id"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenants.id")
+    kind: str = Field(max_length=10)
+    record_id: int
+    author_id: int
+    to_email: str = Field(max_length=255)
+    subject: str = Field(max_length=500)
+    body: str = Field(sa_column=Column(Text))
+
+
 class EmailReply(SQLModel, table=True):
     """
     One row per inbound reply message, so a thread with several back-and-forth
@@ -1434,6 +1449,13 @@ class Lead(SQLModel, table=True):
     next_follow_up_at: Optional[datetime] = Field(default=None, index=True)
     follow_up_reason: Optional[str] = Field(default=None, sa_column=Column(Text))
     last_contact_at: Optional[datetime] = Field(default=None)
+    # Auto-calling state. `auto_call_status` is also the idempotency guard: only a lead with no
+    # status is ever claimed for an automatic call; every later attempt writes its outcome here.
+    auto_call_status: Optional[str] = Field(default=None, max_length=30, index=True)
+    auto_called_at: Optional[datetime] = Field(default=None, index=True)
+    auto_call_reason: Optional[str] = Field(default=None, sa_column=Column(Text))
+    auto_call_attempts: int = Field(default=0)
+    do_not_call: bool = Field(default=False, sa_column_kwargs={"server_default": text("FALSE")})
     course_interest_id: Optional[int] = Field(default=None, index=True)  # courses.id (institute add-on)
     gpa: Optional[float] = Field(default=None)
     education_level: Optional[str] = Field(default=None, max_length=120)
@@ -1469,6 +1491,7 @@ class Lead(SQLModel, table=True):
     last_activity: Optional[str] = Field(default=None, max_length=500)
     ai_analysis_results: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     swot_analysis: Optional[str] = Field(default=None, sa_column=Column(Text))
+    custom_fields: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
 
     account: Optional[Account] = Relationship(back_populates="leads")
     contacts: List["Contact"] = Relationship(back_populates="lead")
@@ -1854,6 +1877,22 @@ class CustomizationRequestMessage(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_utcnow)
 
 
+class TeamChatMessage(SQLModel, table=True):
+    """Team directory internal chat message with text and file attachments."""
+    __tablename__ = "team_chat_messages"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(index=True)
+    sender_id: int = Field(index=True)
+    recipient_id: Optional[int] = Field(default=None, index=True)
+    channel_name: Optional[str] = Field(default=None, index=True)
+    content: str = Field(sa_column=Column(Text, nullable=False))
+    attachment_url: Optional[str] = Field(default=None)
+    attachment_name: Optional[str] = Field(default=None)
+    attachment_type: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=_utcnow, index=True)
+    read_at: Optional[datetime] = Field(default=None)
+
+
 # Plan-verified indexes for NEW schemas. create_all does not add indexes to
 # existing tables; existing deployments add them concurrently,
 # outside startup transactions, after reviewing their own plans.
@@ -1944,6 +1983,15 @@ def create_db_and_tables():
         "ALTER TABLE ai_calls ADD COLUMN language VARCHAR(20) DEFAULT 'en'",
         # AI voice agent: speaking speed (nullable) so replies use the pitch's speed
         "ALTER TABLE ai_calls ADD COLUMN speed FLOAT",
+        # Auto-call new leads. Kept here as well as in migrations/2026_11_20_auto_call_new_leads.sql
+        # because the Lead ORM model now reads these columns on every leads query.
+        "ALTER TABLE leads ADD COLUMN auto_call_status VARCHAR(30)",
+        "ALTER TABLE leads ADD COLUMN auto_called_at TIMESTAMP",
+        "ALTER TABLE leads ADD COLUMN auto_call_reason TEXT",
+        "ALTER TABLE leads ADD COLUMN auto_call_attempts INTEGER DEFAULT 0",
+        "ALTER TABLE leads ADD COLUMN do_not_call BOOLEAN DEFAULT FALSE",
+        "CREATE INDEX IF NOT EXISTS ix_leads_auto_call_status ON leads (auto_call_status)",
+        "CREATE INDEX IF NOT EXISTS ix_leads_auto_called_at ON leads (auto_called_at)",
         # Tenant ownership for child tables that had none
         "ALTER TABLE inventory_suppliers ADD COLUMN tenant_id INTEGER REFERENCES tenants(id)",
         "ALTER TABLE rfq_responses ADD COLUMN tenant_id INTEGER REFERENCES tenants(id)",
@@ -2068,6 +2116,10 @@ def create_db_and_tables():
         "ALTER TABLE purchase_orders ADD COLUMN supplier_invoice_amount FLOAT",
         "ALTER TABLE purchase_orders ADD COLUMN supplier_notes TEXT",
         "UPDATE inventory_suppliers SET login_password = NULL WHERE login_password IS NOT NULL",
+        "ALTER TABLE instructors ADD COLUMN course_id INTEGER REFERENCES courses(id)",
+        "ALTER TABLE students ADD COLUMN course_id INTEGER REFERENCES courses(id)",
+        "CREATE INDEX IF NOT EXISTS ix_instructors_course_id ON instructors (course_id)",
+        "CREATE INDEX IF NOT EXISTS ix_students_course_id ON students (course_id)",
     ]
     
     with engine.connect() as conn:
@@ -2742,4 +2794,30 @@ class DeletedRecord(SQLModel, table=True):
     restored_at: Optional[datetime] = Field(default=None)
     restored_by_id: Optional[int] = Field(default=None)
     transfer_summary: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+
+
+class BlogPost(SQLModel, table=True):
+    """Public blogs, tutorials, product updates, and growth guides.
+    Publicly viewable by anyone. Creation and editing is restricted to SuperAdmin and Admin.
+    """
+    __tablename__ = "blog_posts"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str = Field(max_length=300, index=True)
+    slug: str = Field(max_length=350, unique=True, index=True)
+    summary: Optional[str] = Field(default=None, sa_column=Column(Text))
+    content: str = Field(sa_column=Column(Text))
+    cover_image: Optional[str] = Field(default=None, max_length=1000)
+    category: str = Field(default="CRM Guide", max_length=100, index=True)
+    tags: Optional[str] = Field(default=None, max_length=500)
+    author_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    author_name: str = Field(default="SerpHawk Team", max_length=200)
+    author_role: str = Field(default="Super Admin", max_length=100)
+    author_avatar: Optional[str] = Field(default=None, max_length=500)
+    is_published: bool = Field(default=True, index=True)
+    read_time_minutes: int = Field(default=4)
+    views_count: int = Field(default=0)
+    created_at: datetime = Field(default_factory=_utcnow, index=True)
+    updated_at: datetime = Field(default_factory=_utcnow)
+    tenant_id: Optional[int] = Field(default=1)
 

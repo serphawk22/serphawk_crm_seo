@@ -113,7 +113,7 @@ export default function StudentDetailsPage() {
   const params = useParams<{ id: string }>();
   const { role } = useRole();
   const canCreateLogin = role === "Admin" || role === "SuperAdmin";
-  const canManageEnrollment = ["Admin", "Employee", "SalesManager", "Demo", "SuperAdmin"].includes(role);
+  const canManageEnrollment = ["Admin", "Employee", "SalesManager", "Demo", "SuperAdmin", "Admissions"].includes(role);
   // Email and Follow-ups are staff tools: a student viewing their own profile or an instructor never sees them.
   const showRecordTabs = false;
   const [activeTab, setActiveTab] = useState<RecordTab>("overview");
@@ -349,6 +349,8 @@ export default function StudentDetailsPage() {
         tasks={tasks}
         performance={profile?.performance}
         salesperson={profile?.salesperson}
+        admissions_administrator={(profile as any)?.admissions_administrator}
+        fee_summary={(profile as any)?.fee_summary}
         lead={profile?.lead}
         onRecordPaymentClick={() => {
           const enrollSec = document.getElementById("enrollment-section");

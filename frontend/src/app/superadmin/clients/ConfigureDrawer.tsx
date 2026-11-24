@@ -2,7 +2,7 @@
 import { useLanguage } from "@/context/LanguageContext";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Crown, DollarSign, ExternalLink, Image as ImageIcon, Loader2, MonitorPlay, Palette, Plus, Puzzle, RotateCcw, Save, Search, Sparkles, Upload } from "lucide-react";
+import { Check, Crown, DollarSign, ExternalLink, GraduationCap, Image as ImageIcon, Layers, Loader2, MonitorPlay, Palette, Plus, Puzzle, RotateCcw, Save, Search, Sparkles, Target, Upload } from "lucide-react";
 import Drawer from "@/components/Drawer";
 import { dashboardParent } from "@/lib/dashboardEntitlements";
 import SalesAccessSettings from "@/components/SalesAccessSettings";
@@ -46,6 +46,13 @@ const TEXT_FIELDS: { key: string; label: string; placeholder?: string }[] = [
   { key: "default_dial_code", label: "Default phone code", placeholder: "+91" },
 ];
 const SELECT_KEYS = ["locale", "country", "industry"];
+const TEXT_FIELDS_VOICE: { key: string; label: string; placeholder?: string }[] = [
+  { key: "voice_agent_name", label: "AI caller name", placeholder: "e.g. Sarah from Acme" },
+  { key: "voice_agent_offer", label: "What the caller offers", placeholder: "e.g. local SEO and lead generation for dentists" },
+  { key: "voice_agent_tone", label: "Caller tone", placeholder: "warm, professional and friendly" },
+];
+const VOICE_KEYS = [...TEXT_FIELDS_VOICE.map((f) => f.key), "voice_agent_voice", "voice_agent_accent"];
+const BOOL_SETTING_KEYS = ["auto_call_bulk_imports"];
 
 function Switch({ checked, onChange, disabled, label }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; label: string }) {
   return (
@@ -80,7 +87,8 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
       const c: Config = await call(`/superadmin/tenants/${tenantId}/config`);
       setCfg(c);
       setDraftFeatures(c.features);
-      setDraftSettings(Object.fromEntries([...TEXT_FIELDS.map((f) => f.key), ...SELECT_KEYS, "primary_color"].map((k) => [k, c.settings[k] ?? ""])));
+      const settingKeys = [...TEXT_FIELDS.map((f) => f.key), ...TEXT_FIELDS_VOICE.map((f) => f.key), ...SELECT_KEYS, ...VOICE_KEYS, ...BOOL_SETTING_KEYS, "primary_color"];
+      setDraftSettings(Object.fromEntries(settingKeys.map((k) => [k, c.settings[k] == null ? "" : String(c.settings[k])])));
       call(`/superadmin/tenants/${tenantId}/demos`).then((d) => setDemos(d.demos || [])).catch(() => setDemos([]));
     } catch (e: any) {
       error("Could not load this client", e.message);
@@ -101,7 +109,7 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
   }, [id, load]);
 
   const featuresDirty = !!cfg && JSON.stringify(draftFeatures) !== JSON.stringify(cfg.features);
-  const settingsDirty = !!cfg && Object.entries(draftSettings).some(([k, v]) => (v || "") !== (cfg.settings[k] ?? ""));
+  const settingsDirty = !!cfg && Object.entries(draftSettings).some(([k, v]) => String(v || "") !== String(cfg.settings[k] ?? ""));
   const on = countModules(catalog, draftFeatures);
   const total = countModules(catalog);
 
@@ -142,17 +150,21 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
     onChanged();
   });
 
-  const applyPreset = () => run("preset", async () => {
-    if (!presetChoice) return;
-    const label = presets.find((p) => p.key === presetChoice)?.label || presetChoice;
-    const c: Config = await call(`/superadmin/tenants/${id}/features`, { method: "PUT", body: JSON.stringify({ preset: presetChoice }) });
+  const applyPresetDirect = (presetKey: string) => run("preset", async () => {
+    if (!presetKey) return;
+    const label = presets.find((p) => p.key === presetKey)?.label || presetKey;
+    const c: Config = await call(`/superadmin/tenants/${id}/features`, { method: "PUT", body: JSON.stringify({ preset: presetKey }) });
     setCfg(c); setDraftFeatures(c.features); setPresetChoice("");
-    success(`${label} applied`, `The module choices for ${name} now follow that setup.`);
+    success(`${label} applied`, `The workspace setup for ${name} now follows ${label}.`);
     onChanged();
   });
 
+  const applyPreset = () => applyPresetDirect(presetChoice);
+
   const saveSettings = () => run("settings", async () => {
-    const settings = Object.fromEntries(Object.entries(draftSettings).map(([k, v]) => [k, (v || "").trim() || null]));
+    const settings = Object.fromEntries(Object.entries(draftSettings).map(([k, v]) => [
+      k, BOOL_SETTING_KEYS.includes(k) ? v === "true" : (v || "").trim() || null,
+    ]));
     const c: Config = await call(`/superadmin/tenants/${id}/settings`, { method: "PUT", body: JSON.stringify({ settings }) });
     setCfg(c);
     success("Branding saved", `${name}'s documents, emails and menu use the new details.`);
@@ -259,7 +271,7 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-slate-600 dark:text-zinc-400">{settingsDirty ? <span className="font-medium text-amber-600">{t("Unsaved changes")}</span> : "The client's own admin can also edit most of this."}</p>
         <div className="flex gap-2">
-          {settingsDirty && cfg && <button className={ghostBtn} onClick={() => setDraftSettings(Object.fromEntries(Object.keys(draftSettings).map((k) => [k, cfg.settings[k] ?? ""])))}><RotateCcw className="w-4 h-4" /> {t("Discard")}</button>}
+          {settingsDirty && cfg && <button className={ghostBtn} onClick={() => setDraftSettings(Object.fromEntries(Object.keys(draftSettings).map((k) => [k, cfg.settings[k] == null ? "" : String(cfg.settings[k])])))}><RotateCcw className="w-4 h-4" /> {t("Discard")}</button>}
           <button className={primaryBtn} onClick={saveSettings} disabled={!settingsDirty || busy === "settings"}>
             {busy === "settings" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {t("Save branding")}{" "}</button>
         </div>
@@ -290,6 +302,11 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
                 }[cfg.preset] || cfg.preset)}
             </Badge>
           )}
+          {draftFeatures.institute ? (
+            <Badge tone="violet">🎓 Administrator Instance</Badge>
+          ) : (
+            <Badge tone="slate">💼 Sales Instance</Badge>
+          )}
           {tenant.country && <Badge tone="slate">{tenant.country}{tenant.currency ? ` · ${tenant.currency}` : ""}</Badge>}
           <span className="text-xs">{tenant.admin_email}</span>
         </span>
@@ -301,6 +318,162 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
         <div className="flex items-center justify-center gap-2 py-24 text-slate-500"><Loader2 className="w-5 h-5 animate-spin" /> {t("Loading...")}</div>
       ) : tab === "modules" ? (
         <div className="space-y-5">
+          {/* Workspace Instance: Administrator Instance Configuration */}
+          <div className="rounded-2xl border-2 border-indigo-200 bg-gradient-to-br from-indigo-50/70 via-white to-blue-50/50 p-5 dark:border-indigo-900/60 dark:from-indigo-950/30 dark:via-zinc-900 dark:to-blue-950/20 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-indigo-600 text-white shadow-xs">
+                    <GraduationCap className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Administrator Instance (Admissions Department)</h3>
+                  {draftFeatures.institute ? (
+                    <Badge tone="green">ACTIVE</Badge>
+                  ) : (
+                    <Badge tone="slate">DISABLED</Badge>
+                  )}
+                </div>
+                <p className="text-xs text-slate-600 dark:text-zinc-300 max-w-xl leading-relaxed">
+                  Enable the Administrator Instance for admissions and student fee management. When enabled, sales converts leads into students with an advance payment, and the Admissions Administrator follows up on remaining fees with Admission (<code className="font-mono text-[11px] bg-slate-100 dark:bg-zinc-800 px-1 rounded">ADM-</code>) and Advance (<code className="font-mono text-[11px] bg-slate-100 dark:bg-zinc-800 px-1 rounded">ADV-</code>) slips.
+                </p>
+              </div>
+
+              {/* Toggle Switch */}
+              <div className="flex items-center gap-3 self-center sm:self-auto bg-white dark:bg-zinc-800 px-3.5 py-2.5 rounded-xl border border-indigo-100 dark:border-zinc-700 shadow-2xs">
+                <span className="text-xs font-bold text-slate-800 dark:text-zinc-100">
+                  {draftFeatures.institute ? "Include Administrator Instance: YES" : "Include Administrator Instance: NO"}
+                </span>
+                <Switch
+                  label="Administrator Instance (Admissions Department)"
+                  checked={!!draftFeatures.institute}
+                  disabled={busy === "modules" || busy === "preset"}
+                  onChange={(enabled) => {
+                    setDraftFeatures((prev) => ({
+                      ...prev,
+                      institute: enabled,
+                      dashboard_b2c: enabled,
+                      ...(enabled ? { reports: true } : {})
+                    }));
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Quick Presets for Instance Selection */}
+            <div className="pt-3 border-t border-indigo-100/80 dark:border-zinc-800/80">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-2">
+                Quick Instance Setup
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (presets.some(p => p.key === "sales_instance")) {
+                      applyPresetDirect("sales_instance");
+                    } else {
+                      setDraftFeatures(prev => ({
+                        ...prev,
+                        institute: false,
+                        dashboard_b2c: false,
+                        leads: true,
+                        contacts: true,
+                        followups: true,
+                        meetings: true,
+                        calls: true,
+                        lead_sources: true,
+                        invoices: true,
+                        proposals: true
+                      }));
+                    }
+                  }}
+                  className={`p-3 rounded-xl border text-left transition ${
+                    !draftFeatures.institute && draftFeatures.leads
+                      ? "border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 ring-1 ring-indigo-500/40"
+                      : "border-slate-200 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 bg-white/60 dark:bg-zinc-900/40"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-semibold text-xs text-slate-900 dark:text-white">
+                    <Target className="w-3.5 h-3.5 text-blue-600" />
+                    Sales Instance Only
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1 line-clamp-2">
+                    Pure sales CRM: leads, pipelines, salesperson activity, follow-ups & meetings. No admissions department.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (presets.some(p => p.key === "administrator_instance")) {
+                      applyPresetDirect("administrator_instance");
+                    } else {
+                      setDraftFeatures(prev => ({
+                        ...prev,
+                        institute: true,
+                        dashboard_b2c: true,
+                        leads: false,
+                        reports: true,
+                        billing: true,
+                        invoices: true
+                      }));
+                    }
+                  }}
+                  className={`p-3 rounded-xl border text-left transition ${
+                    draftFeatures.institute && !draftFeatures.leads
+                      ? "border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 ring-1 ring-indigo-500/40"
+                      : "border-slate-200 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 bg-white/60 dark:bg-zinc-900/40"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-semibold text-xs text-slate-900 dark:text-white">
+                    <GraduationCap className="w-3.5 h-3.5 text-violet-600" />
+                    Administrator Instance
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1 line-clamp-2">
+                    Admissions department: students, batches, fee collection follow-up, admission slips and payments.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (presets.some(p => p.key === "combined_instance")) {
+                      applyPresetDirect("combined_instance");
+                    } else {
+                      setDraftFeatures(prev => ({
+                        ...prev,
+                        institute: true,
+                        dashboard_b2c: true,
+                        leads: true,
+                        contacts: true,
+                        clients: true,
+                        followups: true,
+                        meetings: true,
+                        calls: true,
+                        lead_sources: true,
+                        reports: true,
+                        billing: true,
+                        invoices: true,
+                        proposals: true
+                      }));
+                    }
+                  }}
+                  className={`p-3 rounded-xl border text-left transition ${
+                    draftFeatures.institute && draftFeatures.leads
+                      ? "border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 ring-1 ring-indigo-500/40"
+                      : "border-slate-200 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 bg-white/60 dark:bg-zinc-900/40"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-semibold text-xs text-slate-900 dark:text-white">
+                    <Layers className="w-3.5 h-3.5 text-emerald-600" />
+                    Combined (Sales + Admin)
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1 line-clamp-2">
+                    Full lifecycle: sales rep converts lead to student with advance, and administrator follows up on remaining fees.
+                  </p>
+                </button>
+              </div>
+            </div>
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
             <div>
               <p className="text-sm font-semibold text-slate-900 dark:text-white">Workspace Currency</p>
@@ -403,11 +576,15 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
                         <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900 dark:text-zinc-100">
                           {f.label}
                           {f.locked && <Badge tone="slate">{t("Always on")}</Badge>}
+                          {(f.parent_key || dashboardParent(f.key)) && <Badge tone="slate">{t("Sub-option")}</Badge>}
                           {!f.gated_on_server && !f.locked && !dashboardParent(f.key) && <span className="text-[11px] font-medium text-slate-400 dark:text-zinc-500" title={t("Switching this off hides it from the menu. The API is not blocked for this module.")}>{t("menu only")}</span>}
                         </p>
                         {f.description && <p className="mt-0.5 line-clamp-2 text-xs text-slate-500 dark:text-zinc-400">{f.description}</p>}
                       </div>
-                      <Switch label={t(f.label)} checked={!!draftFeatures[f.key]} disabled={f.locked || (!!dashboardParent(f.key) && !draftFeatures[dashboardParent(f.key)!])} onChange={(v) => setDraftFeatures((d) => ({ ...d, [f.key]: v }))} />
+                      {(() => {
+                        const parent = f.parent_key || dashboardParent(f.key);
+                        return <Switch label={t(f.label)} checked={!!draftFeatures[f.key]} disabled={f.locked || (!!parent && !draftFeatures[parent])} onChange={(v) => setDraftFeatures((d) => ({ ...d, [f.key]: v }))} />;
+                      })()}
                     </li>
                   ))}
                 </ul>
@@ -415,8 +592,17 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
             );
           })}
           {id && (
-            <div className="pt-4 border-t border-slate-200 dark:border-zinc-800">
+            <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-zinc-800">
               <SalesAccessSettings tenantId={id} />
+              {(draftFeatures.institute || cfg?.features.institute) && (
+                <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 dark:border-violet-900/50 dark:bg-violet-950/20">
+                  <div className="mb-2 flex items-center gap-2">
+                    <GraduationCap className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-violet-900 dark:text-violet-200">Admissions Administrator Access</h4>
+                  </div>
+                  <SalesAccessSettings tenantId={id} admissions />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -547,6 +733,42 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
                 <option value="">{t("Not set")}</option>
                 {regions.industries.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
               </select>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50 space-y-3">
+            <div>
+              <p className="font-semibold text-slate-900 dark:text-white">{t("AI voice caller")}</p>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">{t("Used by Calls and by automatic calling on new leads. The caller always represents this client, never the platform.")}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {TEXT_FIELDS_VOICE.map((f) => (
+                <div key={f.key} className={f.key === "voice_agent_offer" ? "sm:col-span-2" : ""}>
+                  <label className={labelCls}>{t(f.label)}</label>
+                  <input className={inputCls} placeholder={f.placeholder} value={draftSettings[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />
+                </div>
+              ))}
+              <div>
+                <label className={labelCls}>{t("Default voice")}</label>
+                <select className={inputCls} value={draftSettings.voice_agent_voice ?? ""} onChange={(e) => set("voice_agent_voice", e.target.value)}>
+                  <option value="">{t("Default (Nova)")}</option>
+                  {["alloy", "echo", "fable", "onyx", "nova", "shimmer"].map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>{t("Default accent")}</label>
+                <select className={inputCls} value={draftSettings.voice_agent_accent ?? ""} onChange={(e) => set("voice_agent_accent", e.target.value)}>
+                  <option value="">{t("Default (American)")}</option>
+                  {["american", "british", "australian", "indian", "canadian", "irish", "south_african", "mexican", "spain", "us_latino", "argentine", "colombian"].map((a) => <option key={a} value={a}>{a.replace(/_/g, " ")}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-3 dark:border-zinc-800">
+              <div>
+                <p className="text-sm font-medium text-slate-800 dark:text-zinc-100">{t("Auto-call bulk imports")}</p>
+                <p className="text-xs text-slate-500 dark:text-zinc-400">{t("Off by default. Applies to CSV imports and campaign-created leads when the Calls module and automatic calling are on.")}</p>
+              </div>
+              <Switch label={t("Auto-call bulk imports")} checked={draftSettings.auto_call_bulk_imports === "true"} onChange={(v) => set("auto_call_bulk_imports", String(v))} />
             </div>
           </div>
           <p className="flex items-start gap-2 text-xs text-slate-500 dark:text-zinc-400"><ImageIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {t("Lead statuses, invoice wording and the company mailbox are managed by the client&apos;s own admin on their Branding &amp; Settings page.")}</p>

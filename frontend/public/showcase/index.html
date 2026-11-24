@@ -8,6 +8,7 @@
  <link rel="preconnect" href="https://fonts.googleapis.com"/>
  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+ <base href="/showcase/">
  <style>
  /* THEME TOKENS */
  :root {
@@ -332,7 +333,7 @@
 <!-- NAV -->
 <nav id="navbar">
  <a href="#" class="nav-logo">
- <img src="logo.png" alt="SERP Hawk Logo" style="width:40px;height:40px;object-fit:contain;"/>
+ <img src="/showcase/logo.png" alt="SERP Hawk Logo" style="width:40px;height:40px;object-fit:contain;"/>
  SERP Hawk
  </a>
  <div class="nav-links">
@@ -340,6 +341,7 @@
  <a href="#whatsapp" data-i18n="nav_whatsapp">WhatsApp</a>
  <a href="#telemetry" data-i18n="nav_telemetry">Telemetry</a>
  <a href="#modules" data-i18n="nav_modules">Modules</a>
+ <a href="/product-guide" data-i18n="nav_product">Product Overview</a>
  <a href="#cta" data-i18n="nav_demo">Get Demo</a>
  </div>
  <div class="nav-controls">
@@ -370,7 +372,7 @@
  <div class="browser-dot r"></div><div class="browser-dot y"></div><div class="browser-dot g"></div>
  <div class="browser-url"> crm.serphawk.in/dashboard</div>
  </div>
- <div class="browser-screen"><img src="img_dashboard.jpg" alt="SERP Hawk CRM Dashboard"/></div>
+ <div class="browser-screen"><img src="/showcase/img_dashboard.jpg" alt="SERP Hawk CRM Dashboard"/></div>
  <div class="float-badge top-right animate-float"><span class="bdot"></span><span data-i18n="hero_badge1">5 agents running live</span></div>
  <div class="float-badge bottom-left animate-float-slow"><span></span><span data-i18n="hero_badge2">Last AI action: 12 seconds ago</span></div>
  </div>
@@ -430,7 +432,7 @@
  </ul>
  </div>
  <div class="feature-visual reveal-right">
- <div class="screen-wrap"><img src="img_emailagent.jpg" alt="AI Email Agent UI"/></div>
+ <div class="screen-wrap"><img src="/showcase/img_emailagent.jpg" alt="AI Email Agent UI"/></div>
  <div class="float-badge top-right animate-float"><span></span><span data-i18n="a1_badge">47 seconds to a live email</span></div>
  </div>
  </div>
@@ -452,7 +454,7 @@
  </ul>
  </div>
  <div class="feature-visual reveal-left">
- <div class="screen-wrap"><img src="img_xray.jpg" alt="Client X-Ray Agent UI"/></div>
+ <div class="screen-wrap"><img src="/showcase/img_xray.jpg" alt="Client X-Ray Agent UI"/></div>
  <div class="float-badge bottom-left animate-float-slow"><span class="bdot"></span><span data-i18n="a2_badge">Opportunity Score: 87/100</span></div>
  </div>
  </div>
@@ -474,7 +476,7 @@
  </ul>
  </div>
  <div class="feature-visual reveal-right">
- <div class="screen-wrap"><img src="img_radar.jpg" alt="Radar Competitor Analysis UI"/></div>
+ <div class="screen-wrap"><img src="/showcase/img_radar.jpg" alt="Radar Competitor Analysis UI"/></div>
  <div class="float-badge top-right animate-float"><span></span><span data-i18n="a3_badge">Threat Level: HIGH detected</span></div>
  </div>
  </div>
@@ -496,7 +498,7 @@
  </ul>
  </div>
  <div class="feature-visual reveal-left">
- <div class="screen-wrap"><img src="img_callpitch.jpg" alt="AI Call Pitch Agent UI"/></div>
+ <div class="screen-wrap"><img src="/showcase/img_callpitch.jpg" alt="AI Call Pitch Agent UI"/></div>
  <div class="float-badge top-right animate-float"><span></span><span data-i18n="a4_badge">Confidence Score: 94%</span></div>
  </div>
  </div>
@@ -519,7 +521,7 @@
  </div>
  </div>
  <div class="feature-visual reveal-right">
- <div class="screen-wrap"><img src="img_whatsapp.jpg" alt="WhatsApp CRM Bot UI"/></div>
+ <div class="screen-wrap"><img src="/showcase/img_whatsapp.jpg" alt="WhatsApp CRM Bot UI"/></div>
  <div class="float-badge bottom-left animate-float-slow"><span class="bdot"></span><span data-i18n="a5_badge">SERP Hawk Bot — Connected</span></div>
  </div>
  </div>
@@ -541,7 +543,7 @@
  </ul>
  </div>
  <div class="feature-visual reveal-left">
- <div class="screen-wrap"><img src="img_telemetry.jpg" alt="Live Telemetry Dashboard UI"/></div>
+ <div class="screen-wrap"><img src="/showcase/img_telemetry.jpg" alt="Live Telemetry Dashboard UI"/></div>
  <div class="float-badge top-right animate-float"><span class="bdot"></span><span data-i18n="tel_badge">Live Feed — 847 sessions</span></div>
  </div>
  </div>
@@ -699,7 +701,7 @@
 
 <footer>
  <div class="footer-logo">
- <img src="logo.png" alt="SERP Hawk Logo" style="width:36px;height:36px;object-fit:contain;"/>
+ <img src="/showcase/logo.png" alt="SERP Hawk Logo" style="width:36px;height:36px;object-fit:contain;"/>
  <span>SERP Hawk CRM</span>
  </div>
  <div class="footer-links">
@@ -747,7 +749,7 @@
 const T = {
  en: {
  nav_agents:"AI Agents", nav_whatsapp:"WhatsApp", nav_telemetry:"Telemetry",
- nav_modules:"Modules", nav_demo:"Get Demo", nav_cta:"Try Demo →",
+ nav_modules:"Modules", nav_product:"Product Overview", nav_demo:"Get Demo", nav_cta:"Try Demo →",
 
  hero_badge:"5 AI Agents · Built for SEO Agencies · Always On",
  hero_h1:"Your agency, run by<br/><em>AI agents</em> while you sleep.",
@@ -886,7 +888,7 @@ const T = {
 
  es: {
  nav_agents:"Agentes IA", nav_whatsapp:"WhatsApp", nav_telemetry:"Telemetría",
- nav_modules:"Módulos", nav_demo:"Prueba Demo", nav_cta:"Prueba Demo →",
+ nav_modules:"Módulos", nav_product:"Descripción del producto", nav_demo:"Prueba Demo", nav_cta:"Prueba Demo →",
 
  hero_badge:"5 Agentes IA · Para Agencias SEO · Siempre Activos",
  hero_h1:"Tu agencia, dirigida por<br/><em>agentes de IA</em> mientras duermes.",

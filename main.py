@@ -50,7 +50,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.sql.selectable import Select
 from sqlalchemy.orm import Session as SASession
 from sqlalchemy import event
-from modules import tenant_scope, auth_tokens, features
+from sqlalchemy.orm import defer
+from modules import tenant_scope, auth_tokens, features, auto_calling
 import contextvars
 from database import (
     Account,
@@ -119,9 +120,12 @@ from sqlmodel import Session, select, SQLModel
 from sqlalchemy import func, or_
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Depends, FastAPI, HTTPException, Query, Form, UploadFile, File, Body
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 from datetime import datetime, timedelta, date, timezone
 import re
+
+def _utcnow():
+    return datetime.now(timezone.utc)
 
 """
 CRM V2 – SerpHawk  |  FastAPI Backend
@@ -319,6 +323,9 @@ from database import (
 # ─────────────────────────────────────────────────────────────────────────────
 current_tenant_id = tenant_scope.current_tenant_id  # defined in modules/tenant_scope.py
 
+# Capture every committed Lead insert once; actual dialing happens off-request in a worker.
+auto_calling.install()
+
 
 @event.listens_for(SASession, "do_orm_execute")
 def _add_tenant_filter(execute_state):
@@ -441,8 +448,8 @@ def _audit_log_changes(session, flush_context):
         pk = mapper.primary_key[0].name
         return getattr(obj, pk, None)
 
-    # Tables that are root/global objects — never audit them with a tenant_id FK
-    _skip_audit_tables = {"audit_logs", "tenants"}
+    # Tables that are root/global or high-churn telemetry objects — never audit them with a tenant_id FK
+    _skip_audit_tables = {"audit_logs", "tenants", "api_requests"}
 
     for obj in session.new:
         if hasattr(obj, "__tablename__") and obj.__tablename__ not in _skip_audit_tables:
@@ -669,7 +676,7 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
         # tenant for CRM requests; platform management handlers retain their own role checks.
         gated_tenant = current_tenant_id.get()
         platform_path = (path.startswith(("/superadmin/", "/me/", "/users/me", "/notifications/",
-                                          "/telemetry/demo-account", "/auth/"))
+                                          "/telemetry/demo-account", "/auth/", "/blogs", "/shop", "/sample-data", "/ai-companion", "/static/"))
                          or path in {"/health", "/login", "/telemetry/page-visit", "/change-password"})
         operator_create = operator and gated_tenant == -1 and path == '/users' and request.method == 'POST'
         if operator and not platform_path and not operator_create:
@@ -703,7 +710,7 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
                     actor_snapshot = SimpleNamespace(tenant_id=gated_tenant, role=person[1]) if person else None
                     return demo_usage.restricted_tenant(session, user=actor_snapshot)
             demo_tid = await run_in_threadpool(_demo_policy)
-            demo_usage.demo_context.set(demo_tid)
+            demo_usage.demo_context.set(demo_tid if demo_tid else demo_usage.UNRESTRICTED)
             if demo_tid:
                 policy = demo_usage.request_policy(request.method, path)
                 try:
@@ -789,11 +796,19 @@ app.include_router(lead_conversations_router)
 from routers.email_campaigns import router as email_campaigns_router
 app.include_router(email_campaigns_router)
 
+from routers.blogs import router as blogs_router
+app.include_router(blogs_router)
+from routers.sample_data import router as sample_data_router
+app.include_router(sample_data_router)
+from routers.shop_proposals import router as shop_router
+app.include_router(shop_router)
+
 @app.on_event("startup")
 def on_startup():
     from database import engine
     patch_openai()
     if engine.url.get_backend_name() == "postgresql" and os.path.exists(".migration_done") and os.getenv("RUN_STARTUP_MIGRATIONS") != "1":
+        sales_assist.ensure_postgres_schema(engine, rls_enabled=os.getenv("RLS_MODE", "off").lower() == "enforce")
         print(f"[startup] database: {engine.url.get_backend_name()} host={engine.url.host or 'local file'} name={engine.url.database} (schema migrations already applied)")
         return
     try:
@@ -804,6 +819,15 @@ def on_startup():
 
     from database import DemoServiceUsage, engine as quota_engine
     DemoServiceUsage.__table__.create(quota_engine, checkfirst=True)
+
+    try:
+        from database import engine as _blog_eng
+        from sqlmodel import Session as _BlogSession
+        from routers.blogs import _ensure_seed_blogs
+        with _BlogSession(_blog_eng) as _bsess:
+            _ensure_seed_blogs(_bsess)
+    except Exception as e:
+        print("[startup] blog seed error:", e)
 
     # Ensure SuperAdmin exists
     try:
@@ -1061,10 +1085,12 @@ def on_startup():
                 text("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS swot_analysis TEXT;"))
             conn.execute(
                 text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS swot_analysis TEXT;"))
+            conn.execute(
+                text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS custom_fields JSON;"))
             conn.commit()
-            print("Successfully added swot_analysis to client_profiles and leads tables.")
+            print("Successfully added swot_analysis and custom_fields to tables.")
     except Exception as e:
-        print("swot_analysis column already exists or error:", e)
+        print("swot_analysis or custom_fields column check error:", e)
 
     try:
         with engine.connect() as conn:
@@ -1486,7 +1512,7 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
                         sess.add(cp_obj)
                     elif resolved_tenant_id:
                         cr.tenant_id = resolved_tenant_id
-                cr.email_agent_data = json.dumps(data, default=str)
+                cr.email_agent_data = preserve_outreach(cr.email_agent_data, data)
                 cr.company_overview = overview
                 cr.key_decision_makers = json.dumps(contacts_list, default=str)
                 # Store additional rich fields
@@ -1534,29 +1560,41 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
     t.start()
 
 
+from modules import sales_assist
+from modules.sales_research import build_research, json_object, preserve_outreach, website_host
+
+
 @app.post("/smart-research")
 async def smart_research(body: SmartResearchRequest, session: Session = Depends(get_session)):
     """
     Takes a company name (and optional URL) and uses local scraper and LLM to return
     analysis, extracted contacts, and generated emails.
     """
-    check_tenant_limit(session, "emails")
+    viewer = _require_roles(session, sales_assist.SALES_STAFF)
     from modules.scraper import research_and_map_company
     from modules.llm_engine import generate_email
     import json
 
     # Determine the URL
-    url = body.company_url
+    url = (body.company_url or "").strip()
     if not url:
         # Simple fallback if no URL provided
         formatted_name = body.company_name.replace(
             " ", "").replace(",", "").replace(".", "").lower()
         url = f"https://www.{formatted_name}.com"
+    if "://" not in url:
+        url = f"https://{url}"
+    domain = website_host(url)
+    if not domain or len(url) > 500:
+        raise HTTPException(status_code=422, detail="Enter a valid company website")
+    check_tenant_limit(session, "emails")
 
     try:
         # Run local research (which uses Firecrawl and OpenAI)
         result = await research_and_map_company(url)
         analysis = result.get("company_analysis", {})
+        if analysis.get("error"):
+            return {"_error_message": "Company research is unavailable. Try again later."}
         mapping = result.get("service_mapping", [])
 
         # Extract Contact Info
@@ -1659,6 +1697,7 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
             comp_facebook = scraped_fb
 
         data = {
+            "outreach_research": build_research(analysis, raw_text, url),
             "company_info": {
                 "company_name": analysis.get("company_name", body.company_name),
                 "summary": analysis.get("what_they_do", ""),
@@ -1694,18 +1733,15 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
         from database import Lead, ClientResearch
         from sqlmodel import select
 
-        # See if a lead already exists for this domain
-        existing_lead = None
-        if url:
-            domain = url.replace(
-                "https://", "").replace("http://", "").replace("www.", "").split('/')[0]
-            if domain:
-                existing_lead = session.exec(select(Lead).where(
-                    Lead.website.like(f"%{domain}%"))).first()
+        # Match the registered website exactly. A substring could overwrite an unrelated lead.
+        candidates = session.exec(select(Lead).where(Lead.website.ilike(f"%{domain}%")).order_by(Lead.id)).all()
+        existing_lead = next((record for record in candidates if website_host(record.website) == domain), None)
 
         if not existing_lead and email:
-            existing_lead = session.exec(
-                select(Lead).where(Lead.email == email)).first()
+            contacts_with_email = session.exec(select(Lead).where(Lead.email == email).order_by(Lead.id)).all()
+            existing_lead = next((record for record in contacts_with_email if not website_host(record.website)), None)
+            if existing_lead:
+                existing_lead.website = url
 
         lead_id = None
         if not existing_lead:
@@ -1718,6 +1754,8 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
                 phone=phone if phone else None,
                 source="Email Agent",
                 status="Generated",
+                owner_id=viewer.id,
+                created_by=viewer.id,
                 ai_analysis_results=data
             )
             session.add(new_lead)
@@ -1725,30 +1763,79 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
             session.refresh(new_lead)
             lead_id = new_lead.id
         else:
-            existing_lead.ai_analysis_results = data
+            existing_lead.ai_analysis_results = {**json_object(existing_lead.ai_analysis_results), **data}
             if email and not existing_lead.email:
                 existing_lead.email = email
             session.add(existing_lead)
             session.commit()
             lead_id = existing_lead.id
 
-        # We no longer save Email Agent JSON to ClientResearch.email_agent_data
-        # because that field is reserved for the massive Deep Research Markdown report.
-        # ------------------------------------------
+        return {**data, "lead_id": lead_id}
 
-        return data
-
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
         print(f"Smart Research Local Exception: {e}")
         return {
+            "_error_message": "Company research is unavailable. Try again later.",
             "company_info": {"company_name": body.company_name, "summary": f"Smart Research Exception: {e}"},
             "contact": {"email": ""},
             "draft": {"subject": "", "english_body": ""},
             "recommended_services": [],
             "extracted_services": []
         }
+
+@app.post("/leads/{lead_id}/save-research-to-client")
+def save_research_to_client(lead_id: int, session: Session = Depends(get_session)):
+    viewer = _require_roles(session, sales_assist.SALES_STAFF)
+    from modules.sales_access import effective_modules
+    enabled = effective_modules(viewer.tenant_id, _normalize_role(viewer.role))
+    if not (enabled.get("clients") and enabled.get("email_agent")):
+        raise HTTPException(status_code=403, detail="Clients and Email Agent must be enabled")
+    return {"client_id": sales_assist.save_client_research(session, viewer, lead_id)}
+
+
+@app.post("/{kind}/{record_id}/sales-next-steps")
+def sales_next_steps(
+    kind: Literal["leads", "clients"], record_id: int,
+    lang: Literal["en", "es"] = "en", session: Session = Depends(get_session),
+):
+    viewer = _require_roles(session, sales_assist.SALES_STAFF)
+    record = sales_assist.get_record(session, viewer.tenant_id, kind, record_id)
+    context = sales_assist.sales_context(session, viewer.tenant_id, kind, record)
+    session.rollback()
+    try:
+        return sales_assist.prepare_sales_plan(context, "Spanish" if lang == "es" else "English")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=503, detail="Sales suggestions are unavailable. Try again later.")
+
+
+@app.put("/{kind}/{record_id}/sales-next-steps/draft")
+def save_sales_plan_draft(
+    kind: Literal["leads", "clients"], record_id: int, body: sales_assist.SalesDraft,
+    session: Session = Depends(get_session),
+):
+    viewer = _require_roles(session, sales_assist.SALES_STAFF)
+    return {"draft_id": sales_assist.save_sales_draft(session, viewer, kind, record_id, body)}
+
+
+@app.get("/{kind}/{record_id}/sales-next-steps/draft")
+def get_sales_plan_drafts(
+    kind: Literal["leads", "clients"], record_id: int, session: Session = Depends(get_session),
+):
+    viewer = _require_roles(session, sales_assist.SALES_STAFF)
+    sales_assist.get_record(session, viewer.tenant_id, kind, record_id)
+    query = sales_assist.draft_query(viewer, kind, record_id)
+    drafts = session.exec(query.order_by(sales_assist.SalesPlanDraft.id.desc()).limit(10)).all()
+    return {"drafts": [
+        {"id": draft.id, "to_email": draft.to_email, "subject": draft.subject, "body": draft.body}
+        for draft in drafts
+    ]}
+
 
 # --- Send Manual: create client + record email + activity ---
 
@@ -2191,6 +2278,7 @@ class ClientUpdateRequest(BaseModel):
     lastActivityDate: Optional[str] = None
     assignedEmployeeId: Optional[int] = None
     customFields: Optional[dict] = None
+    custom_fields: Optional[dict] = None
     lead_score: Optional[int] = None
     lead_source: Optional[str] = None
     deal_value: Optional[float] = None
@@ -2344,6 +2432,13 @@ class CallCreateRequest(BaseModel):
     phone_number: str
     duration_seconds: Optional[int] = None
     summary: Optional[str] = None
+    description: Optional[str] = None
+    work_done: Optional[str] = None
+    assigned_to: Optional[str] = None
+    followup_needed: bool = False
+    followup_date: Optional[str] = None
+    client_id: Optional[int] = None
+    lead_id: Optional[int] = None
 
 
 class CallSummaryRequest(BaseModel):
@@ -2389,17 +2484,25 @@ class SendLeadRequest(BaseModel):
 # The DB enum 'taskstatus' was created with lowercase values.
 # Frontend sends 'Todo', 'InProgress', 'Done' — map them correctly.
 _TASK_STATUS_MAP: dict = {
-    "todo": "todo",
-    "Todo": "todo",
-    "TODO": "todo",
-    "inprogress": "inprogress",
-    "InProgress": "inprogress",
-    "INPROGRESS": "inprogress",
-    "in_progress": "inprogress",
-    "In Progress": "inprogress",
-    "done": "done",
-    "Done": "done",
-    "DONE": "done",
+    "todo": "Todo",
+    "Todo": "Todo",
+    "TODO": "Todo",
+    "pending": "Todo",
+    "inprogress": "In Progress",
+    "InProgress": "In Progress",
+    "INPROGRESS": "In Progress",
+    "in_progress": "In Progress",
+    "In Progress": "In Progress",
+    "inqa": "In QA",
+    "InQA": "In QA",
+    "in_qa": "In QA",
+    "In QA": "In QA",
+    "qa": "In QA",
+    "QA": "In QA",
+    "done": "Done",
+    "Done": "Done",
+    "DONE": "Done",
+    "completed": "Done",
 }
 
 
@@ -3629,9 +3732,9 @@ def login(body: LoginRequest, session: Session = Depends(get_session)):
     if not _verify_password(body.password, user):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     from modules.company_domains import check_user
-    check_user(user)
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account has been switched off. Contact your administrator.")
+    check_user(user, login=True)
     result = _user_dict(user)
     if user.role == "Client":
         cp = session.exec(select(ClientProfile).where(
@@ -3728,6 +3831,8 @@ def reset_password(body: ResetPasswordRequest, session: Session = Depends(get_se
 
 class GoogleAuthRequest(BaseModel):
     access_token: str
+    model: Literal["b2b", "b2c"] = "b2b"
+    company_name: Optional[str] = None
 
 
 @app.post("/auth/google")
@@ -3752,17 +3857,18 @@ def auth_google(body: GoogleAuthRequest, session: Session = Depends(get_session)
     if request_company.get() and not user:
         raise HTTPException(403, detail="Ask this company's administrator for an account")
     if user:
-        check_user(user)
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="This account has been switched off. Contact your administrator.")
+        check_user(user, login=True)
 
     if not user:
         # a new Google user gets the same self-service demo workspace as /signup (managed in Demo Account Data)
         from modules import demo_accounts
         is_new_user = True
         out = demo_accounts.create_self_service_demo(session, name=name or email, email=email,
-                                                     password_hash=_hash_password(os.urandom(16).hex()))
+                                                     password_hash=_hash_password(os.urandom(16).hex()), model=body.model,
+                                                     company_name=(body.company_name or "").strip() or None)
         user = session.exec(select(User).where(User.id == out["admin_user_id"]).execution_options(skip_tenant=True)).first()
-    elif not user.is_active:
-        raise HTTPException(status_code=403, detail="This account has been switched off. Contact your administrator.")
 
     result = _user_dict(user)
     if user.role == "Client":
@@ -4245,18 +4351,147 @@ def get_user_stats(user_id: int, session: Session = Depends(get_session)):
     if sales_access.is_sales() and user_id != current_salesperson_id.get():
         raise HTTPException(status_code=403, detail="You can only view your own profile")
     user = session.get(User, user_id)
+    instructor = None
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        try:
+            from addons.institute.models import Instructor
+            instructor = session.get(Instructor, user_id)
+        except Exception:
+            instructor = None
+        if not instructor:
+            raise HTTPException(status_code=404, detail="User not found")
 
-    # Sales team stats
-    if user.role in ["Admin", "SalesManager", "Employee"]:
+    # If it's an instructor profile
+    if instructor:
+        try:
+            from addons.institute.models import Batch, Enrollment, Student, InstituteSession, InstructorFeedback
+            batches = session.exec(select(Batch).where(Batch.instructor_id == instructor.id)).all()
+            batch_ids = [b.id for b in batches]
+            enrollments = session.exec(select(Enrollment).where(Enrollment.batch_id.in_(batch_ids))).all() if batch_ids else []
+            student_ids = list({e.student_id for e in enrollments})
+            students = session.exec(select(Student).where(Student.id.in_(student_ids))).all() if student_ids else []
+            feedbacks = session.exec(select(InstructorFeedback).where(InstructorFeedback.instructor_id == instructor.id)).all()
+            avg_rating = sum(f.rating for f in feedbacks) / len(feedbacks) if feedbacks else 5.0
+
+            sessions_list = session.exec(select(InstituteSession).where(InstituteSession.batch_id.in_(batch_ids))).all() if batch_ids else []
+            completed_sessions = sum(1 for s in sessions_list if s.status == "Completed")
+            pending_sessions = sum(1 for s in sessions_list if s.status in ("Scheduled", "Live"))
+
+            assigned_persons = [
+                {
+                    "id": s.id,
+                    "name": s.name,
+                    "type": "student",
+                    "status": s.status,
+                    "email": s.email,
+                    "phone": s.phone,
+                    "created_at": s.created_at.isoformat() if hasattr(s.created_at, "isoformat") else str(s.created_at)
+                }
+                for s in students[:25]
+            ]
+
+            return {
+                "type": "instructor",
+                "user": {
+                    "id": instructor.id,
+                    "name": instructor.name,
+                    "email": instructor.email or "",
+                    "role": "Instructor",
+                    "expertise": instructor.expertise or "",
+                },
+                "total_assigned": len(student_ids),
+                "active_handling_count": pending_sessions,
+                "batches_count": len(batches),
+                "completed_count": completed_sessions,
+                "avg_rating": round(avg_rating, 1),
+                "assigned_persons": assigned_persons,
+                "recent_activities": [
+                    {
+                        "id": s.id,
+                        "action": f"Class: {s.title or 'Session'}",
+                        "details": f"Status: {s.status} • Scheduled: {s.scheduled_start}",
+                        "createdAt": s.scheduled_start.isoformat() if hasattr(s.scheduled_start, "isoformat") else str(s.scheduled_start)
+                    }
+                    for s in sessions_list[:15]
+                ]
+            }
+        except Exception as e:
+            return {"type": "instructor", "error": str(e)}
+
+    # Sales & Admissions team stats
+    if user.role in ["Admin", "SuperAdmin", "SalesManager", "Employee", "Sales", "Admissions"]:
         # Clients handling
         clients_count = len(session.exec(select(ClientProfile).where(
             ClientProfile.assignedEmployeeId == user.id)).all())
 
-        # Leads converted
-        converted_leads_count = len(session.exec(select(Lead).where(
-            Lead.owner_id == user.id, Lead.is_converted == True)).all())
+        # Leads assigned
+        rep_leads = session.exec(select(Lead).where(Lead.owner_id == user.id).order_by(Lead.created_at.desc())).all()
+        assigned_leads_count = len(rep_leads)
+
+        # Converted leads
+        converted_leads = [
+            l for l in rep_leads
+            if l.is_converted or str(l.status or "").lower() in ("converted", "won", "student", "enrolled")
+        ]
+        converted_leads_count = len(converted_leads)
+
+        # Active handling ("doing" now)
+        active_handling_leads = [
+            l for l in rep_leads
+            if not l.is_converted and str(l.status or "").lower() not in ("lost", "closed", "inactive", "converted", "won", "student")
+        ]
+        active_handling_count = len(active_handling_leads)
+
+        # Institute metrics (Admissions & Sales)
+        assigned_students = []
+        advance_collected = 0.0
+        total_business_made = 0.0
+        try:
+            from addons.institute.models import Enrollment, PaymentRecord, Student
+            # Students assigned as counselor / admissions manager
+            assigned_students = session.exec(select(Student).where(
+                or_(Student.assigned_counselor_id == user.id, Student.assigned_counselor_id == None if user.role == "Admissions" else False)
+            ).order_by(Student.created_at.desc())).all()
+
+            # Payments collected
+            rep_payments = session.exec(select(PaymentRecord).where(PaymentRecord.recorded_by == user.id)).all()
+            advance_collected = sum(float(p.amount or 0.0) for p in rep_payments)
+
+            # Total business made
+            rep_enrollments = session.exec(select(Enrollment).where(Enrollment.enrolled_by == user.id)).all()
+            total_business_made = sum(max(0.0, float(e.total_fee or 0.0) - float(e.discount or 0.0)) for e in rep_enrollments)
+        except Exception:
+            pass
+
+        if total_business_made == 0.0:
+            total_business_made = sum(float(l.deal_value or 0.0) for l in converted_leads)
+            if total_business_made == 0.0:
+                total_business_made = advance_collected
+
+        # Total assigned persons
+        assigned_persons = []
+        for l in rep_leads[:15]:
+            assigned_persons.append({
+                "id": l.id,
+                "name": l.company_name or l.contact_name or "Lead",
+                "type": "lead",
+                "status": "Converted" if l.is_converted else (l.status or "New"),
+                "email": l.email,
+                "phone": l.phone,
+                "deal_value": l.deal_value,
+                "created_at": l.created_at.isoformat() if hasattr(l.created_at, "isoformat") else str(l.created_at)
+            })
+        for s in assigned_students[:15]:
+            assigned_persons.append({
+                "id": s.id,
+                "name": s.name,
+                "type": "student",
+                "status": s.status or "Enrolled",
+                "email": s.email,
+                "phone": s.phone,
+                "deal_value": None,
+                "created_at": s.created_at.isoformat() if hasattr(s.created_at, "isoformat") else str(s.created_at)
+            })
 
         # Current active tasks
         active_tasks = session.exec(select(Task).where(
@@ -4264,16 +4499,54 @@ def get_user_stats(user_id: int, session: Session = Depends(get_session)):
         assigned_cases = session.exec(
             select(Case).where(Case.assigned_to == user.id)).all()
 
+        # Recent activities
+        lead_ids = [l.id for l in rep_leads[:50]]
+        act_query = select(ActivityLog)
+        if lead_ids:
+            act_query = act_query.where(or_(ActivityLog.lead_id.in_(lead_ids), ActivityLog.user_id == user.id))
+        else:
+            act_query = act_query.where(ActivityLog.user_id == user.id)
+        activities = session.exec(act_query.order_by(ActivityLog.createdAt.desc()).limit(15)).all()
+
+        recent_activities = [
+            {
+                "id": a.id,
+                "action": a.action or "Activity",
+                "details": a.details or a.content or "",
+                "lead_id": a.lead_id,
+                "createdAt": a.createdAt.isoformat() if hasattr(a.createdAt, "isoformat") else str(a.createdAt)
+            }
+            for a in activities
+        ]
+
+        total_assigned_count = assigned_leads_count + len(assigned_students)
+        win_rate = round((converted_leads_count / assigned_leads_count * 100), 1) if assigned_leads_count > 0 else 0.0
+
         return {
-            "type": "sales",
-            "clients_handling": clients_count,
+            "type": "sales" if user.role != "Admissions" else "admissions",
+            "user": {
+                "id": user.id,
+                "name": user.name,
+                "email": user.email,
+                "role": user.role,
+            },
+            "total_assigned": total_assigned_count,
+            "leads_assigned": assigned_leads_count,
+            "students_assigned": len(assigned_students),
+            "active_handling_count": active_handling_count,
             "leads_converted": converted_leads_count,
+            "clients_handling": clients_count,
+            "win_rate": win_rate,
+            "total_business_made": total_business_made,
+            "advance_collected": advance_collected,
             "cases_assigned": len(assigned_cases),
+            "assigned_persons": assigned_persons,
             "active_tasks": [
                 {"id": t.id, "title": t.title,
                     "status": t.status, "priority": t.priority}
                 for t in active_tasks
-            ]
+            ],
+            "recent_activities": recent_activities
         }
 
     # Dev team stats
@@ -4293,6 +4566,12 @@ def get_user_stats(user_id: int, session: Session = Depends(get_session)):
 
         return {
             "type": "dev",
+            "user": {
+                "id": user.id,
+                "name": user.name,
+                "email": user.email,
+                "role": user.role,
+            },
             "total_tickets": total_tickets,
             "in_dev": in_dev,
             "in_qa": in_qa,
@@ -4585,9 +4864,8 @@ def get_employees_workload(session: Session = Depends(get_session)):
     """Return each sales team member with their active client and active lead counts."""
     query = select(User).where(User.is_active == True, User.role.in_(
         ["Employee", "Admin", "SalesManager", "Sales"]))
-    from modules import sales_access
-    if sales_access.is_sales():
-        query = query.where(User.id == current_salesperson_id.get())
+    # Allow all active sales team members in the tenant to be returned so that
+    # any salesperson can select a colleague as a destination for lead transfers.
     tenant_id = current_tenant_id.get()
     if tenant_id:
         query = query.where(User.tenant_id == tenant_id)
@@ -4604,7 +4882,7 @@ def get_employees_workload(session: Session = Depends(get_session)):
         ).all())
         # Count active (non-converted) leads owned by this employee
         lead_count = len(session.exec(
-            select(Lead).where(
+            select(Lead.id).where(
                 Lead.owner_id == emp.id,
                 Lead.is_converted == False,
                 Lead.status != "Lost"
@@ -4762,6 +5040,7 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
         websiteUrl=body.websiteUrl,
         targetKeywords=body.targetKeywords,
         assignedEmployeeId=body.assigned_employee_id,
+        customFields=body.customFields or body.custom_fields or {},
     )
     session.add(cp)
     session.commit()
@@ -4805,6 +5084,27 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
         )
     except Exception as e:
         print(f"AutoResearch trigger error for client {client_ref['id']}: {e}")
+
+    # ── EMAIL NOTIFICATION TO CONFIGURED RECEIVERS ──
+    try:
+        from modules.notification_dispatcher import dispatch_event_notification
+        dispatch_event_notification(
+            event_key="client_added_or_converted",
+            subject=f"🎉 New Client Added: {cp.companyName}",
+            headline=f"New Client: {cp.companyName}",
+            details={
+                "Company Name": cp.companyName,
+                "Phone": cp.phone or "—",
+                "Address": cp.address or "—",
+                "Status": cp.status or "Active",
+                "Website": cp.websiteUrl or "—"
+            },
+            tenant_id=cp.tenant_id,
+            action_url=f"/clients/{cp.id}",
+            action_label="View Client Profile"
+        )
+    except Exception as ce:
+        print("[CreateClient] Notification error:", ce)
 
     return {"client": _client_dict(cp, session)}
 
@@ -5053,7 +5353,7 @@ async def _auto_research_client_bg(client_id: int, website: str):
                 "company_socials": data.get("company_socials", {}),
                 "people": data.get("people", [])
             }
-            research.email_agent_data = json.dumps(ai_data)
+            research.email_agent_data = preserve_outreach(research.email_agent_data, ai_data)
 
             # Also store the people array natively into key_decision_makers for legacy/direct display
             if data.get("people"):
@@ -5434,9 +5734,17 @@ def simulate_client_call(client_id: int, req: Optional[SimulateCallRequest] = No
     email = cp.user.email if cp.user else ""
     keywords = ", ".join(cp.targetKeywords) if cp.targetKeywords else ""
 
-    prompt = f"""You are an expert sales representative for "SERP Hawk" (an elite SEO and Digital Marketing Agency).
+    # Simulated calls must speak as the owning tenant, never as the platform itself.
+    from modules import tenant_voice
+    voice_ctx = tenant_voice.prompt_context(
+        tenant_voice.profile_for_call(current_tenant_id.get()))
+    company = voice_ctx["company_name"]
+    about = voice_ctx["company_description"]
+    tone = voice_ctx["tone"]
+
+    prompt = f"""You are an expert sales representative for "{company}" ({about}).
 Your task is to write a highly tailored, direct sales script to be read over the phone to this specific client. 
-DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a SERP Hawk sales rep.
+DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a {company} sales representative and use a {tone} tone.
 
 Client Profile:
 Company/Project: {cp.companyName or cp.projectName or 'Unknown'}
@@ -5453,7 +5761,7 @@ Recent Activity with them:
 Instructions:
 1. Write the exact word-for-word script that the sales person will read on the call.
 2. Directly reference their specific company name, their services/keywords, and especially any past notes or activities.
-3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
+3. Pitch {company}'s services as the solution to their specific needs.
 4. Make it conversational, persuasive, and professional.
 5. Structure it logically but seamlessly.
 6. Output ONLY the spoken script as natural dialogue. Do NOT include markdown headings like **Introduction** or **Value Proposition**. It should read exactly like a transcript of someone speaking. Do not add any meta-commentary."""
@@ -5781,7 +6089,7 @@ def add_client_followup(client_id: int, body: ClientFollowUpRequest, session: Se
             )
             session.add(client_research)
         else:
-            client_research.email_agent_data = body.email_agent_data
+            client_research.email_agent_data = preserve_outreach(client_research.email_agent_data, body.email_agent_data)
             session.add(client_research)
         session.commit()
 
@@ -6053,9 +6361,8 @@ def add_conversation_reply(client_id: int, conv_id: int, body: ConversationReply
 
 @app.get("/clients/{client_id}/research")
 def get_client_research(client_id: int, session: Session = Depends(get_session)):
-    cp = session.get(ClientProfile, client_id)
-    if not cp:
-        return {"research": None}
+    viewer = _require_roles(session, sales_assist.SALES_STAFF)
+    cp = sales_assist.get_record(session, viewer.tenant_id, "clients", client_id)
     research = session.exec(select(ClientResearch).where(
         ClientResearch.client_id == client_id).execution_options(skip_tenant=True)).first()
     if not research:
@@ -6091,9 +6398,8 @@ def trigger_full_analysis(client_id: int, session: Session = Depends(get_session
 @app.get("/clients/{client_id}/full-analysis")
 def get_full_analysis(client_id: int, session: Session = Depends(get_session)):
     import json as _j
-    cp = session.get(ClientProfile, client_id)
-    if not cp:
-        raise HTTPException(status_code=404, detail="Client not found")
+    viewer = _require_roles(session, sales_assist.SALES_STAFF)
+    cp = sales_assist.get_record(session, viewer.tenant_id, "clients", client_id)
     cr = session.exec(select(ClientResearch).where(
         ClientResearch.client_id == client_id).execution_options(skip_tenant=True)).first()
     if not cr or not cr.email_agent_data:
@@ -6124,11 +6430,15 @@ def get_full_analysis(client_id: int, session: Session = Depends(get_session)):
 
 @app.put("/clients/{client_id}/research")
 def upsert_client_research(client_id: int, body: ClientResearchUpdateRequest, session: Session = Depends(get_session)):
+    viewer = _require_roles(session, sales_assist.SALES_STAFF)
+    sales_assist.get_record(session, viewer.tenant_id, "clients", client_id, lock=True)
     research = session.exec(select(ClientResearch).where(
-        ClientResearch.client_id == client_id)).first()
+        ClientResearch.client_id == client_id).with_for_update()).first()
     if not research:
         research = ClientResearch(client_id=client_id)
     for field, val in body.model_dump(exclude_unset=True).items():
+        if field == "email_agent_data":
+            val = preserve_outreach(research.email_agent_data, val)
         setattr(research, field, val)
     research.updated_at = datetime.now(timezone.utc)
     session.add(research)
@@ -6281,7 +6591,7 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
                         session.flush()  # get the id without committing
                     research.company_overview = osint_data.get(
                         "company_overview", "")
-                    research.email_agent_data = _json.dumps(osint_data)
+                    research.email_agent_data = preserve_outreach(research.email_agent_data, osint_data)
                     session.commit()
                     print(
                         f"[DraftGen] Deep investigation complete for client {client_id}")
@@ -7518,6 +7828,60 @@ def list_calls(unsummarized: Optional[bool] = None, session: Session = Depends(g
     return {"calls": result}
 
 
+def _resolve_user_id_for_call(session: Session, assigned_to: Optional[str], tenant_id: Optional[int]) -> Optional[int]:
+    if not assigned_to:
+        return current_salesperson_id.get()
+    val = str(assigned_to).strip()
+    if val.isdigit():
+        return int(val)
+    q = select(User).where(or_(User.email == val, User.name == val))
+    if tenant_id is not None:
+        q = q.where(User.tenant_id == tenant_id)
+    u = session.exec(q).first()
+    return u.id if u else current_salesperson_id.get()
+
+
+def _sync_manual_call_followup(session: Session, c: CallLog, explicit_lead_id: Optional[int] = None) -> None:
+    """Keep manual CallLog follow-ups synchronized with the centralized follow_ups table."""
+    try:
+        from modules import followups_core as fcore, lead_calls
+        tid = c.tenant_id if c.tenant_id is not None else current_tenant_id.get()
+        actor_id = current_salesperson_id.get()
+        if not c.followup_needed:
+            fcore.upsert_source_followup(
+                session, tenant_id=tid, idempotency_key=f"call_log:{c.id}",
+                source_ref=f"call_log:{c.id}", completed=True, completed_by=actor_id,
+            )
+            return
+        lead = None
+        if not c.client_id:
+            lead = lead_calls.resolve_lead(
+                session, lead_id=explicit_lead_id, to_number=c.phone_number, tenant_id=tid,
+            )
+        due_utc = fcore.parse_due_datetime(c.followup_date, tenant_id=tid)
+        assigned_id = _resolve_user_id_for_call(session, c.assigned_to, tid)
+        label = (lead.company_name if lead else None) or c.phone_number
+        notes = (c.work_done or c.description or c.summary or "").strip() or None
+        fcore.upsert_source_followup(
+            session,
+            tenant_id=tid,
+            idempotency_key=f"call_log:{c.id}",
+            source="manual",
+            source_ref=f"call_log:{c.id}",
+            lead_id=lead.id if lead else None,
+            client_id=c.client_id,
+            contact_name=c.phone_number if not (lead or c.client_id) else None,
+            title=f"Follow-up call: {label}",
+            notes=notes,
+            channel="call",
+            due_at=due_utc,
+            assigned_to=assigned_id,
+            created_by=actor_id,
+        )
+    except Exception as exc:
+        print(f"[Calls] follow-up sync failed for call {c.id}: {exc}")
+
+
 @app.post("/calls")
 def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
     body.assigned_to = _call_assignee(session, body.assigned_to)
@@ -7541,6 +7905,7 @@ def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
     c = CallLog(
         phone_number=body.phone_number,
         duration_seconds=body.duration_seconds,
+        summary=body.summary,
         description=getattr(body, "description", None),
         work_done=getattr(body, "work_done", None),
         assigned_to=getattr(body, "assigned_to", None),
@@ -7550,6 +7915,9 @@ def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
         tenant_id=tenant_id
     )
     session.add(c)
+    session.commit()
+    session.refresh(c)
+    _sync_manual_call_followup(session, c, explicit_lead_id=getattr(body, "lead_id", None))
     session.commit()
     session.refresh(c)
 
@@ -7587,6 +7955,10 @@ def update_call(
     session.add(c)
     session.commit()
     session.refresh(c)
+    if any(k in body for k in ("followup_needed", "followup_date", "assigned_to", "work_done", "description", "summary", "client_id")):
+        _sync_manual_call_followup(session, c)
+        session.commit()
+        session.refresh(c)
 
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -7781,6 +8153,54 @@ def update_calling_agent_log(
 
     c.updated_at = datetime.now(timezone.utc)
     session.add(c)
+    if any(k in body for k in ("followup_needed", "followup_date", "important_notes", "assigned_to")):
+        try:
+            from modules import followups_core as fcore, lead_calls
+            tid = c.tenant_id if c.tenant_id is not None else tenant_id
+            actor_id = current_salesperson_id.get()
+            lead = lead_calls.resolve_lead(
+                session, lead_id=c.lead_id, entity_type=c.entity_type,
+                entity_id=c.entity_id, to_number=c.to_number, tenant_id=tid,
+            )
+            if lead and not c.lead_id:
+                c.lead_id = lead.id
+            client_id = c.entity_id if c.entity_type == "client" else None
+            conv = session.exec(select(ConversationLog).where(
+                ConversationLog.tenant_id == tid,
+                ConversationLog.source_ref == f"ai_call:{c.id}",
+            ).order_by(ConversationLog.id.desc())).first()
+            idem_key = f"conv-{conv.id}" if conv else f"ai_call:{c.id}"
+            if not c.followup_needed:
+                fcore.upsert_source_followup(
+                    session, tenant_id=tid, idempotency_key=idem_key,
+                    source_ref=f"ai_call:{c.id}", fallback_keys=(f"ai_call:{c.id}",),
+                    completed=True, completed_by=actor_id,
+                )
+            else:
+                due_utc = c.follow_up_at or fcore.parse_due_datetime(c.followup_date, tenant_id=tid)
+                assigned_id = _resolve_user_id_for_call(session, c.assigned_to, tid)
+                label = c.entity_name or (lead.company_name if lead else None) or c.to_number
+                notes = (c.important_notes or c.follow_up_reason or c.next_steps or "").strip() or None
+                fu, _ = fcore.upsert_source_followup(
+                    session, tenant_id=tid, idempotency_key=idem_key,
+                    source="manual", source_ref=f"ai_call:{c.id}", fallback_keys=(f"ai_call:{c.id}",),
+                    lead_id=lead.id if lead else None, client_id=client_id,
+                    title=f"Follow-up call: {label}", notes=notes, channel="call",
+                    due_at=due_utc, assigned_to=assigned_id, created_by=actor_id,
+                    conversation_id=conv.id if conv else None,
+                )
+                if conv and fu:
+                    conv.follow_up_date = fu.due_at
+                    session.add(conv)
+            if lead:
+                latest = lead_calls.latest_call_info(session, [lead.id]).get(lead.id, {})
+                if latest.get("latest_call_id") in (None, c.id):
+                    lead.follow_up_needed = bool(c.followup_needed)
+                    lead.next_follow_up_at = c.follow_up_at if c.followup_needed else None
+                    lead.follow_up_reason = (c.important_notes or c.follow_up_reason) if c.followup_needed else None
+                    session.add(lead)
+        except Exception as exc:
+            print(f"[AI Calls] follow-up sync failed for ai_call {c.id}: {exc}")
     session.commit()
     session.refresh(c)
     return {"ok": True, "calling_agent_log": _ai_call_dict(c, session)}
@@ -7891,16 +8311,54 @@ def list_scheduled_calls(session: Session = Depends(get_session)):
     return {"scheduled_calls": [_sched_dict(s, session) for s in items]}
 
 
+def _sync_scheduled_call_followup(session: Session, sc: ScheduledCall, deleted: bool = False) -> None:
+    """Keep ScheduledCall rows synchronized with the centralized follow_ups table."""
+    try:
+        from modules import followups_core as fcore
+        tid = sc.tenant_id if sc.tenant_id is not None else current_tenant_id.get()
+        actor_id = current_salesperson_id.get()
+        if deleted:
+            fcore.upsert_source_followup(
+                session, tenant_id=tid, idempotency_key=f"scheduled_call:{sc.id}",
+                source_ref=f"scheduled_call:{sc.id}", deleted=True,
+            )
+            return
+        if not sc.scheduled_at:
+            return
+        lead_id = sc.entity_id if sc.entity_type == "lead" else None
+        client_id = sc.entity_id if sc.entity_type == "client" else None
+        contact_id = sc.entity_id if sc.entity_type == "contact" else None
+        assigned_id = _resolve_user_id_for_call(session, sc.assigned_to, tid)
+        fcore.upsert_source_followup(
+            session,
+            tenant_id=tid,
+            idempotency_key=f"scheduled_call:{sc.id}",
+            source="manual",
+            source_ref=f"scheduled_call:{sc.id}",
+            lead_id=lead_id,
+            client_id=client_id,
+            contact_id=contact_id,
+            contact_name=sc.entity_name if not (lead_id or client_id) else None,
+            contact_email=sc.entity_email,
+            title=sc.title or f"Scheduled call: {sc.entity_name or 'contact'}",
+            notes=(sc.notes or sc.pitch or "").strip() or None,
+            channel="call",
+            due_at=fcore.parse_due_datetime(sc.scheduled_at, tenant_id=tid),
+            assigned_to=assigned_id,
+            created_by=actor_id,
+        )
+    except Exception as exc:
+        print(f"[ScheduledCalls] follow-up sync failed for scheduled_call {sc.id}: {exc}")
+
+
 @app.post("/scheduled-calls")
 def create_scheduled_call(body: ScheduledCallCreateRequest, session: Session = Depends(get_session)):
     body.assigned_to = _call_assignee(session, body.assigned_to)
     _validate_call_entity(session, body.entity_type, body.entity_id)
     dt = None
     if body.scheduled_at:
-        try:
-            dt = datetime.fromisoformat(body.scheduled_at)
-        except Exception:
-            dt = None
+        from modules import followups_core as fcore
+        dt = fcore.parse_due_datetime(body.scheduled_at, tenant_id=current_tenant_id.get())
 
     sc = ScheduledCall(
         title=body.title,
@@ -7912,8 +8370,12 @@ def create_scheduled_call(body: ScheduledCallCreateRequest, session: Session = D
         pitch=body.pitch,
         notes=body.notes,
         assigned_to=body.assigned_to,
+        tenant_id=current_tenant_id.get(),
     )
     session.add(sc)
+    session.commit()
+    session.refresh(sc)
+    _sync_scheduled_call_followup(session, sc)
     session.commit()
     session.refresh(sc)
 
@@ -7972,6 +8434,9 @@ def update_scheduled_call(sc_id: int, body: Dict[str, Any], session: Session = D
     session.add(sc)
     session.commit()
     session.refresh(sc)
+    _sync_scheduled_call_followup(session, sc)
+    session.commit()
+    session.refresh(sc)
 
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -7990,6 +8455,7 @@ def delete_scheduled_call(sc_id: int, session: Session = Depends(get_session)):
     sc = session.get(ScheduledCall, sc_id)
     if not sc:
         raise HTTPException(status_code=404, detail="Scheduled call not found")
+    _sync_scheduled_call_followup(session, sc, deleted=True)
     session.delete(sc)
     session.commit()
     return {"ok": True}
@@ -9214,6 +9680,7 @@ def update_task(task_id: int, body: TaskUpdateRequest, session: Session = Depend
     t = session.get(Task, task_id)
     if not t:
         raise HTTPException(status_code=404, detail="Task not found")
+    old_status = t.status
     updates = body.model_dump(exclude_unset=True)
     if "status" in updates:
         updates["status"] = _normalize_task_status(updates["status"])
@@ -9223,6 +9690,75 @@ def update_task(task_id: int, body: TaskUpdateRequest, session: Session = Depend
     session.add(t)
     session.commit()
     session.refresh(t)
+
+    # ── STAGE TRANSITION NOTIFICATIONS ──
+    # When moving to each stage, notify admin and the assigned sales rep
+    if updates.get("status") and updates.get("status") != old_status:
+        new_status = updates["status"]
+        entity_name = None
+        salesperson_id = None
+
+        if t.lead_id:
+            lead = session.get(Lead, t.lead_id)
+            if lead:
+                entity_name = lead.company_name
+                salesperson_id = lead.owner_id
+        elif t.client_id:
+            client = session.get(ClientProfile, t.client_id)
+            if client:
+                entity_name = client.companyName
+                salesperson_id = client.assignedEmployeeId
+
+        actor_name = "Team member"
+        try:
+            actor = _current_user(session)
+            if actor:
+                actor_name = actor.name or actor.email
+        except Exception:
+            pass
+
+        target_link = f"/leads/{t.lead_id}?tab=tasks" if t.lead_id else f"/admin/clients/{t.client_id}?tab=tasks" if t.client_id else "/tasks"
+        notif_msg = f"{actor_name} moved task '{t.title}' to '{new_status}'" + (f" for {entity_name}" if entity_name else "")
+
+        # 1. Notify Admins
+        try:
+            _notify_admins(
+                session,
+                t.tenant_id or current_tenant_id.get(),
+                title=f"📋 Task Stage: {new_status}",
+                message=notif_msg,
+                notif_type="info",
+                link=target_link
+            )
+        except Exception:
+            pass
+
+        # 2. Notify assigned salesperson
+        if salesperson_id and salesperson_id != current_salesperson_id.get():
+            try:
+                session.add(Notification(
+                    user_id=salesperson_id,
+                    title=f"📋 Task Stage: {new_status}",
+                    message=notif_msg,
+                    type="info",
+                    link=target_link
+                ))
+            except Exception:
+                pass
+
+        # 3. Record ActivityLog
+        try:
+            session.add(ActivityLog(
+                tenant_id=t.tenant_id or current_tenant_id.get(),
+                user_id=current_salesperson_id.get(),
+                action=f"Task moved to {new_status}: {t.title}",
+                details=notif_msg,
+                lead_id=t.lead_id,
+                client_id=t.client_id
+            ))
+            session.commit()
+        except Exception:
+            pass
 
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -9336,6 +9872,281 @@ def _task_sheet_data(body: TaskSheetEntryRequest, session: Session) -> dict:
     return data
 
 
+@app.get("/task-sheet/activities")
+@app.post("/task-sheet/activities")
+@app.options("/task-sheet/activities")
+@app.head("/task-sheet/activities")
+@app.get("/task-sheet/today-activity")
+@app.post("/task-sheet/today-activity")
+@app.options("/task-sheet/today-activity")
+@app.head("/task-sheet/today-activity")
+def get_today_activity_for_task_sheet(
+    user_id: Optional[int] = None,
+    work_date: Optional[str] = None,
+    date: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    me = _current_user(session)
+    if not me and user_id:
+        me = session.get(User, user_id)
+    if not me:
+        first_u = session.exec(select(User).limit(1)).first()
+        if first_u:
+            me = first_u
+        else:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+    if not _is_admin_user(me) or not user_id:
+        target_uid = me.id
+    else:
+        target_uid = user_id
+
+    target_user = session.get(User, target_uid)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    tenant_id = current_tenant_id.get()
+
+    raw_date = work_date or date
+    if raw_date:
+        try:
+            target_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+        except ValueError:
+            target_date = datetime.utcnow().date()
+    else:
+        target_date = datetime.utcnow().date()
+
+    start_dt = datetime.combine(target_date, datetime.min.time())
+    end_dt = datetime.combine(target_date, datetime.max.time())
+
+    # 1. Calls today
+    call_q = select(CallLog).where(
+        or_(
+            CallLog.assigned_to == target_user.name,
+            CallLog.assigned_to == target_user.email,
+        )
+    )
+    if tenant_id:
+        call_q = call_q.where(CallLog.tenant_id == tenant_id)
+    all_calls = session.exec(call_q).all()
+    today_calls = [
+        c for c in all_calls
+        if c.createdAt and (start_dt <= _as_naive_utc(c.createdAt) <= end_dt)
+    ]
+
+    # 2. Meetings today
+    meet_q = select(Meeting).where(Meeting.host_id == target_uid)
+    if tenant_id:
+        meet_q = meet_q.where(Meeting.tenant_id == tenant_id)
+    all_meets = session.exec(meet_q).all()
+    today_meets = [
+        m for m in all_meets
+        if m.scheduled_at and (start_dt <= _as_naive_utc(m.scheduled_at) <= end_dt)
+    ]
+
+    # 3. Leads assigned / created today
+    lead_q = select(Lead).where(Lead.owner_id == target_uid)
+    if tenant_id:
+        lead_q = lead_q.where(Lead.tenant_id == tenant_id)
+    all_leads = session.exec(lead_q).all()
+    created_leads = [
+        l for l in all_leads
+        if l.created_at and (start_dt <= _as_naive_utc(l.created_at) <= end_dt)
+    ]
+    converted_leads = [
+        l for l in all_leads
+        if l.is_converted and (
+            (l.created_at and start_dt <= _as_naive_utc(l.created_at) <= end_dt) or
+            (getattr(l, "updated_at", None) and start_dt <= _as_naive_utc(l.updated_at) <= end_dt)
+        )
+    ]
+
+    # 4. Activity log entries
+    act_q = select(ActivityLog).where(ActivityLog.userId == target_uid)
+    if tenant_id:
+        act_q = act_q.where(ActivityLog.tenant_id == tenant_id)
+    all_acts = session.exec(act_q).all()
+    today_acts = [
+        a for a in all_acts
+        if a.createdAt and (start_dt <= _as_naive_utc(a.createdAt) <= end_dt)
+    ]
+
+    # 5. Follow-ups and institute records
+    followups_done = []
+    today_enrollments = []
+    today_payments = []
+    try:
+        from addons.institute.models import LeadFollowup, Student, Enrollment, PaymentRecord
+        fu_q = select(LeadFollowup).where(or_(LeadFollowup.assigned_to == target_uid, LeadFollowup.created_by == target_uid))
+        if tenant_id:
+            fu_q = fu_q.where(LeadFollowup.tenant_id == tenant_id)
+        all_fus = session.exec(fu_q).all()
+        for fu in all_fus:
+            if (fu.created_at and start_dt <= _as_naive_utc(fu.created_at) <= end_dt) or (getattr(fu, "scheduled_date", None) == target_date):
+                followups_done.append(fu)
+
+        enr_q = select(Enrollment).where(Enrollment.enrolled_by == target_uid)
+        if tenant_id:
+            enr_q = enr_q.where(Enrollment.tenant_id == tenant_id)
+        today_enrollments = [e for e in session.exec(enr_q).all() if e.enrollment_date and start_dt <= _as_naive_utc(e.enrollment_date) <= end_dt]
+
+        pay_q = select(PaymentRecord).where(PaymentRecord.recorded_by == target_uid)
+        today_payments = [p for p in session.exec(pay_q).all() if p.payment_date and start_dt <= _as_naive_utc(p.payment_date) <= end_dt]
+    except Exception:
+        pass
+
+    summary_bullets = []
+    proof_bullets = []
+
+    if today_calls:
+        call_names = [c.phone_number or f"Call #{c.id}" for c in today_calls[:4]]
+        summary_bullets.append(f"Conducted {len(today_calls)} phone call(s) ({', '.join(call_names)})")
+        for c in today_calls:
+            dur = f"{round(c.duration_seconds / 60)}m" if c.duration_seconds else "logged"
+            proof_bullets.append(f"Call with {c.phone_number or 'Contact'} ({dur}): {c.summary or 'Discussion held'}")
+
+    if today_meets:
+        meet_titles = [m.title or "Client Meeting" for m in today_meets]
+        summary_bullets.append(f"Conducted {len(today_meets)} meeting(s) & demos: {', '.join(meet_titles[:3])}")
+        for m in today_meets:
+            proof_bullets.append(f"Meeting: '{m.title}' ({m.meeting_type or 'Meeting'}) - Outcome: {m.outcome or m.status}")
+
+    if created_leads:
+        lead_names = [l.company_name for l in created_leads[:5]]
+        summary_bullets.append(f"Added/assigned {len(created_leads)} lead(s): {', '.join(lead_names)}")
+        for l in created_leads:
+            proof_bullets.append(f"Lead: {l.company_name} (Source: {l.source or 'Direct'}, Stage: {l.status})")
+
+    if converted_leads or today_enrollments:
+        tot_conv = len(converted_leads) + len(today_enrollments)
+        summary_bullets.append(f"Converted {tot_conv} lead(s) into active clients / students")
+        for l in converted_leads:
+            proof_bullets.append(f"Converted Lead: {l.company_name} (Stage: {l.status})")
+        for e in today_enrollments:
+            proof_bullets.append(f"Enrollment #{e.id}: Fee ₹{e.total_fee:,.0f}, Advance Paid ₹{e.amount_paid:,.0f}")
+
+    if followups_done:
+        summary_bullets.append(f"Managed {len(followups_done)} prospect follow-up(s)")
+        for fu in followups_done:
+            proof_bullets.append(f"Follow-up: {getattr(fu, 'type', 'Follow-up')} for Lead #{getattr(fu, 'lead_id', 'N/A')} - Status: {getattr(fu, 'status', 'Done')}")
+
+    if today_acts:
+        for a in today_acts[:6]:
+            if a.action not in ("Login",):
+                proof_bullets.append(f"Activity: {a.action} - {a.content or a.details or 'Updated record'}")
+
+    if not summary_bullets:
+        summary_bullets.append("Daily operations, pipeline management, client communications, and system updates.")
+    if not proof_bullets:
+        proof_bullets.append(f"Logged in as {target_user.name} and monitored workspace activities on {target_date.isoformat()}.")
+
+    calculated_mins = max(30, len(today_calls) * 12 + len(today_meets) * 35 + len(created_leads) * 15 + len(followups_done) * 10 + 60)
+
+    ai_generated_summary = "\n".join(f"• {b}" for b in summary_bullets)
+    ai_generated_proof = "\n".join(f"• {b}" for b in proof_bullets)
+
+    existing_entry = session.exec(
+        select(TaskSheetEntry).where(
+            TaskSheetEntry.user_id == target_uid,
+            TaskSheetEntry.work_date == target_date.isoformat(),
+        )
+    ).first()
+
+    return {
+        "work_date": target_date.isoformat(),
+        "user_id": target_uid,
+        "user_name": target_user.name,
+        "summary": ai_generated_summary,
+        "proof_of_work": ai_generated_proof,
+        "is_submitted": bool(existing_entry),
+        "existing_entry_id": existing_entry.id if existing_entry else None,
+        "existing_status": existing_entry.status if existing_entry else None,
+        "metrics": {
+            "calls_count": len(today_calls),
+            "meetings_count": len(today_meets),
+            "new_leads_count": len(created_leads),
+            "converted_leads_count": len(converted_leads) + len(today_enrollments),
+            "followups_count": len(followups_done),
+            "activities_count": len(today_acts),
+            "payments_count": len(today_payments),
+            "time_spent_minutes": calculated_mins,
+        },
+        "details": {
+            "calls": [{"id": c.id, "phone": c.phone_number, "duration": c.duration_seconds, "summary": c.summary} for c in today_calls],
+            "meetings": [{"id": m.id, "title": m.title, "status": m.status, "outcome": m.outcome} for m in today_meets],
+            "leads": [{"id": l.id, "name": l.company_name, "status": l.status, "source": l.source} for l in created_leads],
+            "conversions": [{"id": l.id, "name": l.company_name} for l in converted_leads],
+            "followups": [{"id": fu.id, "type": getattr(fu, "type", "Follow-up"), "status": getattr(fu, "status", "Done")} for fu in followups_done],
+        }
+    }
+
+
+class VoiceMapRequest(BaseModel):
+    transcript: str
+    work_date: Optional[str] = None
+    user_id: Optional[int] = None
+
+
+@app.post("/task-sheet/voice-map")
+def voice_map_task_sheet(body: VoiceMapRequest, session: Session = Depends(get_session)):
+    act_data = get_today_activity_for_task_sheet(user_id=body.user_id, work_date=body.work_date, session=session)
+    transcript = (body.transcript or "").strip()
+    summary_parts = []
+    proof_parts = []
+    
+    if transcript:
+        summary_parts.append(f"🎙️ Spoken Verbal Report:\n\"{transcript}\"")
+        proof_parts.append(f"• Voice Transcription: \"{transcript[:150]}...\"" if len(transcript) > 150 else f"• Voice Transcription: \"{transcript}\"")
+    
+    details = act_data.get("details", {})
+    metrics = act_data.get("metrics", {})
+    
+    calls = details.get("calls", [])
+    if calls:
+        summary_parts.append(f"📞 Logged {len(calls)} phone call outreach(es) with prospects.")
+        call_labels = [str(c.get('phone') or f"Call #{c.get('id')}") for c in calls[:5]]
+        proof_parts.append(f"• Verified Calls: {', '.join(call_labels)}")
+        
+    meets = details.get("meetings", [])
+    if meets:
+        summary_parts.append(f"🗓️ Conducted {len(meets)} client meeting/demo session(s).")
+        proof_parts.append(f"• Verified Meetings: {', '.join([str(m.get('title') or 'Meeting') for m in meets[:5]])}")
+        
+    leads = details.get("leads", [])
+    if leads:
+        summary_parts.append(f"🎯 Sourced/Assigned {len(leads)} new prospect lead(s).")
+        proof_parts.append(f"• Verified Leads: {', '.join([str(l.get('name') or 'Lead') for l in leads[:5]])}")
+        
+    conversions = details.get("conversions", [])
+    if conversions:
+        summary_parts.append(f"🏆 Successfully converted {len(conversions)} lead(s) into active accounts / enrolled students.")
+        proof_parts.append(f"• Verified Conversions: {', '.join([str(c.get('name') or 'Converted') for c in conversions[:5]])}")
+        
+    followups = details.get("followups", [])
+    if followups:
+        summary_parts.append(f"⏱️ Completed {len(followups)} scheduled follow-up interaction(s).")
+        proof_parts.append(f"• Follow-ups completed: {len(followups)}")
+
+    if not summary_parts and transcript:
+        summary_parts.append(f"• {transcript}")
+        proof_parts.append("Voice verified activity recorded and logged to CRM.")
+    elif not summary_parts:
+        summary_parts.append("• Routine sales outreach, pipeline maintenance and client follow-ups.")
+        proof_parts.append("Recorded in CRM activity logs.")
+        
+    combined_summary = "\n\n".join(summary_parts)
+    combined_proof = "\n".join(proof_parts) if proof_parts else "Activities verified in CRM timeline and logs."
+    
+    return {
+        "transcript": transcript,
+        "summary": combined_summary,
+        "proof_of_work": combined_proof,
+        "metrics": metrics,
+        "work_date": act_data.get("work_date"),
+        "user_id": act_data.get("user_id"),
+        "user_name": act_data.get("user_name"),
+    }
+
+
 @app.post("/task-sheet")
 def create_task_sheet_entry(body: TaskSheetEntryRequest, session: Session = Depends(get_session)):
     data = _task_sheet_data(body, session)
@@ -9346,7 +10157,7 @@ def create_task_sheet_entry(body: TaskSheetEntryRequest, session: Session = Depe
     return {"entry": _task_sheet_dict(entry, session)}
 
 
-@app.put("/task-sheet/{entry_id}")
+@app.put("/task-sheet/{entry_id:int}")
 def update_task_sheet_entry(entry_id: int, body: TaskSheetEntryRequest, session: Session = Depends(get_session)):
     data = _task_sheet_data(body, session)
     entry = session.get(TaskSheetEntry, entry_id)
@@ -9364,7 +10175,7 @@ def update_task_sheet_entry(entry_id: int, body: TaskSheetEntryRequest, session:
     return {"entry": _task_sheet_dict(entry, session)}
 
 
-@app.delete("/task-sheet/{entry_id}")
+@app.delete("/task-sheet/{entry_id:int}")
 def delete_task_sheet_entry(entry_id: int, session: Session = Depends(get_session)):
     _require_admin_user(session, "Only admins can delete task-sheet entries")
     entry = session.get(TaskSheetEntry, entry_id)
@@ -11448,9 +12259,14 @@ def _in_report_range(value: Optional[datetime], start: date, end: date) -> bool:
 def reports_summary(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    salesperson_id: Optional[int] = None,
     session: Session = Depends(get_session),
 ):
-    _require_roles(session, ["Admin", "SalesManager"])
+    current_user = _require_roles(session, ["Admin", "SalesManager", "Employee", "Demo"])
+    norm_role = _normalize_role(current_user.role)
+    if norm_role == "Employee":
+        salesperson_id = current_user.id
+
     today = datetime.utcnow().date()
     start = _report_date(start_date, today - timedelta(days=29))
     end = _report_date(end_date, today)
@@ -11465,12 +12281,22 @@ def reports_summary(
             query = query.where(model.tenant_id == tenant_id)
         return session.exec(query).all()
 
-    leads = [lead for lead in scoped(
-        Lead) if _in_report_range(lead.created_at, start, end)]
-    all_leads = scoped(Lead)
+    users = {user.id: user for user in scoped(User)}
+    all_raw_leads = scoped(Lead)
+    
+    # If a specific salesperson is requested, filter the leads and deals
+    if salesperson_id:
+        scoped_leads = [lead for lead in all_raw_leads if lead.owner_id == salesperson_id]
+    else:
+        scoped_leads = all_raw_leads
+
+    leads = [lead for lead in scoped_leads if _in_report_range(lead.created_at, start, end)]
+    all_leads = scoped_leads
     clients = scoped(ClientProfile)
     deals = [deal for deal in scoped(
         Deal) if _in_report_range(deal.created_at, start, end)]
+    if salesperson_id:
+        deals = [d for d in deals if d.assigned_to == salesperson_id]
     emails = [email for email in scoped(
         SentEmail) if _in_report_range(email.sent_at, start, end)]
     activities = [activity for activity in scoped(
@@ -11519,16 +12345,64 @@ def reports_summary(
                      * 100, 2) if closed_deals else 0
 
     source_map: dict[str, dict] = {}
+    rep_sources: dict[int, dict[str, dict]] = {}
+    lead_source_analytics_per_lead = []
+
     for lead in leads:
         source = (lead.source or "Unknown").strip() or "Unknown"
+        d_val = float(lead.deal_value or 0)
         bucket = source_map.setdefault(
-            source, {"source": source, "leads": 0, "converted": 0, "conversion_percentage": 0})
+            source, {"source": source, "leads": 0, "converted": 0, "conversion_percentage": 0, "pipeline_value": 0.0, "won_value": 0.0})
         bucket["leads"] += 1
+        bucket["pipeline_value"] = round(bucket["pipeline_value"] + d_val, 2)
         if lead.is_converted:
             bucket["converted"] += 1
+            bucket["won_value"] = round(bucket["won_value"] + d_val, 2)
+
+        # Salesperson breakdown
+        owner_id = lead.owner_id
+        if owner_id:
+            rep_bucket = rep_sources.setdefault(owner_id, {})
+            r_source_bucket = rep_bucket.setdefault(source, {"source": source, "leads": 0, "converted": 0, "conversion_percentage": 0, "pipeline_value": 0.0, "won_value": 0.0})
+            r_source_bucket["leads"] += 1
+            r_source_bucket["pipeline_value"] = round(r_source_bucket["pipeline_value"] + d_val, 2)
+            if lead.is_converted:
+                r_source_bucket["converted"] += 1
+                r_source_bucket["won_value"] = round(r_source_bucket["won_value"] + d_val, 2)
+
+        # Lead source analytics per lead
+        lead_source_analytics_per_lead.append({
+            "id": lead.id,
+            "company_name": lead.company_name,
+            "source": source,
+            "owner_id": lead.owner_id,
+            "salesperson_name": users.get(lead.owner_id).name if lead.owner_id and users.get(lead.owner_id) else "Unassigned",
+            "status": "Converted" if lead.is_converted else (lead.status or "New"),
+            "is_converted": bool(lead.is_converted),
+            "deal_value": d_val,
+            "created_at": lead.created_at.isoformat() if lead.created_at else None,
+            "email": lead.email,
+            "phone": lead.phone,
+            "city": lead.city,
+        })
+
     for bucket in source_map.values():
         bucket["conversion_percentage"] = round(
             (bucket["converted"] / bucket["leads"]) * 100, 2) if bucket["leads"] else 0
+
+    salesperson_lead_sources = []
+    for uid, s_map in rep_sources.items():
+        user_name = users.get(uid).name if users.get(uid) else f"User {uid}"
+        for s_bucket in s_map.values():
+            s_bucket["conversion_percentage"] = round((s_bucket["converted"] / s_bucket["leads"]) * 100, 2) if s_bucket["leads"] else 0
+        salesperson_lead_sources.append({
+            "salesperson_id": uid,
+            "salesperson_name": user_name,
+            "total_leads": sum(b["leads"] for b in s_map.values()),
+            "total_converted": sum(b["converted"] for b in s_map.values()),
+            "sources": sorted(s_map.values(), key=lambda x: x["leads"], reverse=True),
+        })
+    salesperson_lead_sources.sort(key=lambda x: x["total_leads"], reverse=True)
 
     staff: dict[int, dict] = {}
 
@@ -11619,6 +12493,9 @@ def reports_summary(
         "monthly": [{"month": month, "leads": sum(item["leads"] for item in daily.values() if item["date"][:7] == month), "clients_onboarded": sum(item["clients_onboarded"] for item in daily.values() if item["date"][:7] == month), "deals_won": sum(item["deals_won"] for item in daily.values() if item["date"][:7] == month), "emails": sum(item["emails"] for item in daily.values() if item["date"][:7] == month), "calls": sum(item["calls"] for item in daily.values() if item["date"][:7] == month), "meetings": sum(item["meetings"] for item in daily.values() if item["date"][:7] == month)} for month in sorted({item["date"][:7] for item in daily.values()})],
         "staff_performance": sorted(staff.values(), key=lambda item: item["total_work"], reverse=True),
         "lead_sources": sorted(source_map.values(), key=lambda item: item["leads"], reverse=True),
+        "salesperson_lead_sources": salesperson_lead_sources,
+        "lead_source_analytics_per_lead": sorted(lead_source_analytics_per_lead, key=lambda x: x["created_at"] or "", reverse=True),
+        "salespeople": [{"id": u.id, "name": u.name} for u in users.values() if u.role in ("Admin", "SalesManager", "Employee", "Sales")],
         "calls": [{"id": call.id, "date": call.createdAt.isoformat(), "phone_number": call.phone_number, "assigned_to": call.assigned_to or "Unassigned", "duration_seconds": call.duration_seconds, "summary": call.summary, "followup_needed": call.followup_needed, "followup_date": call.followup_date} for call in calls],
         "meetings": [{"id": meeting.id, "scheduled_at": meeting.scheduled_at.isoformat(), "title": meeting.title, "meeting_type": meeting.meeting_type, "status": meeting.status, "host": users.get(meeting.host_id).name if meeting.host_id and users.get(meeting.host_id) else "Unassigned", "duration_minutes": meeting.duration_minutes, "location": meeting.location, "outcome": meeting.outcome} for meeting in meetings],
         "onboarding": {"total_clients": len(clients), "new_in_range": len(onboarded), "active": sum(1 for client in clients if client.status == "Active"), "pending": sum(1 for client in clients if client.status == "Pending"), "hold": sum(1 for client in clients if client.status == "Hold")},
@@ -13306,6 +14183,17 @@ class LeadCreateRequest(BaseModel):
     owner_id: Optional[int] = None
     status: str = "New"
     notes: Optional[str] = None
+    custom_fields: Optional[dict] = None
+    # ── Optional Contact person creation ──
+    add_contact: Optional[bool] = False
+    contact_name: Optional[str] = None
+    contact_first_name: Optional[str] = None
+    contact_last_name: Optional[str] = None
+    contact_designation: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_department: Optional[str] = None
+    do_not_call: bool = False  # keeps automatic calling from dialing this lead
 
 
 class AccountCreateRequest(BaseModel):
@@ -13342,17 +14230,64 @@ class ContactCreateRequest(BaseModel):
 
 # ---- LEADS API ----
 
+# The auto-call columns are added by the migration in database.py/create_db_and_tables. Until that
+# runs on an existing install, defer them so a SELECT on leads still succeeds. Serialization below
+# only reads columns that were actually loaded, so a stale schema cannot turn into a 500.
+_AUTO_CALL_DEFERRED = (
+    defer(Lead.auto_call_status),
+    defer(Lead.auto_called_at),
+    defer(Lead.auto_call_reason),
+    defer(Lead.auto_call_attempts),
+    defer(Lead.do_not_call),
+)
+
+
+def _lead_row_dict(lead: Lead) -> dict:
+    """Only loaded columns — never touches columns a stale DB may not have."""
+    loaded = lead.__dict__
+    return {attr.key: loaded[attr.key]
+            for attr in inspect(lead).mapper.column_attrs if attr.key in loaded}
+
 
 @app.get("/leads")
-def get_leads(owner_id: Optional[int] = None, session: Session = Depends(get_session)):
-    query = select(Lead).where(Lead.is_converted == False, Lead.converted_client_id.is_(None),
-                               Lead.converted_student_id.is_(None))
+def get_leads(
+    owner_id: Optional[int] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+    session: Session = Depends(get_session)
+):
+    base_query = select(Lead).where(Lead.is_converted == False, Lead.converted_client_id.is_(None),
+                                    Lead.converted_student_id.is_(None))
     if owner_id is not None:
-        query = query.where(Lead.owner_id == owner_id)
+        base_query = base_query.where(Lead.owner_id == owner_id)
     tenant_id = current_tenant_id.get()
     if tenant_id and tenant_id != 1:
-        query = query.where(Lead.tenant_id == tenant_id)
-    leads = session.exec(query.order_by(Lead.created_at.desc())).all()
+        base_query = base_query.where(Lead.tenant_id == tenant_id)
+
+    # Compute total count efficiently
+    from sqlmodel import func
+    total_count = session.exec(select(func.count()).select_from(base_query.subquery())).first() or 0
+
+    # Compute status counts across entire lead pool for fast top metrics
+    status_counts_q = (
+        select(Lead.status, func.count(Lead.id))
+        .where(Lead.is_converted == False, Lead.converted_client_id.is_(None), Lead.converted_student_id.is_(None))
+    )
+    if owner_id is not None:
+        status_counts_q = status_counts_q.where(Lead.owner_id == owner_id)
+    if tenant_id and tenant_id != 1:
+        status_counts_q = status_counts_q.where(Lead.tenant_id == tenant_id)
+    status_rows = session.exec(status_counts_q.group_by(Lead.status)).all()
+    status_counts = {str(st): int(cnt) for st, cnt in status_rows if st}
+    status_counts["Total"] = total_count
+
+    query = base_query.order_by(Lead.created_at.desc()).options(*_AUTO_CALL_DEFERRED)
+    if offset > 0:
+        query = query.offset(offset)
+    if limit is not None and limit > 0:
+        query = query.limit(limit)
+
+    leads = session.exec(query).all()
     owner_ids = {lead.owner_id for lead in leads if lead.owner_id}
     owners = {
         user.id: user.name
@@ -13379,14 +14314,18 @@ def get_leads(owner_id: Optional[int] = None, session: Session = Depends(get_ses
     return {
         "leads": [
             {
-                **lead.model_dump(),
+                **_lead_row_dict(lead),
                 "owner_name": owners.get(lead.owner_id),
                 "salesperson_name": owners.get(lead.owner_id),
                 "ai_status": ai_status_map.get(lead.id, "not_started"),
                 **latest_calls.get(lead.id, {}),
             }
             for lead in leads
-        ]
+        ],
+        "total_count": total_count,
+        "status_counts": status_counts,
+        "offset": offset,
+        "limit": limit
     }
 
 
@@ -13591,6 +14530,95 @@ def export_leads_csv(owner_id: Optional[int] = None, session: Session = Depends(
     )
 
 
+# ─── DUPLICATE LEAD DETECTION & RESOLUTION ──────────────────────────────────────
+class DuplicateLeadCheckRequest(BaseModel):
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    exclude_id: Optional[int] = None
+    incoming: Optional[Dict[str, Any]] = None
+
+
+@app.post("/leads/check-duplicate")
+def check_duplicate_lead_endpoint(body: DuplicateLeadCheckRequest, session: Session = Depends(get_session)):
+    from modules.lead_duplicates import find_duplicate_leads, calculate_lead_diff
+    tenant_id = current_tenant_id.get()
+    matches = find_duplicate_leads(session, tenant_id, body.email, body.phone, body.exclude_id)
+    diff = None
+    if matches and body.incoming:
+        diff = calculate_lead_diff(matches[0], body.incoming)
+    return {
+        "has_duplicate": len(matches) > 0,
+        "duplicates": matches,
+        "diff": diff
+    }
+
+
+class ResolveDuplicateLeadRequest(BaseModel):
+    action: str  # "merge", "replace", "create_anyway"
+    existing_lead_id: Optional[int] = None
+    lead_data: Dict[str, Any]
+
+
+@app.post("/leads/resolve-duplicate")
+def resolve_duplicate_lead_endpoint(body: ResolveDuplicateLeadRequest, session: Session = Depends(get_session)):
+    from modules.lead_duplicates import merge_into_existing_lead, replace_existing_lead
+    actor_id = current_salesperson_id.get()
+    session.info["skip_duplicate_validation"] = True
+
+    if body.action == "merge":
+        if not body.existing_lead_id:
+            raise HTTPException(status_code=400, detail="existing_lead_id is required for merge")
+        merged = merge_into_existing_lead(session, body.existing_lead_id, body.lead_data, actor_id)
+        return {"ok": True, "action": "merged", "lead": merged}
+
+    elif body.action == "replace":
+        if not body.existing_lead_id:
+            raise HTTPException(status_code=400, detail="existing_lead_id is required for replace")
+        replaced = replace_existing_lead(session, body.existing_lead_id, body.lead_data, actor_id)
+        return {"ok": True, "action": "replaced", "lead": replaced}
+
+    elif body.action == "create_anyway":
+        req = LeadCreateRequest(**body.lead_data)
+        created = create_lead(req, session)
+        return {"ok": True, "action": "created", "lead": created}
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {body.action}")
+
+
+# ─── NOTIFICATION TEST DISPATCH ─────────────────────────────────────────────────
+class NotificationTestRequest(BaseModel):
+    email: str
+    event_key: Optional[str] = "lead_added"
+
+
+@app.post("/settings/notifications/test")
+def test_notification_email_endpoint(body: NotificationTestRequest, session: Session = Depends(get_session)):
+    from modules.notification_dispatcher import dispatch_event_notification
+    tenant_id = current_tenant_id.get()
+    email = body.email.strip()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid recipient email address")
+
+    dispatch_event_notification(
+        event_key=body.event_key or "lead_added",
+        subject=f"🔔 Test Notification: {body.event_key or 'lead_added'}",
+        headline="Test CRM Notification",
+        details={
+            "Recipient": email,
+            "Event Subscribed": body.event_key or "lead_added",
+            "Dispatched At": datetime.now(timezone.utc).strftime("%b %d, %Y %I:%M %p UTC"),
+            "System Status": "Configured & Active",
+            "Message": "This test notification confirms your email receiver configuration is working properly."
+        },
+        tenant_id=tenant_id,
+        action_url="/settings?tab=notifications",
+        action_label="Open Notification Settings",
+        force_recipient_email=email
+    )
+    return {"ok": True, "message": f"Test notification dispatched to {email}"}
+
+
 @app.post("/leads")
 def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)):
     from modules import sales_access
@@ -13608,7 +14636,29 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
             if current_count >= tenant.limit_clients:
                 raise HTTPException(
                     status_code=403, detail=f"Lead limit reached. Maximum allowed: {tenant.limit_clients}")
-    lead = Lead(**body.dict())
+    lead_data = body.dict(exclude={
+        "add_contact", "contact_name", "contact_first_name", "contact_last_name",
+        "contact_designation", "contact_email", "contact_phone", "contact_department"
+    })
+    raw_phone = (lead_data.get("phone") or "").strip()
+    if not raw_phone:
+        lead_data["phone"] = None
+    else:
+        if not re.fullmatch(r"[\d\s+\-().]+", raw_phone):
+            raise HTTPException(
+                status_code=422,
+                detail="Please enter a valid phone number (e.g. +919876543210)",
+            )
+        from modules import auto_calling as _ac, voice_agent as _va
+        normalized_phone = _ac._normalize_lead_phone(raw_phone, tenant_id) if tenant_id else _va.normalize_phone(raw_phone)
+        digit_count = len(re.sub(r"\D", "", normalized_phone))
+        if digit_count < 7 or digit_count > 15 or (normalized_phone.startswith("+") and not _va.is_e164(normalized_phone)):
+            raise HTTPException(
+                status_code=422,
+                detail="Please enter a valid phone number with country code (e.g. +919876543210)",
+            )
+        lead_data["phone"] = normalized_phone
+    lead = Lead(**lead_data)
     lead.tenant_id = current_tenant_id.get()
     if not lead.owner_id and lead.tenant_id:
         try:
@@ -13621,6 +14671,61 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
     session.commit()
     session.refresh(lead)
 
+    # ── OPTIONAL: CREATE CONTACT & LINK TO LEAD ──
+    if body.add_contact or (body.contact_name and body.contact_name.strip()):
+        try:
+            raw_name = (body.contact_name or "").strip()
+            first_name = (body.contact_first_name or "").strip()
+            last_name = (body.contact_last_name or "").strip()
+            if not first_name and raw_name:
+                parts = raw_name.split(None, 1)
+                first_name = parts[0]
+                last_name = parts[1] if len(parts) > 1 else ""
+            if not first_name:
+                first_name = lead.company_name or "Primary Contact"
+
+            full_name = raw_name or f"{first_name} {last_name}".strip()
+            contact_email = (body.contact_email or lead.email or "").strip() or None
+            contact_phone = (body.contact_phone or lead.phone or "").strip() or None
+            designation = (body.contact_designation or "Primary Contact").strip()
+            department = (body.contact_department or "Management").strip()
+
+            contact = Contact(
+                tenant_id=lead.tenant_id,
+                first_name=first_name,
+                last_name=last_name or None,
+                full_name=full_name,
+                designation=designation,
+                department=department,
+                email=contact_email,
+                mobile_number=contact_phone,
+                lead_id=lead.id,
+                owner_id=lead.owner_id,
+            )
+            session.add(contact)
+            session.flush()
+
+            link = ContactLeadLink(
+                tenant_id=lead.tenant_id,
+                contact_id=contact.id,
+                lead_id=lead.id,
+                role_at_company=designation,
+                is_primary=True
+            )
+            session.add(link)
+
+            session.add(ActivityLog(
+                tenant_id=lead.tenant_id,
+                user_id=lead.owner_id,
+                action=f"Contact Added: {full_name}",
+                details=f"Contact {full_name} ({designation}) created and linked to lead {lead.company_name}",
+                lead_id=lead.id
+            ))
+            session.commit()
+            print(f"[CreateLead] Successfully created contact {contact.id} ({full_name}) linked to lead {lead.id}")
+        except Exception as ce:
+            print(f"[CreateLead] Error creating contact for lead: {ce}")
+
     try:
         _notify_admins(
             session, current_tenant_id.get(),
@@ -13632,12 +14737,44 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
     except Exception:
         pass
 
-    # ── WHATSAPP NOTIFICATION ──
+    # ── EMAIL NOTIFICATION TO CONFIGURED RECEIVERS ──
     try:
-        from modules.whatsapp import send_ai_polished_whatsapp_message
-        base_url = "https://crm-seo.allytechcourses.com"
-        send_ai_polished_whatsapp_message(
-            "New Lead Added", lead.dict(), f"{base_url}/leads/{lead.id}")
+        from modules.notification_dispatcher import dispatch_event_notification
+        dispatch_event_notification(
+            event_key="lead_added",
+            subject=f"🎯 New Lead Added: {lead.company_name}",
+            headline=f"New Lead: {lead.company_name}",
+            details={
+                "Company Name": lead.company_name,
+                "Email": lead.email or "—",
+                "Phone": lead.phone or "—",
+                "Lead Stage": lead.status,
+                "Lead Source": lead.source or "Website",
+                "Address": lead.address or "—",
+                "Industry": lead.industry or "—",
+                "Notes": lead.notes or "—"
+            },
+            tenant_id=lead.tenant_id,
+            action_url=f"/leads/{lead.id}",
+            action_label="View Lead in CRM"
+        )
+    except Exception as ne:
+        print("[CreateLead] Notification dispatch error:", ne)
+
+    # ── WHATSAPP NOTIFICATION (background thread so POST /leads returns immediately) ──
+    try:
+        _wa_lead_dict = lead.dict()
+        _wa_lead_id = lead.id
+        def _send_wa_bg():
+            try:
+                from modules.whatsapp import send_ai_polished_whatsapp_message
+                base_url = "https://crm-seo.allytechcourses.com"
+                send_ai_polished_whatsapp_message(
+                    "New Lead Added", _wa_lead_dict, f"{base_url}/leads/{_wa_lead_id}")
+            except Exception as e:
+                print("WhatsApp Error:", e)
+        import threading
+        threading.Thread(target=_send_wa_bg, daemon=True).start()
     except Exception as e:
         print("WhatsApp Error:", e)
 
@@ -13705,14 +14842,243 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
     return lead
 
 
+# ─── BULK LEAD TRANSFERS & AUDITED HISTORY ───────────────────────────────
+
+class BulkLeadTransferRequest(BaseModel):
+    lead_ids: Optional[List[int]] = None
+    stage: Optional[str] = None
+    count: Optional[int] = None
+    source_employee_id: Optional[int] = None  # None or 0 = Unassigned
+    employee_id: int                          # Destination salesperson
+    reason: str
+
+
+@app.get("/leads/transfer-counts")
+def get_leads_transfer_counts(
+    source_employee_id: Optional[int] = Query(None),
+    stage: Optional[str] = Query(None),
+    session: Session = Depends(get_session)
+):
+    """Returns the count of leads matching filter criteria for transfer preview."""
+    actor = _current_user(session)
+    if not actor:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    is_admin = actor.role in ("Admin", "SuperAdmin", "Demo", "SalesManager")
+    query = select(func.count(Lead.id))
+    if current_tenant_id.get():
+        query = query.where(Lead.tenant_id == current_tenant_id.get())
+
+    if not is_admin:
+        query = query.where(Lead.owner_id == actor.id)
+    elif source_employee_id is not None and source_employee_id > 0:
+        query = query.where(Lead.owner_id == source_employee_id)
+    elif source_employee_id == 0 or source_employee_id is None:
+        query = query.where(Lead.owner_id == None)
+
+    if stage and stage.lower() not in ("all", ""):
+        query = query.where(Lead.status.ilike(stage))
+
+    count = session.exec(query).one()
+    return {"count": count}
+
+
+@app.post("/leads/transfer")
+@app.post("/leads/bulk-transfer")
+def bulk_transfer_leads(
+    body: BulkLeadTransferRequest,
+    session: Session = Depends(get_session)
+):
+    actor = _current_user(session)
+    if not actor:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    is_admin = actor.role in ("Admin", "SuperAdmin", "Demo", "SalesManager")
+    reason = (body.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="A transfer reason is required")
+
+    destination = session.get(User, body.employee_id)
+    if not destination or not destination.is_active:
+        raise HTTPException(status_code=422, detail="Active destination salesperson not found")
+
+    target_leads = []
+    # 1. Explicit lead IDs
+    if body.lead_ids and len(body.lead_ids) > 0:
+        query = select(Lead).where(Lead.id.in_(body.lead_ids))
+        if current_tenant_id.get():
+            query = query.where(Lead.tenant_id == current_tenant_id.get())
+        if not is_admin:
+            query = query.where(Lead.owner_id == actor.id)
+        elif body.source_employee_id is not None and body.source_employee_id > 0:
+            query = query.where(Lead.owner_id == body.source_employee_id)
+        elif body.source_employee_id == 0:
+            query = query.where(Lead.owner_id == None)
+        target_leads = session.exec(query).all()
+    else:
+        # 2. Filter-based bulk transfer
+        query = select(Lead)
+        if current_tenant_id.get():
+            query = query.where(Lead.tenant_id == current_tenant_id.get())
+
+        if not is_admin:
+            query = query.where(Lead.owner_id == actor.id)
+        elif body.source_employee_id is not None and body.source_employee_id > 0:
+            query = query.where(Lead.owner_id == body.source_employee_id)
+        elif body.source_employee_id == 0 or body.source_employee_id is None:
+            query = query.where(Lead.owner_id == None)
+
+        if body.stage and body.stage.lower() not in ("all", ""):
+            query = query.where(Lead.status.ilike(body.stage))
+
+        query = query.order_by(Lead.created_at.desc())
+        if body.count and body.count > 0:
+            query = query.limit(body.count)
+
+        target_leads = session.exec(query).all()
+
+    if not target_leads:
+        raise HTTPException(status_code=404, detail="No matching leads found to transfer")
+
+    # Authorize transfer in session info for any SQLAlchemy event interceptors
+    session.info["authorized_lead_transfers"] = {
+        l.id: (l.owner_id, destination.id) for l in target_leads
+    }
+
+    from addons.institute.models import LeadTransferHistory
+    transferred_count = len(target_leads)
+
+    for l in target_leads:
+        prev_owner = l.owner_id
+        l.owner_id = destination.id
+        session.add(l)
+
+        # Audit in LeadTransferHistory
+        th = LeadTransferHistory(
+            tenant_id=current_tenant_id.get() or l.tenant_id,
+            lead_id=l.id,
+            from_user_id=prev_owner,
+            to_user_id=destination.id,
+            transferred_by=actor.id,
+            lead_stage=l.status or "New",
+            reason=reason,
+            transferred_at=_utcnow()
+        )
+        session.add(th)
+
+        # Record ActivityLog
+        session.add(ActivityLog(
+            tenant_id=current_tenant_id.get() or l.tenant_id,
+            user_id=actor.id,
+            action=f"Lead transferred to {destination.name or destination.email}",
+            details=f"Transferred from {('Salesperson #' + str(prev_owner)) if prev_owner else 'Unassigned'} to {destination.name or destination.email}. Stage: {l.status}. Reason: {reason}",
+            lead_id=l.id
+        ))
+
+    # Notify destination salesperson
+    dest_notif = Notification(
+        user_id=destination.id,
+        title=f"📥 {transferred_count} Lead(s) Transferred to You",
+        message=f"{actor.name or actor.email} transferred {transferred_count} lead(s) to you. Reason: {reason}",
+        type="info",
+        link="/leads"
+    )
+    session.add(dest_notif)
+    session.commit()
+
+    return {
+        "ok": True,
+        "transferred": transferred_count,
+        "destination": destination.name or destination.email,
+        "destination_id": destination.id,
+        "message": f"Successfully transferred {transferred_count} lead(s) to {destination.name or destination.email}"
+    }
+
+
+@app.get("/leads/transfers")
+def get_leads_transfers_history(
+    search: Optional[str] = Query(None),
+    limit: int = Query(150, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    session: Session = Depends(get_session)
+):
+    from addons.institute.models import LeadTransferHistory
+    query = select(LeadTransferHistory).order_by(LeadTransferHistory.transferred_at.desc())
+    if current_tenant_id.get():
+        query = query.where(LeadTransferHistory.tenant_id == current_tenant_id.get())
+
+    records = session.exec(query.offset(offset).limit(limit)).all()
+    if not records:
+        return {"transfers": [], "total": 0}
+
+    # Batch fetch user names and lead names
+    user_ids = set()
+    lead_ids = set()
+    for r in records:
+        if r.from_user_id: user_ids.add(r.from_user_id)
+        if r.to_user_id: user_ids.add(r.to_user_id)
+        if r.transferred_by: user_ids.add(r.transferred_by)
+        if r.lead_id: lead_ids.add(r.lead_id)
+
+    users_map = {}
+    if user_ids:
+        u_rows = session.exec(select(User.id, User.name, User.email).where(User.id.in_(list(user_ids)))).all()
+        users_map = {u[0]: (u[1] or u[2]) for u in u_rows}
+
+    leads_map = {}
+    if lead_ids:
+        l_rows = session.exec(select(Lead.id, Lead.company_name, Lead.email, Lead.phone).where(Lead.id.in_(list(lead_ids)))).all()
+        leads_map = {l[0]: {"company_name": l[1], "email": l[2], "phone": l[3]} for l in l_rows}
+
+    results = []
+    for r in records:
+        ld = leads_map.get(r.lead_id, {})
+        from_name = users_map.get(r.from_user_id, "Unassigned") if r.from_user_id else "Unassigned"
+        to_name = users_map.get(r.to_user_id, f"User #{r.to_user_id}")
+        by_name = users_map.get(r.transferred_by, f"User #{r.transferred_by}")
+
+        item = {
+            "id": r.id,
+            "lead_id": r.lead_id,
+            "lead_name": ld.get("company_name", f"Lead #{r.lead_id}"),
+            "lead_email": ld.get("email"),
+            "lead_phone": ld.get("phone"),
+            "from_user_id": r.from_user_id,
+            "from_user_name": from_name,
+            "to_user_id": r.to_user_id,
+            "to_user_name": to_name,
+            "transferred_by_id": r.transferred_by,
+            "transferred_by_name": by_name,
+            "lead_stage": r.lead_stage,
+            "reason": r.reason,
+            "transferred_at": r.transferred_at.isoformat() if r.transferred_at else None
+        }
+
+        if search and search.strip():
+            s = search.strip().lower()
+            if not (
+                s in item["lead_name"].lower() or
+                s in (item["lead_email"] or "").lower() or
+                s in from_name.lower() or
+                s in to_name.lower() or
+                s in by_name.lower() or
+                s in (r.reason or "").lower()
+            ):
+                continue
+
+        results.append(item)
+
+    return {"transfers": results, "total": len(results)}
+
+
 @app.get("/leads/{lead_id}")
 def get_lead(lead_id: int, session: Session = Depends(get_session)):
-    lead = session.get(Lead, lead_id)
+    lead = session.get(Lead, lead_id, options=_AUTO_CALL_DEFERRED)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
     from modules.lead_calls import latest_call_info
-    return {**lead.model_dump(), **latest_call_info(session, [lead_id]).get(lead_id, {})}
+    return {**_lead_row_dict(lead), **latest_call_info(session, [lead_id]).get(lead_id, {})}
 
 
 @app.get("/leads/{lead_id}/activities")
@@ -14234,6 +15600,7 @@ def save_lead_official_proposal_endpoint(lead_id: int, body: SaveLeadProposalReq
 
 
 @app.put("/leads/{lead_id}")
+@app.patch("/leads/{lead_id}")
 def update_lead(lead_id: int, body: LeadCreateRequest, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
     if not lead:
@@ -14521,20 +15888,53 @@ def delete_lead(lead_id: int, session: Session = Depends(get_session)):
         session.add(del_rec)
         session.flush()
 
-        # Delete related records to prevent ForeignKeyViolation
-        queries = [
-            "DELETE FROM sent_emails WHERE lead_id = :lead_id",
-            "DELETE FROM activity_logs WHERE lead_id = :lead_id",
-            "DELETE FROM contacts WHERE lead_id = :lead_id",
-            "DELETE FROM meetings WHERE lead_id = :lead_id",
-            "DELETE FROM quotes WHERE lead_id = :lead_id",
-            "DELETE FROM sales_orders WHERE lead_id = :lead_id",
-            "DELETE FROM cases WHERE lead_id = :lead_id",
-            "DELETE FROM client_research WHERE lead_id = :lead_id",
+        # Safely detach or remove related records referencing leads.id to prevent ForeignKeyViolation
+        # while preserving call recordings/transcripts, emails, contacts, quotes, and history.
+        existing_tables = set(inspect(session.get_bind()).get_table_names())
+        detach_refs = [
+            ("ai_calls", "lead_id"),
+            ("activity_logs", "lead_id"),
+            ("conversation_logs", "lead_id"),
+            ("sent_emails", "lead_id"),
+            ("contacts", "lead_id"),
+            ("meetings", "lead_id"),
+            ("quotes", "lead_id"),
+            ("sales_orders", "lead_id"),
+            ("cases", "lead_id"),
+            ("client_notes", "lead_id"),
+            ("proposals", "lead_id"),
+            ("tasks", "lead_id"),
+            ("projects", "leadId"),
+            ("students", "lead_id"),
+            ("lead_enquiries", "lead_id"),
+            ("temp_leads", "promoted_lead_id"),
+            ("radar_analyses", "lead_id"),
+            ("competitor_relationships", "source_lead_id"),
+            ("competitor_relationships", "discovered_lead_id"),
         ]
-        for q in queries:
-            session.execute(text(q + " AND tenant_id = :tenant_id"),
-                            {"lead_id": lead_id, "tenant_id": current_tenant_id.get()})
+        for tbl, col in detach_refs:
+            if tbl in existing_tables:
+                session.execute(
+                    text(f'UPDATE "{tbl}" SET "{col}" = NULL WHERE "{col}" = :lead_id'),
+                    {"lead_id": lead_id},
+                )
+
+        delete_children = [
+            "contact_lead_links",
+            "lead_notes",
+            "lead_demo_sessions",
+            "lead_follow_ups",
+            "lead_transfer_history",
+            "lead_walk_ins",
+            "lead_webinars",
+            "client_research",
+        ]
+        for tbl in delete_children:
+            if tbl in existing_tables:
+                session.execute(
+                    text(f'DELETE FROM "{tbl}" WHERE "lead_id" = :lead_id'),
+                    {"lead_id": lead_id},
+                )
 
         session.delete(lead)
         session.commit()
@@ -14759,7 +16159,31 @@ def convert_lead_to_client(lead_id: int, session: Session = Depends(get_session)
     session.add(lead)
     session.commit()
 
+    # ── EMAIL NOTIFICATION TO CONFIGURED RECEIVERS ──
+    try:
+        from modules.notification_dispatcher import dispatch_event_notification
+        dispatch_event_notification(
+            event_key="client_added_or_converted",
+            subject=f"🎉 Lead Converted to Client: {client.companyName}",
+            headline=f"Lead Converted: {client.companyName}",
+            details={
+                "Company Name": client.companyName,
+                "Phone": client.phone or "—",
+                "Address": client.address or "—",
+                "Original Lead": lead.company_name,
+                "Status": "Converted to Client"
+            },
+            tenant_id=lead.tenant_id,
+            action_url=f"/clients/{client.id}",
+            action_label="View Client Profile"
+        )
+    except Exception as ce:
+        print("[ConvertLead] Notification error:", ce)
+
     return {"message": "Lead converted successfully", "client_id": client.id, "account_id": account.id}
+
+
+
 
 # ---- ACCOUNTS API ----
 
@@ -15295,6 +16719,9 @@ async def import_execute(
         df = df.fillna('')
         records = df.to_dict(orient='records')
 
+        # Bulk-created leads are skipped by auto-calling unless the tenant opts in.
+        auto_calling.mark_bulk_import(session)
+
         imported_count = 0
         skipped_count = 0
         updated_count = 0
@@ -15749,6 +17176,42 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
             notif_type="info",
             link=f"/meetings"
         )
+
+        # Notify assigned salesperson if distinct from current user
+        assigned_sp_id = None
+        target_name = None
+        if m.lead_id:
+            lead_obj = session.get(Lead, m.lead_id)
+            if lead_obj:
+                target_name = lead_obj.company_name
+                assigned_sp_id = lead_obj.owner_id
+        elif m.client_id:
+            client_obj = session.get(ClientProfile, m.client_id)
+            if client_obj:
+                target_name = client_obj.companyName
+                assigned_sp_id = client_obj.assignedEmployeeId
+        if not assigned_sp_id and m.host_id:
+            assigned_sp_id = m.host_id
+
+        if assigned_sp_id and assigned_sp_id != current_salesperson_id.get():
+            session.add(Notification(
+                user_id=assigned_sp_id,
+                title=f"📅 Meeting Scheduled: {m.title}",
+                message=f"Time: {dt_str} | Status: {m.status}" + (f" for {target_name}" if target_name else ""),
+                type="info",
+                link=f"/meetings"
+            ))
+
+        # Record ActivityLog
+        session.add(ActivityLog(
+            tenant_id=current_tenant_id.get(),
+            user_id=current_salesperson_id.get(),
+            action=f"Meeting scheduled: {m.title}",
+            details=f"Scheduled for {dt_str}. Type: {m.meeting_type}" + (f" with {target_name}" if target_name else ""),
+            lead_id=m.lead_id,
+            client_id=m.client_id
+        ))
+        session.commit()
     except Exception:
         pass
 
@@ -15890,7 +17353,224 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
     except Exception as e:
         print("WhatsApp Error:", e)
 
+    # ── EMAIL NOTIFICATION TO CONFIGURED NOTIFICATION RECEIVERS ──
+    try:
+        from modules.notification_dispatcher import dispatch_event_notification
+        target_name = None
+        if m.lead_id:
+            lead_obj = session.get(Lead, m.lead_id)
+            if lead_obj:
+                target_name = lead_obj.company_name
+        elif m.client_id:
+            client_obj = session.get(ClientProfile, m.client_id)
+            if client_obj:
+                target_name = client_obj.companyName
+
+        dispatch_event_notification(
+            event_key="followup_created",
+            subject=f"📅 New Follow-up / Meeting: {m.title}",
+            headline=f"Scheduled Meeting: {m.title}",
+            details={
+                "Meeting Title": m.title,
+                "Target / Company": target_name or "—",
+                "Scheduled Time": dt_str,
+                "Type": m.meeting_type or "Call",
+                "Status": m.status or "Scheduled",
+                "Notes / Agenda": m.notes or "—"
+            },
+            tenant_id=m.tenant_id,
+            action_url="/meetings",
+            action_label="View Meetings Schedule"
+        )
+    except Exception as ne:
+        print("[CreateMeeting] Notification dispatch error:", ne)
+
     return {"meeting": _meeting_dict(m, session)}
+
+
+# ─── MEETING REMINDERS & POST-MEETING OUTCOME REVIEW ─────────────────────
+
+class MeetingCompleteRequest(BaseModel):
+    outcome: str
+    notes: Optional[str] = None
+    create_followup: bool = False
+    followup_date: Optional[str] = None
+    followup_title: Optional[str] = None
+    followup_type: str = "Follow-up"
+
+
+class MeetingRescheduleRequest(BaseModel):
+    scheduled_at: str
+    reason: str
+
+
+class MeetingCancelRequest(BaseModel):
+    reason: str
+
+
+@app.get("/meetings/check-reminders")
+def check_meeting_reminders(session: Session = Depends(get_session)):
+    """
+    Checks upcoming meetings and follow-up calls in the next 10-135 minutes.
+    Sends reminders (15m, 30m, 1h, 2h) to Admin, assigned salesperson,
+    and configured notification email receivers.
+    """
+    now = _utcnow()
+    window_start = now
+    window_end = now + timedelta(minutes=135)
+
+    # 1. Upcoming meetings
+    m_query = select(Meeting).where(
+        Meeting.scheduled_at >= window_start,
+        Meeting.scheduled_at <= window_end,
+        Meeting.status.ilike("scheduled")
+    )
+    if current_tenant_id.get():
+        m_query = m_query.where(Meeting.tenant_id == current_tenant_id.get())
+
+    upcoming_meetings = session.exec(m_query).all()
+    reminders_sent = 0
+
+    REMINDER_INTERVALS = [
+        (15, 10, 25, "15-Minute"),
+        (30, 20, 40, "30-Minute"),
+        (60, 45, 75, "1-Hour"),
+        (120, 105, 135, "2-Hour"),
+    ]
+
+    for m in upcoming_meetings:
+        if not m.scheduled_at:
+            continue
+        m_dt = m.scheduled_at if m.scheduled_at.tzinfo else m.scheduled_at.replace(tzinfo=timezone.utc)
+        diff_minutes = (m_dt - now).total_seconds() / 60
+
+        for interval, min_m, max_m, label in REMINDER_INTERVALS:
+            if not (min_m <= diff_minutes <= max_m):
+                continue
+
+            time_str = _meeting_time_label(m, "%I:%M %p")
+            title = f"⏰ {label} Reminder: Meeting '{m.title}'"
+            target_name = None
+            salesperson_id = None
+
+            if m.lead_id:
+                l = session.get(Lead, m.lead_id)
+                if l:
+                    target_name = l.company_name
+                    salesperson_id = l.owner_id
+            elif m.client_id:
+                c = session.get(ClientProfile, m.client_id)
+                if c:
+                    target_name = c.companyName
+                    salesperson_id = c.assignedEmployeeId
+            if not salesperson_id and m.host_id:
+                salesperson_id = m.host_id
+
+            msg = f"Meeting '{m.title}'" + (f" with {target_name}" if target_name else "") + f" starts at {time_str}."
+
+            # Check if already notified for this interval
+            existing = session.exec(
+                select(Notification).where(
+                    Notification.title == title,
+                    Notification.link == "/meetings"
+                )
+            ).first()
+
+            if not existing:
+                # Notify admins
+                try:
+                    _notify_admins(
+                        session,
+                        m.tenant_id or current_tenant_id.get(),
+                        title=title,
+                        message=msg,
+                        notif_type="warning",
+                        link="/meetings"
+                    )
+                except Exception:
+                    pass
+
+                # Notify assigned salesperson
+                if salesperson_id:
+                    session.add(Notification(
+                        user_id=salesperson_id,
+                        title=title,
+                        message=msg,
+                        type="warning",
+                        link="/meetings"
+                    ))
+
+                # ── EMAIL NOTIFICATION TO CONFIGURED RECEIVERS MATCHING ADVANCE TIME ──
+                try:
+                    from modules.notification_dispatcher import dispatch_event_notification
+                    dispatch_event_notification(
+                        event_key="followup_reminder",
+                        subject=f"⏰ {label} Reminder: Meeting '{m.title}'",
+                        headline=f"Meeting Starting in {label}: {m.title}",
+                        details={
+                            "Meeting Title": m.title,
+                            "Target / Company": target_name or "—",
+                            "Starts At": time_str,
+                            "Notice Window": label,
+                            "Location / Link": m.location or "—",
+                            "Agenda": m.description or "—"
+                        },
+                        tenant_id=m.tenant_id,
+                        action_url="/meetings",
+                        action_label="Open Meetings",
+                        advance_minutes=interval
+                    )
+                except Exception as ex:
+                    print(f"[ReminderNotification] {label} error:", ex)
+
+                reminders_sent += 1
+
+    session.commit()
+    return {"ok": True, "reminders_sent": reminders_sent}
+
+
+@app.get("/meetings/pending-outcomes")
+def get_pending_meeting_outcomes(session: Session = Depends(get_session)):
+    """
+    Returns meetings whose scheduled time has passed and are still marked 'Scheduled'.
+    Used for daily popup prompts asking if the meeting was completed.
+    """
+    actor = _current_user(session)
+    now = _utcnow()
+    query = select(Meeting).where(
+        Meeting.scheduled_at <= now,
+        Meeting.status.ilike("scheduled")
+    ).order_by(Meeting.scheduled_at.desc())
+
+    if current_tenant_id.get():
+        query = query.where(Meeting.tenant_id == current_tenant_id.get())
+
+    # If actor is salesperson (non-admin), show meetings assigned to them or hosted by them
+    if actor and actor.role not in ("Admin", "SuperAdmin", "Demo", "SalesManager"):
+        user_lead_ids = select(Lead.id).where(Lead.owner_id == actor.id)
+        query = query.where(
+            or_(
+                Meeting.host_id == actor.id,
+                Meeting.created_by == actor.id,
+                Meeting.lead_id.in_(user_lead_ids)
+            )
+        )
+
+    meetings = session.exec(query.limit(20)).all()
+    out = []
+    for m in meetings:
+        d = _meeting_dict(m, session)
+        target_name = None
+        if m.lead_id:
+            l = session.get(Lead, m.lead_id)
+            if l: target_name = l.company_name
+        elif m.client_id:
+            c = session.get(ClientProfile, m.client_id)
+            if c: target_name = c.companyName
+        d["company_name"] = target_name
+        out.append(d)
+
+    return {"pending_meetings": out}
 
 
 @app.get("/meetings/{meeting_id}")
@@ -15929,6 +17609,38 @@ def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session
             "Meeting Updated", _meeting_dict(m, session), f"{base_url}/meetings")
     except Exception as e:
         print("WhatsApp Error:", e)
+
+    # ── EMAIL NOTIFICATION TO CONFIGURED NOTIFICATION RECEIVERS ──
+    try:
+        from modules.notification_dispatcher import dispatch_event_notification
+        target_name = None
+        if m.lead_id:
+            lead_obj = session.get(Lead, m.lead_id)
+            if lead_obj:
+                target_name = lead_obj.company_name
+        elif m.client_id:
+            client_obj = session.get(ClientProfile, m.client_id)
+            if client_obj:
+                target_name = client_obj.companyName
+
+        dispatch_event_notification(
+            event_key="followup_created",
+            subject=f"📅 New Follow-up / Meeting: {m.title}",
+            headline=f"Scheduled Meeting: {m.title}",
+            details={
+                "Meeting Title": m.title,
+                "Target / Company": target_name or "—",
+                "Scheduled Time": dt_str,
+                "Type": m.meeting_type or "Call",
+                "Status": m.status or "Scheduled",
+                "Notes / Agenda": m.notes or "—"
+            },
+            tenant_id=m.tenant_id,
+            action_url="/meetings",
+            action_label="View Meetings Schedule"
+        )
+    except Exception as ne:
+        print("[CreateMeeting] Notification dispatch error:", ne)
 
     return {"meeting": _meeting_dict(m, session)}
 
@@ -15973,6 +17685,167 @@ async def import_meetings(file: UploadFile = File(...), session: Session = Depen
             pass
     session.commit()
     return {"imported": imported}
+
+
+@app.post("/meetings/{meeting_id}/complete")
+def complete_meeting(
+    meeting_id: int,
+    body: MeetingCompleteRequest,
+    session: Session = Depends(get_session)
+):
+    m = _get_visible_meeting(session, meeting_id)
+    actor = _current_user(session)
+    actor_id = actor.id if actor else current_salesperson_id.get()
+
+    m.status = "Completed"
+    m.outcome = body.outcome
+    if body.notes:
+        existing_notes = m.notes or ""
+        m.notes = (existing_notes + "\n\n" + body.notes).strip()
+    m.updated_at = _utcnow()
+    session.add(m)
+
+    target_name = None
+    if m.lead_id:
+        l = session.get(Lead, m.lead_id)
+        if l: target_name = l.company_name
+    elif m.client_id:
+        c = session.get(ClientProfile, m.client_id)
+        if c: target_name = c.companyName
+
+    # Record ActivityLog
+    session.add(ActivityLog(
+        tenant_id=m.tenant_id or current_tenant_id.get(),
+        user_id=actor_id,
+        action=f"Meeting completed: {m.title}",
+        details=f"Outcome: {body.outcome}. " + (f"Notes: {body.notes}" if body.notes else "") + (f" with {target_name}" if target_name else ""),
+        lead_id=m.lead_id,
+        client_id=m.client_id
+    ))
+
+    # Optional immediate follow-up creation
+    followup_created = None
+    if body.create_followup and body.followup_date:
+        f_scheduled = _meeting_to_utc(body.followup_date, m.timezone)
+        new_f = Meeting(
+            tenant_id=m.tenant_id or current_tenant_id.get(),
+            created_by=actor_id,
+            host_id=m.host_id or actor_id,
+            lead_id=m.lead_id,
+            client_id=m.client_id,
+            contact_id=m.contact_id,
+            title=body.followup_title or f"Follow-up: {m.title}",
+            meeting_type=body.followup_type or "Follow-up",
+            status="Scheduled",
+            scheduled_at=f_scheduled,
+            duration_minutes=30,
+            notes=f"Created from completed meeting outcome on {m.scheduled_at}: {body.outcome}"
+        )
+        session.add(new_f)
+        session.commit()
+        session.refresh(new_f)
+        followup_created = _meeting_dict(new_f, session)
+
+        # ActivityLog for follow-up
+        session.add(ActivityLog(
+            tenant_id=m.tenant_id or current_tenant_id.get(),
+            user_id=actor_id,
+            action=f"Follow-up scheduled: {new_f.title}",
+            details=f"Scheduled for {body.followup_date} based on outcome of '{m.title}'",
+            lead_id=m.lead_id,
+            client_id=m.client_id
+        ))
+
+    # ── EMAIL NOTIFICATION FOR MEETING SYNOPSIS & OUTCOME ──
+    try:
+        from modules.notification_dispatcher import dispatch_event_notification
+        actor_name = getattr(actor, "name", "Sales Rep") if actor else "Sales Rep"
+        dispatch_event_notification(
+            event_key="meeting_synopsis",
+            subject=f"📝 Meeting Synopsis & Outcome: {m.title}",
+            headline=f"Outcome for Meeting: {m.title}",
+            details={
+                "Meeting Title": m.title,
+                "Target / Company": target_name or "—",
+                "Outcome": body.outcome,
+                "Synopsis & Notes": body.notes or "No notes provided",
+                "Next Follow-up": str(body.followup_date) if body.create_followup and body.followup_date else "None",
+                "Recorded By": actor_name
+            },
+            tenant_id=m.tenant_id,
+            action_url="/meetings",
+            action_label="View Meeting Details"
+        )
+    except Exception as ne:
+        print("[CompleteMeeting] Synopsis notification error:", ne)
+
+    session.commit()
+    return {
+        "ok": True,
+        "meeting": _meeting_dict(m, session),
+        "followup": followup_created,
+        "message": f"Meeting '{m.title}' marked as completed" + (" and follow-up scheduled!" if followup_created else "!")
+    }
+
+
+@app.post("/meetings/{meeting_id}/reschedule")
+def reschedule_meeting(
+    meeting_id: int,
+    body: MeetingRescheduleRequest,
+    session: Session = Depends(get_session)
+):
+    m = _get_visible_meeting(session, meeting_id)
+    actor = _current_user(session)
+    actor_id = actor.id if actor else current_salesperson_id.get()
+
+    old_date = _meeting_time_label(m, "%b %d, %I:%M %p")
+    new_utc = _meeting_to_utc(body.scheduled_at, m.timezone)
+    m.scheduled_at = new_utc
+    m.status = "Scheduled"
+    reason_note = f"Rescheduled on {_utcnow().strftime('%Y-%m-%d')} (Reason: {body.reason})"
+    m.notes = ((m.notes or "") + "\n" + reason_note).strip()
+    m.updated_at = _utcnow()
+    session.add(m)
+
+    session.add(ActivityLog(
+        tenant_id=m.tenant_id or current_tenant_id.get(),
+        user_id=actor_id,
+        action=f"Meeting rescheduled: {m.title}",
+        details=f"Moved from {old_date} to {body.scheduled_at}. Reason: {body.reason}",
+        lead_id=m.lead_id,
+        client_id=m.client_id
+    ))
+    session.commit()
+
+    return {"ok": True, "meeting": _meeting_dict(m, session), "message": f"Meeting rescheduled to {body.scheduled_at}"}
+
+
+@app.post("/meetings/{meeting_id}/cancel")
+def cancel_meeting(
+    meeting_id: int,
+    body: MeetingCancelRequest,
+    session: Session = Depends(get_session)
+):
+    m = _get_visible_meeting(session, meeting_id)
+    actor = _current_user(session)
+    actor_id = actor.id if actor else current_salesperson_id.get()
+
+    m.status = "Cancelled"
+    m.outcome = f"Cancelled: {body.reason}"
+    m.updated_at = _utcnow()
+    session.add(m)
+
+    session.add(ActivityLog(
+        tenant_id=m.tenant_id or current_tenant_id.get(),
+        user_id=actor_id,
+        action=f"Meeting cancelled: {m.title}",
+        details=f"Reason: {body.reason}",
+        lead_id=m.lead_id,
+        client_id=m.client_id
+    ))
+    session.commit()
+
+    return {"ok": True, "meeting": _meeting_dict(m, session), "message": "Meeting cancelled"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -17709,9 +19582,17 @@ def simulate_lead_call(lead_id: int, req: Optional[SimulateCallRequest] = None, 
     industry = lead.industry or "Unknown Industry"
     notes = lead.notes or "No prior notes."
 
-    prompt = f"""You are an expert sales representative for "SERP Hawk" (an elite SEO and Digital Marketing Agency).
+    # Use the tenant that owns this simulated call (same tenant written to the AICall below).
+    from modules import tenant_voice
+    voice_ctx = tenant_voice.prompt_context(
+        tenant_voice.profile_for_call(tenant_id))
+    company = voice_ctx["company_name"]
+    about = voice_ctx["company_description"]
+    tone = voice_ctx["tone"]
+
+    prompt = f"""You are an expert sales representative for "{company}" ({about}).
 Your task is to write a highly tailored, direct sales script to be read over the phone to this specific lead. 
-DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a SERP Hawk sales rep.
+DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a {company} sales representative and use a {tone} tone.
 
 Lead Profile:
 Company Name: {client_name}
@@ -17728,7 +19609,7 @@ Recent Activity:
 Instructions:
 1. Write the exact word-for-word script that the sales person will read on the call.
 2. Directly reference their specific company name, their industry, and any past notes or activities.
-3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
+3. Pitch {company}'s services as the solution to their specific needs.
 4. Make it conversational, persuasive, and professional.
 5. Structure it logically but seamlessly.
 6. Output ONLY the spoken script as natural dialogue. Do NOT include markdown headings like **Introduction** or **Value Proposition**. It should read exactly like a transcript of someone speaking. Do not add any meta-commentary."""
@@ -17801,9 +19682,17 @@ def simulate_contact_call(contact_id: int, req: Optional[SimulateCallRequest] = 
     designation = contact.designation or "Unknown Title"
     notes = contact.notes or "No prior notes."
 
-    prompt = f"""You are an expert sales representative for "SERP Hawk" (an elite SEO and Digital Marketing Agency).
+    # Use the tenant that owns this simulated call (same tenant written to the AICall below).
+    from modules import tenant_voice
+    voice_ctx = tenant_voice.prompt_context(
+        tenant_voice.profile_for_call(tenant_id))
+    company = voice_ctx["company_name"]
+    about = voice_ctx["company_description"]
+    tone = voice_ctx["tone"]
+
+    prompt = f"""You are an expert sales representative for "{company}" ({about}).
 Your task is to write a highly tailored, direct sales script to be read over the phone to this specific contact. 
-DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a SERP Hawk sales rep.
+DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a {company} sales representative and use a {tone} tone.
 
 Contact Profile:
 Name: {client_name}
@@ -17818,7 +19707,7 @@ Notes from our CRM:
 Instructions:
 1. Write the exact word-for-word script that the sales person will read on the call.
 2. Directly reference their specific name, their role/title, and any past notes.
-3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
+3. Pitch {company}'s services as the solution to their specific needs.
 4. Make it conversational, persuasive, and professional.
 5. Structure it logically but seamlessly.
 6. Output ONLY the spoken script as natural dialogue. Do NOT include markdown headings like **Introduction** or **Value Proposition**. It should read exactly like a transcript of someone speaking. Do not add any meta-commentary."""
@@ -19532,7 +21421,7 @@ def _tenant_browser_table(session: Session, table_name: str):
     if table is None or "tenant_id" not in table.c or table_name in tenant_scope.GLOBAL_TABLES:
         raise HTTPException(status_code=403, detail="This table is not available in the company data viewer")
     module = {"leads": "leads", "client_profiles": "clients", "call_logs": "calls", "scheduled_calls": "calls",
-              "ai_calls": "voice_agent", "inbox_messages": "inbox", "sent_emails": "inbox"}.get(table_name)
+              "ai_calls": "calls", "inbox_messages": "inbox", "sent_emails": "inbox"}.get(table_name)
     if module and not features.is_enabled(tenant_id, module):
         raise HTTPException(status_code=403, detail="The table's module is not enabled", headers={"X-Module": module})
     columns = [c for c in table.c if not any(word in c.name.lower() for word in ("password", "token"))
@@ -21115,3 +23004,593 @@ def get_lead_sent_emails(lead_id: int, session: Session = Depends(get_session)):
                 "received_at": r.received_at.isoformat() if r.received_at else None,
             })
     return {"emails": [{**e.dict(), "replies": replies_by_email.get(e.id, [])} for e in emails]}
+
+
+@app.get("/analytics/salesperson/dashboard")
+def get_salesperson_dashboard(
+    salesperson_id: Optional[int] = None,
+    session: Session = Depends(get_session)
+):
+    actor = _require_roles(session, ["Admin", "SuperAdmin", "SalesManager", "Employee", "Sales", "Demo"])
+    tenant_id = current_tenant_id.get()
+
+    target_id = salesperson_id if (salesperson_id and actor.role in ("Admin", "SuperAdmin", "SalesManager")) else actor.id
+    target_user = session.get(User, target_id) if target_id else actor
+
+    # 1. Leads assigned to this salesperson
+    lead_query = select(Lead).where(Lead.owner_id == target_id)
+    if tenant_id and tenant_id != 1:
+        lead_query = lead_query.where(Lead.tenant_id == tenant_id)
+    rep_leads = session.exec(lead_query.order_by(Lead.created_at.desc())).all()
+
+    assigned_leads_count = len(rep_leads)
+    converted_leads = [l for l in rep_leads if l.is_converted or str(l.status or "").lower() in ("converted", "won", "enrolled")]
+    converted_count = len(converted_leads)
+    conversion_rate = round((converted_count / assigned_leads_count * 100), 1) if assigned_leads_count > 0 else 0.0
+
+    # 2. Advance and Business Revenue
+    from addons.institute.models import Enrollment, PaymentRecord
+    adv_query = select(PaymentRecord).where(PaymentRecord.recorded_by == target_id)
+    if tenant_id and tenant_id != 1:
+        adv_query = adv_query.where(PaymentRecord.tenant_id == tenant_id)
+    rep_payments = session.exec(adv_query).all()
+    advance_collected = sum(float(p.amount or 0.0) for p in rep_payments)
+
+    enroll_query = select(Enrollment).where(Enrollment.enrolled_by == target_id)
+    if tenant_id and tenant_id != 1:
+        enroll_query = enroll_query.where(Enrollment.tenant_id == tenant_id)
+    rep_enrollments = session.exec(enroll_query).all()
+    total_business_made = sum(max(0.0, float(e.total_fee or 0.0) - float(e.discount or 0.0)) for e in rep_enrollments)
+    if total_business_made == 0.0 and advance_collected > 0.0:
+        total_business_made = advance_collected
+
+    # 3. Upcoming Meetings & Follow-ups
+    m_query = select(Meeting).where(
+        or_(Meeting.host_id == target_id, Meeting.created_by == target_id),
+        Meeting.status == "Scheduled"
+    )
+    if tenant_id and tenant_id != 1:
+        m_query = m_query.where(Meeting.tenant_id == tenant_id)
+    upcoming_meetings = session.exec(m_query.order_by(Meeting.scheduled_at.asc()).limit(15)).all()
+
+    lead_map = {l.id: l.company_name for l in rep_leads}
+    meetings_data = []
+    for m in upcoming_meetings:
+        lead_name = lead_map.get(m.lead_id) or (session.get(Lead, m.lead_id).company_name if m.lead_id else None)
+        meetings_data.append({
+            "id": m.id,
+            "title": m.title,
+            "meeting_type": m.meeting_type or "Meeting",
+            "scheduled_at": m.scheduled_at.isoformat() if m.scheduled_at else None,
+            "lead_id": m.lead_id,
+            "lead_name": lead_name,
+            "status": m.status,
+            "notes": m.notes,
+        })
+
+    # 4. Individual Lead Source Report (Tickets SCM1-423, P1-773, P1-774)
+    from collections import defaultdict
+    sources_dict = defaultdict(lambda: {"total": 0, "converted": 0, "advance": 0.0, "leads": []})
+    for l in rep_leads:
+        src = l.source or "Direct / Unknown"
+        s_data = sources_dict[src]
+        s_data["total"] += 1
+        is_conv = l.is_converted or str(l.status or "").lower() in ("converted", "won", "enrolled")
+        if is_conv:
+            s_data["converted"] += 1
+        s_data["leads"].append({
+            "id": l.id,
+            "company_name": l.company_name,
+            "email": l.email,
+            "phone": l.phone,
+            "status": l.status,
+            "is_converted": is_conv,
+            "city": l.city,
+            "country": l.country,
+            "created_at": l.created_at.isoformat() if hasattr(l.created_at, "isoformat") else str(l.created_at),
+        })
+
+    lead_sources_report = []
+    for src_name, data in sources_dict.items():
+        rate = round((data["converted"] / data["total"] * 100), 1) if data["total"] > 0 else 0.0
+        lead_sources_report.append({
+            "source": src_name,
+            "total_leads": data["total"],
+            "converted_count": data["converted"],
+            "conversion_rate": rate,
+            "advance_collected": data["advance"],
+            "leads": data["leads"][:100],
+        })
+    lead_sources_report.sort(key=lambda s: s["total_leads"], reverse=True)
+
+    # 5. Recent Activity Log
+    lead_ids = [l.id for l in rep_leads]
+    act_query = select(ActivityLog)
+    if lead_ids:
+        act_query = act_query.where(or_(ActivityLog.lead_id.in_(lead_ids[:200]), ActivityLog.user_id == target_id))
+    else:
+        act_query = act_query.where(ActivityLog.user_id == target_id)
+    if tenant_id and tenant_id != 1:
+        act_query = act_query.where(ActivityLog.tenant_id == tenant_id)
+    activities = session.exec(act_query.order_by(ActivityLog.createdAt.desc()).limit(15)).all()
+
+    return {
+        "salesperson": {
+            "id": target_user.id if target_user else 0,
+            "name": target_user.name if target_user else "Sales Representative",
+            "email": target_user.email if target_user else "",
+            "role": target_user.role if target_user else "Sales",
+        },
+        "kpis": {
+            "assigned_leads": assigned_leads_count,
+            "converted_leads": converted_count,
+            "conversion_rate": conversion_rate,
+            "advance_collected": advance_collected,
+            "total_business_made": total_business_made,
+        },
+        "upcoming_meetings": meetings_data,
+        "lead_sources_report": lead_sources_report,
+        "recent_activities": [
+            {
+                "id": a.id,
+                "action": a.action,
+                "details": a.details,
+                "lead_id": a.lead_id,
+                "createdAt": a.createdAt.isoformat() if hasattr(a.createdAt, "isoformat") else str(a.createdAt),
+            }
+            for a in activities
+        ]
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TEAM DIRECTORY CHAT & MESSAGING
+# ─────────────────────────────────────────────────────────────────────────────
+from database import TeamChatMessage
+from fastapi import UploadFile, File
+
+class SendChatMessageRequest(BaseModel):
+    recipient_id: Optional[int] = None
+    channel_name: Optional[str] = None
+    content: str
+    attachment_url: Optional[str] = None
+    attachment_name: Optional[str] = None
+    attachment_type: Optional[str] = None
+
+@app.get("/team-chat/users")
+def get_team_chat_users(session: Session = Depends(get_session)):
+    me = _current_user(session)
+    if not me:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    tid = current_tenant_id.get() or me.tenant_id
+    q = select(User).where(User.is_active == True)
+    if tid and tid > 0:
+        q = q.where(User.tenant_id == tid)
+    users = session.exec(q.order_by(User.name)).all()
+    return {
+        "users": [
+            {
+                "id": u.id,
+                "name": u.name or u.email.split("@")[0],
+                "email": u.email,
+                "role": u.role or "Member",
+                "is_current_user": u.id == me.id,
+            }
+            for u in users
+        ]
+    }
+
+@app.get("/team-chat/conversations")
+def get_team_chat_conversations(session: Session = Depends(get_session)):
+    me = _current_user(session)
+    if not me:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    tid = current_tenant_id.get() or me.tenant_id
+    
+    q_users = select(User).where(User.is_active == True)
+    if tid and tid > 0:
+        q_users = q_users.where(User.tenant_id == tid)
+    colleagues = session.exec(q_users).all()
+    user_map = {u.id: u for u in colleagues}
+    
+    gen_q = select(TeamChatMessage).where(
+        TeamChatMessage.channel_name == "team-general"
+    )
+    if tid and tid > 0:
+        gen_q = gen_q.where(TeamChatMessage.tenant_id == tid)
+    gen_msgs = session.exec(gen_q.order_by(TeamChatMessage.created_at.desc()).limit(1)).first()
+    
+    channels = [{
+        "id": "team-general",
+        "type": "channel",
+        "name": "Team General",
+        "description": "General team discussion & announcements",
+        "last_message": {
+            "content": gen_msgs.content if gen_msgs else "Welcome to Team Chat!",
+            "sender_id": gen_msgs.sender_id if gen_msgs else None,
+            "sender_name": user_map.get(gen_msgs.sender_id).name if gen_msgs and user_map.get(gen_msgs.sender_id) else "",
+            "created_at": gen_msgs.created_at.isoformat() if gen_msgs else None,
+            "has_attachment": bool(gen_msgs and gen_msgs.attachment_url),
+        } if gen_msgs else None,
+        "unread_count": 0,
+    }]
+    
+    direct_chats = []
+    for other in colleagues:
+        if other.id == me.id:
+            continue
+        dm_q = select(TeamChatMessage).where(
+            or_(
+                (TeamChatMessage.sender_id == me.id) & (TeamChatMessage.recipient_id == other.id),
+                (TeamChatMessage.sender_id == other.id) & (TeamChatMessage.recipient_id == me.id),
+            )
+        )
+        if tid and tid > 0:
+            dm_q = dm_q.where(TeamChatMessage.tenant_id == tid)
+        last_dm = session.exec(dm_q.order_by(TeamChatMessage.created_at.desc()).limit(1)).first()
+        
+        unread_q = select(func.count(TeamChatMessage.id)).where(
+            TeamChatMessage.sender_id == other.id,
+            TeamChatMessage.recipient_id == me.id,
+            TeamChatMessage.read_at == None,
+        )
+        if tid and tid > 0:
+            unread_q = unread_q.where(TeamChatMessage.tenant_id == tid)
+        unread_cnt = session.exec(unread_q).one() or 0
+        
+        direct_chats.append({
+            "id": f"dm_{other.id}",
+            "type": "direct",
+            "user_id": other.id,
+            "user": {
+                "id": other.id,
+                "name": other.name or other.email.split("@")[0],
+                "email": other.email,
+                "role": other.role or "Member",
+            },
+            "name": other.name or other.email.split("@")[0],
+            "email": other.email,
+            "role": other.role or "Member",
+            "last_message": {
+                "content": last_dm.content if last_dm else None,
+                "created_at": last_dm.created_at.isoformat() if last_dm else None,
+                "is_from_me": last_dm.sender_id == me.id if last_dm else False,
+                "has_attachment": bool(last_dm and last_dm.attachment_url),
+            } if last_dm else None,
+            "unread_count": int(unread_cnt),
+        })
+        
+    direct_chats.sort(key=lambda c: c["last_message"]["created_at"] if c.get("last_message") and c["last_message"].get("created_at") else "", reverse=True)
+    total_unread = sum(c["unread_count"] for c in direct_chats)
+    return {"channels": channels, "direct_chats": direct_chats, "conversations": direct_chats, "total_unread": total_unread}
+
+@app.get("/team-chat/unread-count")
+def get_team_chat_unread_count(session: Session = Depends(get_session)):
+    me = _current_user(session)
+    if not me:
+        return {"unread_count": 0}
+    tid = current_tenant_id.get() or me.tenant_id
+    unread_q = select(func.count(TeamChatMessage.id)).where(
+        TeamChatMessage.recipient_id == me.id,
+        TeamChatMessage.read_at == None,
+    )
+    if tid and tid > 0:
+        unread_q = unread_q.where(TeamChatMessage.tenant_id == tid)
+    unread_cnt = session.exec(unread_q).one() or 0
+    return {"unread_count": int(unread_cnt)}
+
+@app.get("/team-chat/messages")
+def get_team_chat_messages(
+    recipient_id: Optional[int] = None,
+    other_user_id: Optional[int] = None,
+    channel_name: Optional[str] = None,
+    limit: int = 100,
+    session: Session = Depends(get_session)
+):
+    me = _current_user(session)
+    if not me:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    tid = current_tenant_id.get() or me.tenant_id
+    
+    target_user_id = None
+    if other_user_id is not None:
+        try:
+            target_user_id = int(other_user_id)
+        except (ValueError, TypeError):
+            pass
+    elif recipient_id is not None:
+        try:
+            target_user_id = int(recipient_id)
+        except (ValueError, TypeError):
+            pass
+    
+    q = select(TeamChatMessage)
+    if tid and tid > 0:
+        q = q.where(TeamChatMessage.tenant_id == tid)
+        
+    if target_user_id:
+        q = q.where(
+            or_(
+                (TeamChatMessage.sender_id == me.id) & (TeamChatMessage.recipient_id == target_user_id),
+                (TeamChatMessage.sender_id == target_user_id) & (TeamChatMessage.recipient_id == me.id),
+            )
+        )
+        incoming_unread = session.exec(select(TeamChatMessage).where(
+            TeamChatMessage.sender_id == target_user_id,
+            TeamChatMessage.recipient_id == me.id,
+            TeamChatMessage.read_at == None
+        )).all()
+        now_dt = datetime.utcnow()
+        for msg in incoming_unread:
+            msg.read_at = now_dt
+        if incoming_unread:
+            session.commit()
+    else:
+        chan = channel_name or "general"
+        q = q.where(
+            TeamChatMessage.recipient_id == None,
+            or_(
+                TeamChatMessage.channel_name == chan,
+                (TeamChatMessage.channel_name == "team-general") if chan == "general" else False,
+            )
+        )
+        
+    messages = session.exec(q.order_by(TeamChatMessage.created_at.asc()).limit(limit)).all()
+    user_ids = {m.sender_id for m in messages}
+    users = session.exec(select(User).where(User.id.in_(user_ids))).all() if user_ids else []
+    umap = {u.id: u for u in users}
+    
+    return {
+        "messages": [
+            {
+                "id": m.id,
+                "sender_id": m.sender_id,
+                "sender_name": umap.get(m.sender_id).name if umap.get(m.sender_id) else "Colleague",
+                "sender_email": umap.get(m.sender_id).email if umap.get(m.sender_id) else "",
+                "sender_role": umap.get(m.sender_id).role if umap.get(m.sender_id) else "Member",
+                "recipient_id": m.recipient_id,
+                "channel_name": m.channel_name,
+                "content": m.content,
+                "attachment_url": m.attachment_url,
+                "attachment_name": m.attachment_name,
+                "attachment_type": m.attachment_type,
+                "created_at": m.created_at.isoformat() if hasattr(m.created_at, "isoformat") else str(m.created_at),
+                "is_from_me": m.sender_id == me.id,
+                "read_at": m.read_at.isoformat() if m.read_at else None,
+            }
+            for m in messages
+        ]
+    }
+
+@app.post("/team-chat/messages")
+def send_team_chat_message(
+    body: SendChatMessageRequest,
+    session: Session = Depends(get_session)
+):
+    me = _current_user(session)
+    if not me:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    tid = current_tenant_id.get() or me.tenant_id
+    if not tid or tid < 1:
+        tid = 1
+        
+    recip_id = None
+    if body.recipient_id:
+        try:
+            recip_id = int(body.recipient_id)
+        except (ValueError, TypeError):
+            pass
+            
+    msg = TeamChatMessage(
+        tenant_id=tid,
+        sender_id=me.id,
+        recipient_id=recip_id,
+        channel_name=None if recip_id else (body.channel_name or "general"),
+        content=body.content.strip() or ("Sent an attachment" if body.attachment_url else ""),
+        attachment_url=body.attachment_url,
+        attachment_name=body.attachment_name,
+        attachment_type=body.attachment_type,
+        created_at=datetime.utcnow()
+    )
+    session.add(msg)
+    session.commit()
+    session.refresh(msg)
+    
+    return {
+        "success": True,
+        "message": {
+            "id": msg.id,
+            "sender_id": msg.sender_id,
+            "sender_name": me.name or me.email,
+            "recipient_id": msg.recipient_id,
+            "channel_name": msg.channel_name,
+            "content": msg.content,
+            "attachment_url": msg.attachment_url,
+            "attachment_name": msg.attachment_name,
+            "attachment_type": msg.attachment_type,
+            "created_at": msg.created_at.isoformat(),
+            "is_from_me": True,
+        }
+    }
+
+@app.post("/team-chat/upload")
+async def upload_team_chat_file(file: UploadFile = File(...)):
+    import os, uuid
+    upload_dir = os.path.join("static", "uploads", "chat")
+    os.makedirs(upload_dir, exist_ok=True)
+    ext = os.path.splitext(file.filename)[1].lower() if file.filename else ""
+    unique_name = f"{uuid.uuid4().hex[:12]}_{file.filename}"
+    file_path = os.path.join(upload_dir, unique_name)
+    with open(file_path, "wb") as f:
+        content = await file.read()
+        f.write(content)
+        
+    file_url = f"/static/uploads/chat/{unique_name}"
+    is_image = ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]
+    return {
+        "url": file_url,
+        "filename": file.filename,
+        "type": "image" if is_image else "file",
+        "size": len(content),
+    }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CALENDAR AVAILABILITY & BLOCKED DATES
+# ─────────────────────────────────────────────────────────────────────────────
+class BlockSlotRequest(BaseModel):
+    date: str
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    reason: Optional[str] = "Blocked"
+    all_day: bool = True
+
+class SetAvailabilityRequest(BaseModel):
+    working_days: List[int] = [1, 2, 3, 4, 5]
+    start_time: str = "09:00"
+    end_time: str = "18:00"
+    slot_duration_minutes: int = 30
+
+def _require_calendar_manager(session: Session, detail: str = "Only administrators and staff can manage calendar availability") -> User:
+    user = _current_user(session)
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    r = (user.role or "").strip().lower()
+    if r in {"admin", "superadmin", "salesmanager", "admissions", "demo", "employee", "sales"} or (user.email or "").lower() == "admin@serphawk.com":
+        return user
+    raise HTTPException(status_code=403, detail=detail)
+
+
+@app.get("/calendar/availability")
+def get_calendar_availability(session: Session = Depends(get_session)):
+    tid = current_tenant_id.get() or 1
+    from modules import tenant_settings
+    default_avail = {
+        "working_days": [1, 2, 3, 4, 5],
+        "start_time": "09:00",
+        "end_time": "18:00",
+        "slot_duration_minutes": 30
+    }
+    avail = tenant_settings.get_setting(tid, "calendar_availability", default_avail) or default_avail
+    blocked = tenant_settings.get_setting(tid, "calendar_blocked_slots", []) or []
+    return {"availability": avail, "blocked_slots": blocked}
+
+@app.post("/calendar/availability")
+def update_calendar_availability(body: SetAvailabilityRequest, session: Session = Depends(get_session)):
+    _require_calendar_manager(session, "Only admins and staff can change calendar availability")
+    tid = current_tenant_id.get() or 1
+    from modules import tenant_settings
+    tenant_settings.set_setting(tid, "calendar_availability", body.model_dump())
+    return {"success": True, "availability": body.model_dump()}
+
+@app.get("/calendar/blocked-slots")
+def get_calendar_blocked_slots(session: Session = Depends(get_session)):
+    tid = current_tenant_id.get() or 1
+    from modules import tenant_settings
+    blocked = tenant_settings.get_setting(tid, "calendar_blocked_slots", []) or []
+    return {"blocked_slots": blocked}
+
+@app.post("/calendar/blocked-slots")
+def add_calendar_blocked_slot(body: BlockSlotRequest, session: Session = Depends(get_session)):
+    me = _require_calendar_manager(session, "Only admins and staff can block calendar dates/times")
+    tid = current_tenant_id.get() or 1
+    from modules import tenant_settings
+    blocked = tenant_settings.get_setting(tid, "calendar_blocked_slots", []) or []
+    slot = {
+        "id": uuid.uuid4().hex[:10],
+        "date": body.date,
+        "start_time": body.start_time or "00:00",
+        "end_time": body.end_time or "23:59",
+        "reason": body.reason or "Blocked",
+        "all_day": body.all_day,
+        "created_by": me.name or me.email,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    blocked.append(slot)
+    tenant_settings.set_setting(tid, "calendar_blocked_slots", blocked)
+    return {"success": True, "slot": slot, "blocked_slots": blocked}
+
+@app.delete("/calendar/blocked-slots/{slot_id}")
+def delete_calendar_blocked_slot(slot_id: str, session: Session = Depends(get_session)):
+    _require_calendar_manager(session, "Only admins and staff can remove blocked slots")
+    tid = current_tenant_id.get() or 1
+    from modules import tenant_settings
+    blocked = tenant_settings.get_setting(tid, "calendar_blocked_slots", []) or []
+    blocked = [s for s in blocked if s.get("id") != slot_id]
+    tenant_settings.set_setting(tid, "calendar_blocked_slots", blocked)
+    return {"success": True, "blocked_slots": blocked}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LEAD SOURCES ADMIN REASSIGNMENT & RENAMING
+# ─────────────────────────────────────────────────────────────────────────────
+class ReassignLeadsBody(BaseModel):
+    from_source: str
+    to_source: str
+    to_source_id: Optional[int] = None
+
+@app.post("/lead-sources/reassign-leads")
+def reassign_lead_source(body: ReassignLeadsBody, session: Session = Depends(get_session)):
+    _require_admin_user(session, "Only admins can reassign lead sources")
+    tid = current_tenant_id.get() or 1
+    q = select(Lead).where(Lead.tenant_id == tid)
+    all_leads = session.exec(q).all()
+    
+    from_s = body.from_source.strip().lower()
+    to_s = body.to_source.strip()
+    
+    from addons.business_suite.scm2 import LeadSource, _ensure_default_sources
+    sources = _ensure_default_sources(session)
+    target_src = next((s for s in sources if s.name.lower() == to_s.lower()), None)
+    if not target_src and body.to_source_id:
+        target_src = session.get(LeadSource, body.to_source_id)
+    if not target_src:
+        target_src = LeadSource(name=to_s, channel="Direct", tenant_id=tid)
+        session.add(target_src)
+        session.commit()
+        session.refresh(target_src)
+        
+    count = 0
+    for l in all_leads:
+        match_unassigned = from_s in ("unassigned", "none", "null", "") and (not l.source or l.source.strip().lower() in ("unassigned", "none", "null", ""))
+        match_name = (l.source or "").strip().lower() == from_s
+        if match_unassigned or match_name:
+            l.source = target_src.name
+            l.lead_source_id = target_src.id
+            session.add(l)
+            count += 1
+            
+    session.commit()
+    return {"success": True, "updated_count": count, "target_source": target_src.name}
+
+@app.post("/lead-sources/auto-reattribute-unassigned")
+def auto_reattribute_unassigned_leads(session: Session = Depends(get_session)):
+    _require_admin_user(session, "Only admins can reattribute lead sources")
+    tid = current_tenant_id.get() or 1
+    from addons.business_suite.scm2 import LeadSource, _ensure_default_sources
+    sources = _ensure_default_sources(session)
+    radar_src = next((s for s in sources if s.name.lower() == "radar scan"), None)
+    import_src = next((s for s in sources if s.name.lower() == "import"), None)
+    
+    all_leads = session.exec(select(Lead).where(Lead.tenant_id == tid)).all()
+    radar_cnt = 0
+    import_cnt = 0
+    for l in all_leads:
+        is_unassigned = not l.source or l.source.strip().lower() in ("unassigned", "none", "null", "")
+        if is_unassigned or "radar" in (l.source or "").lower() or "import" in (l.source or "").lower() or "csv" in (l.source or "").lower():
+            if "radar" in (l.source or "").lower():
+                is_radar = True
+            elif "import" in (l.source or "").lower() or "csv" in (l.source or "").lower():
+                is_radar = False
+            else:
+                is_radar = bool(l.ai_analysis_results or l.swot_analysis or (l.website and not l.phone))
+                
+            tgt = radar_src if is_radar else import_src
+            if tgt:
+                l.source = tgt.name
+                l.lead_source_id = tgt.id
+                session.add(l)
+                if is_radar:
+                    radar_cnt += 1
+                else:
+                    import_cnt += 1
+    session.commit()
+    return {"success": True, "radar_leads": radar_cnt, "import_leads": import_cnt, "total_updated": radar_cnt + import_cnt}

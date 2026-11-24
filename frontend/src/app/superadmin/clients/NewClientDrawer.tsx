@@ -209,9 +209,45 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
 
           <section>
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">3. The setup</h3>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">3. Instance Workspace Setup</h3>
+                <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">Select the instance for this client: Sales Instance, Administrator Instance (Admissions), or Combined.</p>
+              </div>
               {suggested && <span className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-300"><Sparkles className="h-3.5 w-3.5" /> Suggested for this business type</span>}
             </div>
+
+            {/* Explicit Administrator Instance Question */}
+            <div className="rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50/70 to-blue-50/50 p-3.5 dark:border-indigo-900/60 dark:bg-indigo-950/20 mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-slate-900 dark:text-zinc-100">Include Administrator Instance (Admissions Department)?</p>
+                <p className="text-[11px] text-slate-600 dark:text-zinc-400 mt-0.5">Enable admissions for courses, batches, and administrator follow-up on remaining student fees.</p>
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => { setPreset("combined_instance"); setPresetTouched(true); }}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
+                    preset === "combined_instance" || preset === "administrator_instance"
+                      ? "bg-indigo-600 text-white shadow-xs"
+                      : "bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700 hover:bg-slate-50"
+                  }`}
+                >
+                  ✓ Yes (Include)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setPreset("sales_instance"); setPresetTouched(true); }}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
+                    preset === "sales_instance"
+                      ? "bg-indigo-600 text-white shadow-xs"
+                      : "bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700 hover:bg-slate-50"
+                  }`}
+                >
+                  No (Sales Only)
+                </button>
+              </div>
+            </div>
+
             <div className="grid gap-3 sm:grid-cols-2">
               {sortedPresets.map((p) => {
                 const active = preset === p.key;

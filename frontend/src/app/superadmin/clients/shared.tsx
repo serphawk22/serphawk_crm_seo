@@ -49,8 +49,15 @@ export interface RegionOptions {
   countries: { code: string; name: string; dial_code: string }[];
 }
 
-/** Presets in the order a person should see them: SerpHawk Flagship first. */
-export const PRESET_ORDER = ["serphawk", "institute", "full"];
+/** Presets in the order a person should see them: Instance workspaces first, then Flagship and Institute. */
+export const PRESET_ORDER = [
+  "sales_instance",
+  "administrator_instance",
+  "combined_instance",
+  "serphawk",
+  "institute",
+  "full",
+];
 
 export const inputCls =
   "w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3.5 py-2.5 text-sm text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition";
