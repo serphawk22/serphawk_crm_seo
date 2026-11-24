@@ -42,22 +42,21 @@ export interface CatalogFeature { key: string; label: string; group: string; des
 export interface Preset { key: string; label: string; description: string; features: string[]; module_count: number }
 
 export function countModules(catalog: CatalogFeature[], enabled?: Record<string, boolean>): number {
-  return catalog.filter(feature => !feature.parent_key && (!enabled || enabled[feature.key])).length;
+  return catalog.filter(feature => feature.key !== "dashboard" && !feature.parent_key && (!enabled || enabled[feature.key])).length;
 }
 export interface RegionOptions {
   industries: { key: string; label: string; preset?: string }[];
   countries: { code: string; name: string; dial_code: string }[];
 }
 
-/** Presets in the order a person should see them: Instance workspaces first, then Flagship and standard. */
+/** Presets in the order a person should see them: Instance workspaces first, then Flagship and Institute. */
 export const PRESET_ORDER = [
   "sales_instance",
   "administrator_instance",
   "combined_instance",
   "serphawk",
-  "standard",
-  "bpo",
-  "full"
+  "institute",
+  "full",
 ];
 
 export const inputCls =

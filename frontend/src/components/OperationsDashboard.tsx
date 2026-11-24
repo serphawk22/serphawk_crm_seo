@@ -36,7 +36,7 @@ interface Operations {
   feeRevenue?: { name: string; revenue: number; expenses: number }[];
 }
 export interface OverviewStats {
-  revenue?: number; total?: number; pipelineValue?: number; operations?: Operations;
+  revenue?: number; wonRevenue?: number; wonCount?: number; total?: number; pipelineValue?: number; operations?: Operations;
   revenueData?: { name: string; revenue: number; expenses: number }[];
   chartLabels?: string[]; activityChart?: number[]; emailChart?: number[]; callChart?: number[];
   recentActivities?: { id: number; action: string; content?: string; createdAt?: string | null }[];
@@ -177,9 +177,11 @@ export default function OperationsDashboard({
   // Primary 360 KPI cards
   const kpiCards = [
     {
-      title: "Collected Revenue",
-      value: money(institute?.collected ?? data.revenue ?? 0),
-      subtitle: data.totalInvoicesValue ? `Invoiced: ${money(data.totalInvoicesValue)}` : "Paid client invoices",
+      title: !institute && (data.wonRevenue ?? 0) > 0 && (data.revenue ?? 0) === 0 ? "Won Revenue" : "Collected Revenue",
+      value: money(institute?.collected ?? ((data.revenue ?? 0) > 0 ? data.revenue! : (data.wonRevenue ?? 0))),
+      subtitle: (data.wonRevenue ?? 0) > 0
+        ? `Won: ${money(data.wonRevenue!)} (${data.wonCount ?? 0})${data.totalInvoicesValue ? ` • Invoiced: ${money(data.totalInvoicesValue)}` : ""}`
+        : (data.totalInvoicesValue ? `Invoiced: ${money(data.totalInvoicesValue)}` : "Paid client invoices"),
       icon: DollarSign,
       color: "text-emerald-600 dark:text-emerald-400",
       bg: "bg-emerald-500/10 border-emerald-500/20",

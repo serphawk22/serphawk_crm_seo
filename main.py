@@ -776,6 +776,9 @@ app.include_router(record_imports_router)
 from routers.demo_accounts import router as demo_accounts_router
 app.include_router(demo_accounts_router)
 
+from routers.inventory_pulpos import router as inventory_pulpos_router, record_stock_movement, stock_status_label
+app.include_router(inventory_pulpos_router)
+
 from routers.customization_requests import router as customization_requests_router
 app.include_router(customization_requests_router)
 
@@ -5497,7 +5500,8 @@ def export_clients_pdf(session: Session = Depends(get_session)):
     output = io.BytesIO()
     doc = SimpleDocTemplate(output, pagesize=landscape(
         A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
-    elements = []
+    from modules.pdf_export import _brand_header, _footer
+    elements = _brand_header(doc, "Clients & Leads List")
 
     styles = getSampleStyleSheet()
     title = Paragraph("<b>Clients & Leads List</b>", styles['Title'])
@@ -5595,7 +5599,8 @@ def export_custom_clients_pdf(cols: str = "name,email,phone,description", sessio
     output = io.BytesIO()
     doc = SimpleDocTemplate(output, pagesize=landscape(
         A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
-    elements = []
+    from modules.pdf_export import _brand_header, _footer
+    elements = _brand_header(doc, "Custom Clients & Leads List")
 
     styles = getSampleStyleSheet()
     title = Paragraph("<b>Custom Clients & Leads List</b>", styles['Title'])
@@ -9479,8 +9484,11 @@ def export_audit_pdf(email: str = Query(""), domain: str = Query(""), session: S
         "AuditH2", parent=styles["Heading2"], fontSize=14, textColor=colors.HexColor("#334155"), spaceBefore=20)
     normal = styles["Normal"]
 
-    elements = []
-    elements.append(Paragraph("SERP Hawk — SEO Audit Report", title_style))
+    from modules.pdf_export import _brand_header
+    from modules.branding import current_brand
+    brand_name = current_brand().name
+    elements = _brand_header(doc, "SEO Audit Report")
+    elements.append(Paragraph(f"{brand_name} — SEO Audit Report", title_style))
     elements.append(Spacer(1, 8))
     elements.append(
         Paragraph(f"Domain: {audit.get('domain', domain or 'N/A')}", normal))
@@ -11053,30 +11061,65 @@ def _proposal_dict(p: Proposal, session: Session) -> dict:
 
 @app.get("/proposals/catalog")
 def get_proposals_catalog(session: Session = Depends(get_session)):
-    """Lightweight catalog of inventory items for quotation builder."""
-    items = session.exec(
-        select(InventoryItem).order_by(InventoryItem.name)).all()
+    """Catalog of Product Catalog items and (when the inventory module is enabled for the tenant) Inventory Catalog items for the quotation builder."""
+    from modules.tenant_scope import current_tenant_id
+    from modules import features as _features
+
+    tid = current_tenant_id.get()
+    products_enabled = _features.is_enabled(tid, "products")
+    inventory_enabled = _features.is_enabled(tid, "inventory")
+
     result = []
-    for item in items:
-        # Get cheapest supplier price
-        suppliers = session.exec(
-            select(InventorySupplier).where(
-                InventorySupplier.item_id == item.id)
+    if products_enabled:
+        products = session.exec(
+            select(Product).where(Product.is_active == True).order_by(Product.name)
         ).all()
-        unit_price = min(
-            (s.unit_cost for s in suppliers if s.unit_cost), default=0.0) or 0.0
-        result.append({
-            "id": item.id,
-            "name": item.name,
-            "code": item.code,
-            "description": item.description,
-            "category": item.category or "General",
-            "unit": item.unit or "pcs",
-            "photo_url": item.photo_url,
-            "unit_price": unit_price,
-            "current_stock": item.current_stock,
-        })
-    return {"items": result}
+        for p in products:
+            result.append({
+                "id": p.id,
+                "name": p.name,
+                "code": p.sku or f"PRD-{p.id}",
+                "description": p.description,
+                "category": p.category or "Service",
+                "catalog_source": "products",
+                "unit": "service" if (p.category or "").lower() in ("service", "consulting", "marketing", "support", "software") else "pcs",
+                "photo_url": p.photo_url,
+                "unit_price": float(p.unit_price or 0.0),
+                "currency": p.currency or "USD",
+                "tax_rate": float(p.tax_rate or 0.0),
+                "current_stock": p.stock_quantity or 0,
+            })
+
+    if inventory_enabled:
+        items = session.exec(
+            select(InventoryItem).order_by(InventoryItem.name)).all()
+        for item in items:
+            # Get cheapest supplier price
+            suppliers = session.exec(
+                select(InventorySupplier).where(
+                    InventorySupplier.item_id == item.id)
+            ).all()
+            unit_price = min(
+                (s.unit_cost for s in suppliers if s.unit_cost), default=0.0) or 0.0
+            result.append({
+                "id": item.id,
+                "name": item.name,
+                "code": item.code,
+                "description": item.description,
+                "category": item.category or "General",
+                "catalog_source": "inventory",
+                "unit": item.unit or "pcs",
+                "photo_url": item.photo_url,
+                "unit_price": unit_price,
+                "currency": "USD",
+                "tax_rate": 0.0,
+                "current_stock": item.current_stock,
+            })
+    return {
+        "items": result,
+        "products_enabled": products_enabled,
+        "inventory_enabled": inventory_enabled,
+    }
 
 
 @app.get("/proposals")
@@ -11536,6 +11579,33 @@ def delete_ranking(entry_id: int, session: Session = Depends(get_session)):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+@app.post("/proposals/preview-pdf")
+def preview_proposal_pdf(body: ProposalCreateRequest, session: Session = Depends(get_session)):
+    """Render a quotation PDF preview for an unsaved proposal draft."""
+    from types import SimpleNamespace
+    from fastapi.responses import StreamingResponse
+    import io
+    temp_prop = SimpleNamespace(
+        id=0,
+        title=body.title,
+        client_id=body.client_id,
+        lead_id=body.lead_id,
+        recipient_type=body.recipient_type,
+        content=body.content,
+        status=body.status,
+        valid_until=body.valid_until,
+        total_value=body.total_value,
+        line_items=body.line_items,
+        currency=body.currency,
+        created_at=datetime.now(timezone.utc),
+        tenant_id=current_tenant_id.get(),
+    )
+    pdf_bytes, filename = _build_proposal_pdf(temp_prop, session)
+    return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers={
+        "Content-Disposition": f'inline; filename="{filename}"'
+    })
+
+
 @app.get("/proposals/{proposal_id}/pdf")
 def proposal_pdf(proposal_id: int, session: Session = Depends(get_session)):
     """Generate a professional itemized PDF quotation."""
@@ -11567,8 +11637,12 @@ def _build_proposal_pdf(prop, session):
     if _email:
         recipient_email = _email
 
-    currency = getattr(prop, 'currency', 'MXN')
-    curr_symbol = "₹" if currency == "INR" else "$"
+    from modules import tenant_settings
+    from modules.branding import current_brand, document_style
+    tid = getattr(prop, "tenant_id", None)
+    tenant_cur = tenant_settings.get_setting(tid, "default_currency", None) if tid else None
+    currency = tenant_cur or getattr(prop, 'currency', 'MXN')
+    curr_symbol = "₹" if (currency or "").upper() == "INR" else "$"
     line_items = getattr(prop, 'line_items', None) or []
 
     buf = io.BytesIO()
@@ -11576,7 +11650,13 @@ def _build_proposal_pdf(prop, session):
                             leftMargin=20*mm, rightMargin=20*mm)
     styles = getSampleStyleSheet()
 
-    accent = colors.HexColor("#2563eb")
+    brand = current_brand(tid) if tid else current_brand()
+    doc_style = document_style(tid) if tid else document_style()
+    accent_hex = doc_style.get("accent") or "#2563eb"
+    try:
+        accent = colors.HexColor(accent_hex)
+    except Exception:
+        accent = colors.HexColor("#2563eb")
     dark = colors.HexColor("#0f172a")
     mid = colors.HexColor("#475569")
     light_bg = colors.HexColor("#f1f5f9")
@@ -11597,19 +11677,53 @@ def _build_proposal_pdf(prop, session):
     els = []
 
     # ── HEADER ────────────────────────────────────────────────────────────────
-    header_data = [
-        [Paragraph("QUOTATION", title_s), Paragraph(
-            f"# Q-{prop.id:04d}", title_s)],
-        [Paragraph("SERP Hawk", sub_s), Paragraph(
-            f"Currency: {currency}", sub_s)],
-    ]
-    header_tbl = Table(header_data, colWidths=[90*mm, 80*mm])
+    from modules.pdf_export import _logo_flowable
+    logo_img = _logo_flowable(22, "LEFT", tenant_id=tid)
+    brand_sub = brand.name + (f" · {brand.tagline}" if brand.tagline else "")
+    title_r = ParagraphStyle("PTitleR", parent=title_s, alignment=2)
+    sub_r = ParagraphStyle("PSubR", parent=sub_s, alignment=2)
+    left_title_block = Table([
+        [Paragraph("QUOTATION", title_s)],
+        [Paragraph(brand_sub, sub_s)],
+    ], colWidths=[None])
+    left_title_block.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    if logo_img is not None:
+        left_header = Table([[logo_img, left_title_block]], colWidths=[26*mm, None])
+        left_header.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+    else:
+        left_header = left_title_block
+
+    right_header = Table([
+        [Paragraph(f"# Q-{prop.id:04d}", title_r)],
+        [Paragraph(f"Currency: {currency}", sub_r)],
+    ], colWidths=[None])
+    right_header.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+
+    header_tbl = Table([[left_header, right_header]], colWidths=[105*mm, 65*mm])
     header_tbl.setStyle(TableStyle([
         ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("PADDING", (0, 0), (-1, -1), 0),
     ]))
     els.append(header_tbl)
+    els.append(Spacer(1, 3*mm))
     els.append(HRFlowable(width="100%", thickness=2,
                color=accent, spaceAfter=10))
 
@@ -11701,7 +11815,8 @@ def _build_proposal_pdf(prop, session):
     els.append(Spacer(1, 20))
     els.append(HRFlowable(width="100%", thickness=0.5, color=mid))
     els.append(Spacer(1, 6))
-    els.append(Paragraph("SERP Hawk — Thank you for your business!", footer_s))
+    footer_note = doc_style.get("footer_note") or f"{brand.name} — Thank you for your business!"
+    els.append(Paragraph(footer_note, footer_s))
 
     doc.build(els)
     buf.seek(0)
@@ -18533,14 +18648,81 @@ def delete_sales_order(order_id: int, session: Session = Depends(get_session)):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class PurchaseOrderCreateRequest(BaseModel):
-    vendor_name: str
+    vendor_name: Optional[str] = None
     vendor_email: Optional[str] = None
+    supplier_id: Optional[int] = None
+    supplier_user_id: Optional[int] = None
+    rfq_id: Optional[int] = None
+    rfq_response_id: Optional[int] = None
+    warehouse_id: Optional[int] = None
+    items: Optional[List[dict]] = None
+    subtotal: Optional[float] = None
+    tax_amount: Optional[float] = 0.0
+    discount: Optional[float] = 0.0
+    total_amount: Optional[float] = None
     status: str = "Draft"
+    payment_status: str = "Unpaid"
     grand_total: float = 0.0
     currency: str = "USD"
     expected_delivery: Optional[str] = None
     notes: Optional[str] = None
     owner_id: Optional[int] = None
+
+
+def _normalize_po_payload(body: PurchaseOrderCreateRequest, session: Session) -> dict:
+    payload = body.model_dump(exclude_unset=True)
+    if body.supplier_id:
+        sup = session.get(InventorySupplier, body.supplier_id)
+        if sup:
+            payload.setdefault("vendor_name", sup.supplier_name)
+            payload.setdefault("vendor_email", sup.supplier_email)
+            payload.setdefault("supplier_user_id", sup.supplier_user_id)
+    if not payload.get("vendor_name"):
+        payload["vendor_name"] = "Supplier"
+
+    if body.items is not None:
+        normalized_items = []
+        calc_sub = 0.0
+        calc_tax = 0.0
+        for raw in body.items:
+            pid = raw.get("product_id") or raw.get("item_id")
+            it = session.get(InventoryItem, int(pid)) if pid else None
+            qty = float(raw.get("ordered_qty") if raw.get("ordered_qty") is not None else (raw.get("quantity") or 1))
+            uc = float(raw.get("unit_cost") if raw.get("unit_cost") is not None else (raw.get("unit_price") or (it.cost_price if it else 0) or 0))
+            tr = float(raw.get("tax_rate") if raw.get("tax_rate") is not None else (it.tax_rate if it else 0) or 0)
+            lt = round(qty * uc, 2)
+            calc_sub += lt
+            calc_tax += round(lt * (tr / 100.0), 2)
+            normalized_items.append({
+                "product_id": it.id if it else pid,
+                "product_code": raw.get("product_code") or (it.code if it else "—"),
+                "product_name": raw.get("product_name") or (it.name if it else raw.get("name") or "Item"),
+                "unit": raw.get("unit") or (it.unit if it else "pcs") or "pcs",
+                "ordered_qty": qty,
+                "received_qty": float(raw.get("received_qty") or 0),
+                "damaged_qty": float(raw.get("damaged_qty") or 0),
+                "accepted_qty": float(raw.get("accepted_qty") or 0),
+                "unit_cost": uc,
+                "tax_rate": tr,
+                "line_total": lt,
+            })
+        payload["items"] = normalized_items
+        sub = float(body.subtotal if body.subtotal is not None else calc_sub)
+        tax = float(body.tax_amount if body.tax_amount is not None and body.tax_amount > 0 else calc_tax)
+        disc = float(body.discount or 0)
+        tot = round(max(0.0, sub + tax - disc), 2)
+        payload["subtotal"] = round(sub, 2)
+        payload["tax_amount"] = round(tax, 2)
+        payload["discount"] = round(disc, 2)
+        payload["total_amount"] = tot
+        payload["grand_total"] = tot
+    else:
+        tot = float(body.total_amount if body.total_amount is not None else (body.grand_total or 0))
+        payload["total_amount"] = tot
+        payload["grand_total"] = tot
+        if body.subtotal is None:
+            payload["subtotal"] = tot
+    return payload
 
 
 @app.get("/purchase-orders")
@@ -18581,10 +18763,12 @@ def export_purchase_orders_pdf(body: dict = {}, session: Session = Depends(get_s
 
 @app.post("/purchase-orders")
 def create_purchase_order(body: PurchaseOrderCreateRequest, session: Session = Depends(get_session)):
-    import random
-    import string
-    o = PurchaseOrder(**body.model_dump())
-    o.po_number = "PO-" + "".join(random.choices(string.digits, k=6))
+    payload = _normalize_po_payload(body, session)
+    existing_count = len(session.exec(select(PurchaseOrder)).all()) + 1
+    o = PurchaseOrder(**payload)
+    o.tenant_id = current_tenant_id.get() if (current_tenant_id.get() and current_tenant_id.get() > 0) else o.tenant_id
+    o.created_by = current_salesperson_id.get() or o.owner_id
+    o.po_number = f"PO-{existing_count:05d}-{secrets.token_hex(2).upper()}"
     session.add(o)
     session.commit()
     session.refresh(o)
@@ -18596,7 +18780,8 @@ def update_purchase_order(order_id: int, body: PurchaseOrderCreateRequest, sessi
     o = session.get(PurchaseOrder, order_id)
     if not o:
         raise HTTPException(status_code=404, detail="Purchase order not found")
-    for k, v in body.model_dump(exclude_unset=True).items():
+    payload = _normalize_po_payload(body, session)
+    for k, v in payload.items():
         setattr(o, k, v)
     o.updated_at = datetime.now(timezone.utc)
     session.add(o)
@@ -21315,6 +21500,16 @@ class InventoryItemCreate(BaseModel):
     unit: Optional[str] = None
     min_stock: Optional[float] = 0
     current_stock: Optional[float] = 0
+    barcode: Optional[str] = None
+    brand: Optional[str] = None
+    cost_price: Optional[float] = 0.0
+    selling_price: Optional[float] = 0.0
+    tax_rate: Optional[float] = 0.0
+    status: Optional[str] = "Active"
+    variants: Optional[List[dict]] = []
+    currency: Optional[str] = "USD"
+    warehouse_id: Optional[int] = None
+    adjustment_reason: Optional[str] = None
 
 
 class InventorySupplierCreate(BaseModel):
@@ -21333,11 +21528,31 @@ class InventorySupplierCreate(BaseModel):
 
 
 @app.get("/inventory")
-def get_inventory(session: Session = Depends(get_session)):
+def get_inventory(warehouse_id: Optional[int] = None, session: Session = Depends(get_session)):
+    from database import Warehouse, WarehouseStock
     items = session.exec(select(InventoryItem).order_by(
         InventoryItem.created_at.desc())).all()
+    warehouses = {w.id: w.warehouse_name for w in session.exec(select(Warehouse)).all()}
+    all_wh_stocks = session.exec(select(WarehouseStock)).all()
+    wh_by_item: Dict[int, list] = {}
+    for ws in all_wh_stocks:
+        wh_by_item.setdefault(ws.item_id, []).append({
+            "warehouse_id": ws.warehouse_id,
+            "warehouse_name": warehouses.get(ws.warehouse_id, f"WH #{ws.warehouse_id}"),
+            "quantity": ws.quantity,
+            "reserved_qty": ws.reserved_qty,
+            "damaged_qty": ws.damaged_qty,
+        })
+
     result = []
     for item in items:
+        item_wh_balances = wh_by_item.get(item.id, [])
+        if warehouse_id:
+            match_wh = next((b for b in item_wh_balances if b["warehouse_id"] == warehouse_id), None)
+            effective_stock = float(match_wh["quantity"]) if match_wh else 0.0
+        else:
+            effective_stock = float(item.current_stock or 0)
+
         suppliers = session.exec(select(InventorySupplier).where(
             InventorySupplier.item_id == item.id)).all()
         result.append({
@@ -21345,7 +21560,19 @@ def get_inventory(session: Session = Depends(get_session)):
             "description": item.description, "category": item.category,
             "tags": item.tags or [], "photo_url": item.photo_url,
             "unit": item.unit, "min_stock": item.min_stock,
-            "current_stock": item.current_stock, "created_at": item.created_at.isoformat(),
+            "current_stock": effective_stock,
+            "total_stock": item.current_stock,
+            "barcode": item.barcode,
+            "brand": item.brand,
+            "cost_price": float(item.cost_price or 0),
+            "selling_price": float(item.selling_price or 0),
+            "tax_rate": float(item.tax_rate or 0),
+            "status": item.status or "Active",
+            "variants": item.variants or [],
+            "currency": item.currency or "USD",
+            "stock_status": stock_status_label(effective_stock, item.min_stock or 0),
+            "warehouse_balances": item_wh_balances,
+            "created_at": item.created_at.isoformat(),
             "suppliers": [
                 {"id": s.id, "supplier_name": s.supplier_name, "supplier_brand": s.supplier_brand,
                  "supplier_email": s.supplier_email, "lot_number": s.lot_number,
@@ -21353,7 +21580,7 @@ def get_inventory(session: Session = Depends(get_session)):
                  "lead_time_days": s.lead_time_days, "min_order_qty": s.min_order_qty,
                  "is_preferred": s.is_preferred, "notes": s.notes,
                  "supplier_user_id": s.supplier_user_id,
-                 "credentials_ready": bool(s.login_password),
+                 "credentials_ready": bool(s.supplier_user_id or s.supplier_email),
                  "credentials_sent": bool(s.credentials_sent)}
                 for s in suppliers
             ]
@@ -21476,9 +21703,24 @@ def export_catalog_pdf(body: ExportPdfRequest, session: Session = Depends(get_se
 
 @app.post("/inventory")
 def create_inventory_item(data: InventoryItemCreate, session: Session = Depends(get_session)):
-    item = InventoryItem(**data.dict())
+    payload = data.model_dump(exclude={"warehouse_id", "adjustment_reason"})
+    initial_stock = float(payload.get("current_stock") or 0)
+    payload["current_stock"] = 0.0
+    item = InventoryItem(**payload)
     item.tenant_id = current_tenant_id.get()
     session.add(item)
+    session.flush()
+    if initial_stock > 0:
+        record_stock_movement(
+            session,
+            item=item,
+            movement_type="OPENING_STOCK",
+            quantity=initial_stock,
+            reason=data.adjustment_reason or "Opening Stock on Item Creation",
+            warehouse_id=data.warehouse_id,
+            reference_id=item.code,
+            reference_type="PRODUCT_CREATE",
+        )
     session.commit()
     session.refresh(item)
     return item
@@ -21489,10 +21731,28 @@ def update_inventory_item(item_id: int, data: InventoryItemCreate, session: Sess
     item = session.get(InventoryItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    for k, v in data.dict(exclude_unset=True).items():
+    prev_stock = float(item.current_stock or 0)
+    update_fields = data.model_dump(exclude_unset=True, exclude={"warehouse_id", "adjustment_reason", "current_stock"})
+    for k, v in update_fields.items():
         setattr(item, k, v)
     item.updated_at = datetime.now(timezone.utc)
     session.add(item)
+    session.flush()
+
+    if data.current_stock is not None:
+        target_stock = float(data.current_stock or 0)
+        delta = target_stock - prev_stock
+        if abs(delta) > 1e-9:
+            record_stock_movement(
+                session,
+                item=item,
+                movement_type="ADJUSTMENT_IN" if delta > 0 else "ADJUSTMENT_OUT",
+                quantity=abs(delta),
+                reason=data.adjustment_reason or "Stock Level Updated on Product Edit",
+                warehouse_id=data.warehouse_id,
+                reference_id=item.code,
+                reference_type="PRODUCT_EDIT",
+            )
     session.commit()
     session.refresh(item)
     return item
@@ -21566,8 +21826,9 @@ def add_supplier(item_id: int, data: InventorySupplierCreate, session: Session =
     already_linked = supplier is not None
     if not supplier:
         supplier = InventorySupplier(item_id=item_id, tenant_id=item.tenant_id, supplier_user_id=account.id if account else None, **values)
+        # Never persist plaintext passwords in the database; only hash on User and return one-time in response
+        supplier.login_password = None
         if generated_password:
-            supplier.login_password = generated_password
             supplier.credentials_sent = False
         session.add(supplier)
     session.commit(); session.refresh(supplier)
@@ -21613,16 +21874,44 @@ def update_supplier(supplier_id: int, data: InventorySupplierCreate, session: Se
 
 @app.post("/inventory/suppliers/{supplier_id}/send-credentials")
 def send_supplier_credentials(supplier_id: int, session: Session = Depends(get_session)):
-    """Email the supplier's portal login credentials to their inbox (manual send button)."""
+    """Email the supplier's portal login invitation / temporary password without storing plaintext passwords in DB."""
     s = session.get(InventorySupplier, supplier_id)
     if not s:
         raise HTTPException(status_code=404, detail="Supplier not found")
     if not s.supplier_email:
         raise HTTPException(
             status_code=400, detail="Supplier has no email address on file")
-    if not s.login_password:
-        raise HTTPException(
-            status_code=400, detail="No login credentials exist for this supplier")
+
+    account = session.get(User, s.supplier_user_id) if s.supplier_user_id else None
+    if not account:
+        account = session.exec(
+            select(User).where(func.lower(User.email) == s.supplier_email.strip().lower()).execution_options(skip_tenant=True)
+        ).first()
+    if account and (account.tenant_id != s.tenant_id or (account.role or "").lower() != "supplier"):
+        raise HTTPException(status_code=409, detail="Email belongs to a non-supplier account")
+
+    one_time_password = _generate_unique_password()
+    pw_hash = _hash_password(one_time_password)
+    if not account:
+        account = User(
+            email=s.supplier_email.strip().lower(),
+            password=pw_hash,
+            hashed_password=pw_hash,
+            name=s.supplier_name,
+            role="Supplier",
+            tenant_id=s.tenant_id,
+            is_active=True,
+            status="Active",
+        )
+        session.add(account)
+        session.flush()
+        s.supplier_user_id = account.id
+    else:
+        account.password = pw_hash
+        account.hashed_password = pw_hash
+        session.add(account)
+
+    s.login_password = None  # Never persist plaintext password
 
     login_url = (os.environ.get("FRONTEND_URL")
                  or "https://crm-seo.allytechcourses.com").rstrip("/") + "/login"
@@ -21636,8 +21925,8 @@ def send_supplier_credentials(supplier_id: int, session: Session = Depends(get_s
         <h2 style="color:#0f172a;font-size:20px;margin:0 0 12px">Your supplier account is ready</h2>
         <p style="color:#475569;line-height:1.6;margin:0 0 20px">
           Hello <strong>{s.supplier_name}</strong>,<br/><br/>
-          An account has been created for you so you can update pricing, stock levels, lot numbers,
-          and delivery timelines for the items we source from you. Use the credentials below to sign in.
+          An account has been created for you so you can respond to RFQs, confirm purchase orders, update pricing,
+          and manage delivery timelines. Use the one-time credentials below to sign in.
         </p>
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:20px;margin:0 0 20px">
           <div style="margin-bottom:14px">
@@ -21649,8 +21938,8 @@ def send_supplier_credentials(supplier_id: int, session: Session = Depends(get_s
             <div style="color:#0f172a;font-weight:600;word-break:break-all">{s.supplier_email}</div>
           </div>
           <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Password</div>
-            <div style="color:#0f172a;font-weight:800;font-family:monospace;font-size:16px;letter-spacing:1px">{s.login_password}</div>
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">One-Time Password</div>
+            <div style="color:#0f172a;font-weight:800;font-family:monospace;font-size:16px;letter-spacing:1px">{one_time_password}</div>
           </div>
         </div>
         <a href="{login_url}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:600">Open the Supplier Portal</a>
@@ -21705,7 +21994,7 @@ class SupplierAddItemRequest(BaseModel):
 def supplier_add_item(req: SupplierAddItemRequest, session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
 
-    # Create the item
+    # Create the item (suppliers cannot inject unverified stock directly; company staff receives goods)
     item = InventoryItem(
         tenant_id=tenant_id,
         code=req.code,
@@ -21716,11 +22005,26 @@ def supplier_add_item(req: SupplierAddItemRequest, session: Session = Depends(ge
         photo_url=req.photo_url,
         unit=req.unit,
         min_stock=req.min_stock,
-        current_stock=req.current_stock
+        current_stock=0.0,
+        cost_price=float(req.unit_cost or 0),
+        currency=req.currency or "USD",
     )
     session.add(item)
-    session.commit()
-    session.refresh(item)
+    session.flush()
+
+    if req.current_stock and req.current_stock > 0:
+        uid = current_salesperson_id.get()
+        actor = session.get(User, uid) if uid else None
+        if not actor or (actor.role or "").lower() != "supplier":
+            record_stock_movement(
+                session,
+                item=item,
+                movement_type="OPENING_STOCK",
+                quantity=req.current_stock,
+                reason="Opening Stock on Supplier Item Registration",
+                reference_id=item.code,
+                reference_type="SUPPLIER_ADD_ITEM",
+            )
 
     # Check if a user for this supplier exists to grab ID
     user = session.exec(select(User).where(User.email == req.supplier_email).where(
@@ -21729,6 +22033,7 @@ def supplier_add_item(req: SupplierAddItemRequest, session: Session = Depends(ge
 
     # Attach this supplier to the item
     supplier = InventorySupplier(
+        tenant_id=tenant_id,
         item_id=item.id,
         supplier_name=req.supplier_name,
         supplier_email=req.supplier_email,
@@ -21748,15 +22053,22 @@ def supplier_add_item(req: SupplierAddItemRequest, session: Session = Depends(ge
 @app.get("/supplier/inventory")
 def get_supplier_inventory(email: str, session: Session = Depends(get_session)):
     """Get all inventory items that this supplier is linked to"""
+    uid = current_salesperson_id.get()
+    if uid:
+        caller = session.get(User, uid)
+        if caller and (caller.role or "").strip() == "Supplier":
+            if caller.email.strip().lower() != (email or "").strip().lower():
+                raise HTTPException(status_code=403, detail="Suppliers can only view their own assigned items")
+
     # Find all supplier records for this email
     supplier_records = session.exec(
         select(InventorySupplier).where(
-            InventorySupplier.supplier_email == email)
+            func.lower(InventorySupplier.supplier_email) == (email or "").strip().lower())
     ).all()
 
     if not supplier_records:
         # also try by user_id
-        user = session.exec(select(User).where(User.email == email).execution_options(skip_tenant=True)).first()
+        user = session.exec(select(User).where(func.lower(User.email) == (email or "").strip().lower()).execution_options(skip_tenant=True)).first()
         if user:
             supplier_records = session.exec(
                 select(InventorySupplier).where(
@@ -21786,6 +22098,7 @@ def get_supplier_inventory(email: str, session: Session = Depends(get_session)):
             "my_currency": sr.currency,
             "my_lead_time_days": sr.lead_time_days,
             "my_lot_number": sr.lot_number,
+            "my_min_order_qty": sr.min_order_qty,
             "my_notes": sr.notes,
             "is_preferred": sr.is_preferred,
             "total_suppliers": len(all_suppliers),
@@ -21799,7 +22112,15 @@ def supplier_update_record(supplier_record_id: int, data: InventorySupplierCreat
     s = session.get(InventorySupplier, supplier_record_id)
     if not s:
         raise HTTPException(status_code=404, detail="Record not found")
+    uid = current_salesperson_id.get()
+    if uid:
+        caller = session.get(User, uid)
+        if caller and (caller.role or "").strip() == "Supplier":
+            if s.supplier_user_id != caller.id and (s.supplier_email or "").strip().lower() != caller.email.strip().lower():
+                raise HTTPException(status_code=403, detail="Suppliers can only update their own records")
     for k, v in data.dict(exclude_unset=True).items():
+        if k in ("supplier_user_id", "existing_supplier_id", "is_preferred"):
+            continue
         setattr(s, k, v)
     session.add(s)
     session.commit()
@@ -21809,16 +22130,33 @@ def supplier_update_record(supplier_record_id: int, data: InventorySupplierCreat
 
 @app.put("/supplier/inventory/{supplier_record_id}/stock")
 def supplier_update_stock(supplier_record_id: int, current_stock: float, session: Session = Depends(get_session)):
-    """Supplier updates stock level of an item"""
+    """Suppliers cannot directly alter company inventory; company staff must verify goods received."""
     s = session.get(InventorySupplier, supplier_record_id)
     if not s:
         raise HTTPException(status_code=404, detail="Record not found")
+    uid = current_salesperson_id.get()
+    if uid:
+        caller = session.get(User, uid)
+        if caller and (caller.role or "").strip() == "Supplier":
+            raise HTTPException(
+                status_code=403,
+                detail="Suppliers cannot directly alter company inventory. Company staff must verify goods received.",
+            )
     item = session.get(InventoryItem, s.item_id)
     if item:
-        item.current_stock = current_stock
-        item.updated_at = datetime.now(timezone.utc)
-        session.add(item)
-        session.commit()
+        prev = float(item.current_stock or 0)
+        delta = float(current_stock or 0) - prev
+        if abs(delta) > 1e-9:
+            record_stock_movement(
+                session,
+                item=item,
+                movement_type="ADJUSTMENT_IN" if delta > 0 else "ADJUSTMENT_OUT",
+                quantity=abs(delta),
+                reason=f"Stock adjusted via supplier record #{s.id}",
+                reference_id=str(s.id),
+                reference_type="SUPPLIER_STOCK_SYNC",
+            )
+            session.commit()
     return {"ok": True}
 
 
@@ -21832,6 +22170,9 @@ class RFQCreate(BaseModel):
     supplier_name: str
     supplier_email: str
     quantity: Optional[float] = None
+    deadline: Optional[str] = None
+    warehouse_id: Optional[int] = None
+    rfq_group_code: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -21839,6 +22180,9 @@ class RFQResponseCreate(BaseModel):
     unit_price: float
     currency: str = "USD"
     lead_time_days: Optional[int] = None
+    min_order_qty: Optional[float] = None
+    availability: Optional[str] = "In Stock"
+    attachment_url: Optional[str] = None
     valid_until: Optional[str] = None
     notes: Optional[str] = None
 
@@ -21857,10 +22201,17 @@ def get_rfqs(session: Session = Depends(get_session)):
             "item_name": item.name if item else "—", "item_code": item.code if item else "—",
             "supplier_name": r.supplier_name, "supplier_email": r.supplier_email,
             "quantity": r.quantity, "notes": r.notes, "status": r.status,
+            "deadline": r.deadline, "warehouse_id": r.warehouse_id,
+            "rfq_group_code": r.rfq_group_code,
+            "approval_status": r.approval_status or "Pending",
+            "approved_response_id": r.approved_response_id,
             "token": r.token, "created_at": r.created_at.isoformat(),
             "responses": [
                 {"id": res.id, "unit_price": res.unit_price, "currency": res.currency,
-                 "lead_time_days": res.lead_time_days, "valid_until": res.valid_until,
+                 "lead_time_days": res.lead_time_days, "min_order_qty": res.min_order_qty,
+                 "availability": res.availability or "In Stock",
+                 "attachment_url": res.attachment_url, "status": res.status or "Submitted",
+                 "valid_until": res.valid_until,
                  "notes": res.notes, "submitted_at": res.submitted_at.isoformat()}
                 for res in responses
             ]
@@ -21871,7 +22222,9 @@ def get_rfqs(session: Session = Depends(get_session)):
 @app.post("/rfq")
 def create_rfq(data: RFQCreate, session: Session = Depends(get_session)):
     token = secrets.token_urlsafe(32)
-    rfq = RFQRequest(**data.dict(), token=token)
+    rfq = RFQRequest(**data.model_dump(), token=token)
+    rfq.tenant_id = current_tenant_id.get() if (current_tenant_id.get() and current_tenant_id.get() > 0) else rfq.tenant_id
+    rfq.sent_by = current_salesperson_id.get()
     session.add(rfq)
     session.commit()
     session.refresh(rfq)
@@ -21884,12 +22237,19 @@ def respond_to_rfq(rfq_id: int, data: RFQResponseCreate, token: str = None, sess
     if not rfq:
         raise HTTPException(status_code=404, detail="RFQ not found")
     # The responder may be a supplier user from another tenant: the response belongs to the RFQ's tenant.
-    response = RFQResponse(rfq_id=rfq_id, tenant_id=rfq.tenant_id, **data.dict())
+    response = RFQResponse(
+        rfq_id=rfq_id,
+        tenant_id=rfq.tenant_id,
+        supplier_name=rfq.supplier_name,
+        supplier_email=rfq.supplier_email,
+        **data.model_dump(),
+    )
     session.add(response)
     rfq.status = "Responded"
     session.add(rfq)
     session.commit()
-    return {"ok": True}
+    session.refresh(response)
+    return {"ok": True, "response_id": response.id}
 
 
 @app.put("/rfq/{rfq_id}/status")

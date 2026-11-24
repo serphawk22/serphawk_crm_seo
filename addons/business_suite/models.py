@@ -82,13 +82,24 @@ class OwnershipHistory(SQLModel, table=True):
 
 
 class StockMovement(SQLModel, table=True):
-    """SCM2-54: Stock in/out log for inventory items."""
+    """SCM2-54 & Pulpos Immutable Stock Movement Ledger."""
     __tablename__ = "stock_movements"
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
     item_id: int = Field(index=True)
+    warehouse_id: Optional[int] = Field(default=None, index=True)
+    movement_type: str = Field(default="ADJUSTMENT_IN", max_length=50, index=True)
+    quantity: float = Field(default=0.0)
+    previous_stock: float = Field(default=0.0)
+    new_stock: float = Field(default=0.0)
+    reference_id: Optional[str] = Field(default=None, max_length=120)
+    reference_type: Optional[str] = Field(default=None, max_length=50)
+    performed_by: Optional[int] = Field(default=None)
+    performed_by_name: Optional[str] = Field(default=None, max_length=200)
+    idempotency_key: Optional[str] = Field(default=None, max_length=120, index=True)
+    # Legacy SCM2-54 fields retained for backward compatibility
     change: float = Field(default=0.0)  # +in / -out
-    reason: str = Field(default="Adjustment", max_length=50)  # Purchase, Sale, Adjustment, Return, Damage
+    reason: str = Field(default="Adjustment", max_length=255)  # Purchase, Sale, Adjustment, Return, Damage
     reference: Optional[str] = Field(default=None, max_length=255)
     balance_after: Optional[float] = Field(default=None)
     author_id: Optional[int] = Field(default=None)

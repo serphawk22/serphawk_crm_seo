@@ -37,7 +37,7 @@ export default function SalesAccessSettings({ tenantId, admissions = false }: { 
     <h2 className="text-lg font-bold">{t(admissions ? "Admissions access" : "Sales Manager access")}</h2>
     <p className="text-sm text-slate-500">{t(admissions ? "Choose which company modules Admissions accounts can use within their role permissions." : "Choose modules for the sales team within the company plan. Sales Managers see records they created or were assigned. Team Directory is reserved for Admins.")}</p>
     {!data && !message && <p role="status">{t("Loading access…")}</p>}
-    <div className="grid gap-2 sm:grid-cols-2">{data?.catalog.filter(f => (admissions ? !f.locked : f.key !== "teams") && data.entitlements[f.key] && (!dashboardParent(f.key) || data.entitlements[dashboardParent(f.key)!]) && (!f.requires_any?.length || f.requires_any.some(key => data.entitlements[key]))).map(f => <label key={f.key} className="flex items-center gap-2 text-sm">
+    <div className="grid gap-2 sm:grid-cols-2">{data?.catalog.filter(f => (admissions ? !f.locked : f.key !== "teams") && f.key !== "dashboard" && dashboardParent(f.key) !== "dashboard" && data.entitlements[f.key] && (!dashboardParent(f.key) || data.entitlements[dashboardParent(f.key)!]) && (!f.requires_any?.length || f.requires_any.some(key => data.entitlements[key]))).map(f => <label key={f.key} className="flex items-center gap-2 text-sm">
       <input type="checkbox" disabled={busy} checked={data.entitlements[f.key] && (draft[f.key] ?? data.access[f.key])} onChange={e => setDraft(previous => ({ ...previous, [f.key]: e.target.checked }))} />
       {t(f.label)}
     </label>)}</div>

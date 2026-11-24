@@ -68,7 +68,7 @@ PRESETS: Dict[str, dict] = {
         "description": "SCM HB-style: leads and admissions tracking, students, courses, batches, enrollments and fees, "
                        "attendance, portals, reports, inbox, follow-ups and email agent.",
         "features": {"dashboard_b2c", "cases", "leads", "work_queue", "task_sheet", "reports", "calls", "teams", "leaderboard", "inbox",
-                     "followups", "email_agent", "support", "institute", "ai_reports", "lead_sources", "lead_source_analytics"},
+                     "followups", "email_agent", "support", "institute", "ai_reports", "lead_sources", "lead_source_analytics", "followup_board"},
         "settings": {"default_currency": "INR", "timezone": "Asia/Kolkata", "lead_assignment": "revenue",
                      "sales_scoping": True, "home_dashboard": "dashboard_b2c",
                      "lead_statuses": ["New", "Contacted", "Not Responded", "Follow-up", "Webinar Scheduled",
@@ -113,18 +113,6 @@ _LEGACY_PRESETS: Dict[str, dict] = {
         "description": "Legacy name kept for existing clients; AI voice calling is now part of the Calls module.",
         "features": _CRM_BASE | {"billing", "invoices", "proposals"},
         "settings": {},
-    },
-    "institute": {
-        "label": "Training institute",
-        "description": "SCM HB-style: leads and admissions tracking, students, courses, batches, enrollments and fees, "
-                       "attendance, portals, reports, inbox, follow-ups and email agent.",
-        "features": {"dashboard_b2c", "cases", "leads", "work_queue", "task_sheet", "reports", "calls", "teams", "leaderboard", "inbox",
-                     "followups", "email_agent", "support", "institute", "ai_reports", "lead_sources", "lead_source_analytics", "followup_board"},
-        "settings": {"default_currency": "INR", "timezone": "Asia/Kolkata", "lead_assignment": "revenue",
-                     "sales_scoping": True, "home_dashboard": "dashboard_b2c",
-                     "lead_statuses": ["New", "Contacted", "Not Responded", "Follow-up", "Webinar Scheduled",
-                                       "Webinar Attended", "Webinar Not Attended", "Walk-in Scheduled",
-                                       "Walk-in Attended", "Walk-in Not Attended", "Converted", "Lost"]},
     },
     "design-agency": {
         "label": "Design / marketing agency (Spanish-first)",

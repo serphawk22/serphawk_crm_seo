@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
+import { useTenantConfig } from "@/context/TenantConfigContext";
 import { useCurrency } from "@/components/analytics/kit";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -16,16 +17,22 @@ import { cn } from "@/lib/utils";
 type Currency = "INR" | "USD";
 const EXCHANGE = 83.5; // 1 USD ≈ 83.5 INR
 
-function fmt(amount: number, currency: Currency) {
-  if (currency === "INR") {
-    return "₹" + Math.round(amount).toLocaleString("en-IN");
+function fmtAmount(amount: number, currency: Currency, baseCurrency: Currency = "INR") {
+  let converted = amount;
+  if (currency !== baseCurrency) {
+    converted = currency === "USD" ? amount / EXCHANGE : amount * EXCHANGE;
   }
-  const usd = amount / EXCHANGE;
-  return "$" + Math.round(usd).toLocaleString("en-US");
+  if (currency === "INR") {
+    return "₹" + Math.round(converted).toLocaleString("en-IN");
+  }
+  return "$" + Math.round(converted).toLocaleString("en-US");
 }
 
 export default function RevenueDashboard() {
   const { role, loading: roleLoading } = useRole();
+  const { settings } = useTenantConfig();
+  const baseCurrency: Currency = (settings?.default_currency || "").toUpperCase() === "USD" ? "USD" : "INR";
+  const fmt = (amount: number, c: Currency) => fmtAmount(amount, c, baseCurrency);
   const router = useRouter();
 
   const [currency, setCurrency] = useCurrency();

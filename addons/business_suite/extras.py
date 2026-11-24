@@ -277,12 +277,15 @@ def get_public_proposal(uuid: str, session: Session = Depends(get_session)):
         "deal_title": deal.title if deal else doc.title,
         "deal_stage": deal.stage if deal else ("Closed Won" if doc.status == "Accepted" else "Negotiation"),
     }
+    tenant_cur = tenant_settings.get_setting(doc.tenant_id, "default_currency", None) if doc.tenant_id else None
+    effective_currency = tenant_cur or doc.currency or "INR"
     if kind == "quote":
         items = session.exec(select(QuoteItem).where(QuoteItem.quote_id == doc.id)).all()
         comments = session.exec(select(ProposalComment).where(ProposalComment.quote_id == doc.id)
                                 .order_by(ProposalComment.created_at.asc())).all()
         d = doc.model_dump()
         d.update(base)
+        d["currency"] = effective_currency
         d["items"] = [i.model_dump() for i in items]
         d["comments"] = [c.model_dump() for c in comments]
         return d
@@ -291,7 +294,7 @@ def get_public_proposal(uuid: str, session: Session = Depends(get_session)):
     terms = tenant_settings.get_setting(doc.tenant_id, "proposal_terms", "Standard terms and conditions apply.")
     return {
         "id": doc.id, "public_uuid": doc.public_uuid, "quote_number": f"PROP-{doc.id:04d}", "title": doc.title,
-        "status": doc.status, "grand_total": doc.total_value or 0.0, "currency": doc.currency or "INR",
+        "status": doc.status, "grand_total": doc.total_value or 0.0, "currency": effective_currency,
         "valid_until": doc.valid_until, "notes": doc.content, "terms": terms,
         "signed_at": doc.signed_at.isoformat() if doc.signed_at else None, "signed_by": doc.signature_data or None,
         "items": _proposal_items(doc), "comments": [c.model_dump() for c in comments], "is_proposal": True, **base,
@@ -302,8 +305,10 @@ def get_public_proposal(uuid: str, session: Session = Depends(get_session)):
 def public_proposal_pdf(uuid: str, session: Session = Depends(get_session)):
     """The PDF behind a share link. The document is resolved by its secret UUID only."""
     from main import proposal_pdf, quote_pdf
+    from modules.tenant_scope import using_tenant
     kind, doc = _find_by_uuid(session, uuid)
-    return quote_pdf(doc.id, session=session) if kind == "quote" else proposal_pdf(doc.id, session=session)
+    with using_tenant(doc.tenant_id):
+        return quote_pdf(doc.id, session=session) if kind == "quote" else proposal_pdf(doc.id, session=session)
 
 
 def _guard_open(doc) -> None:

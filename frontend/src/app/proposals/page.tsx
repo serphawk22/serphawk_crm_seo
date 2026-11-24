@@ -3,7 +3,7 @@ import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus, X, Loader2, FileSignature, CheckCircle, Send, Clock, XCircle, IndianRupee, Trash2, Eye, Edit3, Download, PlayCircle, Search, ShoppingCart, ChevronRight, User2, Building2, Minus, FileText, RefreshCw, FilePlus2, Link2, Sparkles, Check, ArrowRightLeft, LayoutGrid, List, type LucideIcon } from "lucide-react";
+import { Plus, X, Loader2, FileSignature, CheckCircle, Send, Clock, XCircle, IndianRupee, DollarSign, Trash2, Eye, Edit3, Download, PlayCircle, Search, ShoppingCart, ChevronRight, User2, Building2, Minus, FileText, RefreshCw, FilePlus2, Link2, Sparkles, Check, ArrowRightLeft, LayoutGrid, List, type LucideIcon } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
 import { useLanguage } from "@/context/LanguageContext";
@@ -52,9 +52,12 @@ interface CatalogItem {
   code: string;
   description?: string;
   category: string;
+  catalog_source?: "products" | "inventory";
   unit: string;
   photo_url?: string;
   unit_price: number;
+  currency?: string;
+  tax_rate?: number;
   current_stock: number;
 }
 
@@ -77,7 +80,7 @@ export function toUsd(inr: number): number {
 
 const CURRENCIES = [
   { code: "INR", label: "INR (₹)", symbol: "₹", icon: IndianRupee },
-  { code: "USD", label: "USD ($)", symbol: "$", icon: IndianRupee },
+  { code: "USD", label: "USD ($)", symbol: "$", icon: DollarSign },
 ];
 
 function fmtUsd(val: number): string {
@@ -86,6 +89,10 @@ function fmtUsd(val: number): string {
 
 function fmtInr(val: number): string {
   return `₹${val.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtCur(val: number, cur: "USD" | "INR"): string {
+  return cur === "USD" ? fmtUsd(val) : fmtInr(val);
 }
 
 function fmtDualCurrency(amount: number, baseCurr: string = "INR"): { usdText: string; inrText: string } {
@@ -132,6 +139,7 @@ function ProposalsPageContent() {
   const [showWizard, setShowWizard]     = useState(false);
   const [step, setStep]                 = useState<WizardStep>("recipient");
   const [saving, setSaving]             = useState(false);
+  const [createdProposal, setCreatedProposal] = useState<Proposal | null>(null);
 
   // Recipient step
   const [recipientType, setRecipientType] = useState<"client" | "lead">("client");
@@ -140,13 +148,14 @@ function ProposalsPageContent() {
   const [recipientSearch, setRecipientSearch]   = useState("");
 
   // Cart step
-  const { settings } = useTenantConfig();
+  const { settings, hasFeature } = useTenantConfig();
+  const inventoryEnabled = hasFeature("inventory");
   const workspaceCur: "USD" | "INR" = (settings?.default_currency || "INR").toUpperCase() === "USD" ? "USD" : "INR";
   const curSym = workspaceCur === "USD" ? "$" : "₹";
   const [cart, setCart]                 = useState<LineItem[]>([]);
   const [currency, setCurrency]         = useCurrency();
   const [catalogSearch, setCatalogSearch] = useState("");
-  const [catalogCategory, setCatalogCategory] = useState("All");
+  const [catalogCategory, setCatalogCategory] = useState("Product Catalog");
 
   // Custom Item Form state
   const [customName, setCustomName]     = useState("");
@@ -239,12 +248,17 @@ function ProposalsPageContent() {
     setCart([]);
     setCurrency(workspaceCur);
     setCatalogSearch("");
-    setCatalogCategory("All");
+    setCatalogCategory("Product Catalog");
     setQuoteTitle("");
     setValidUntil("");
     setNotes("");
     setSendStatus("Sent");
+    setCreatedProposal(null);
     setShowWizard(true);
+    fetch(`${API_BASE_URL}/proposals/catalog`)
+      .then(r => r.json())
+      .then(cat => setCatalog(cat.items || []))
+      .catch(console.error);
   }
 
   function recipientName(): string {
@@ -270,7 +284,7 @@ function ProposalsPageContent() {
     const finalPrice = item.unit_price > 0 ? item.unit_price : 100;
 
     setCart(prev => {
-      const existing = prev.findIndex(c => c.product_id === item.id);
+      const existing = prev.findIndex(c => c.product_id === item.id && c.product_name === item.name);
       if (existing >= 0) {
         const updated = [...prev];
         updated[existing] = { ...updated[existing], quantity: updated[existing].quantity + 1 };
@@ -282,7 +296,7 @@ function ProposalsPageContent() {
         description: item.description,
         quantity: 1,
         unit_price: finalPrice,
-        unit: item.unit || "pcs",
+        unit: item.unit || "service",
         currency,
       }];
     });
@@ -317,9 +331,8 @@ function ProposalsPageContent() {
     setCart(prev => prev.map((li, i) => i === idx ? { ...li, quantity: qty } : li));
   }
 
-  function updateCartPriceInr(idx: number, inrVal: number) {
-    const targetPrice = currency === "INR" ? inrVal : toUsd(inrVal);
-    setCart(prev => prev.map((li, i) => i === idx ? { ...li, unit_price: targetPrice } : li));
+  function updateCartPriceInr(idx: number, val: number) {
+    setCart(prev => prev.map((li, i) => i === idx ? { ...li, unit_price: val } : li));
   }
 
   // When proposal currency base switches
@@ -366,8 +379,14 @@ function ProposalsPageContent() {
         return;
       }
 
-      setShowWizard(false);
+      const data = await res.json().catch(() => ({}));
+      const createdProp = data?.proposal || null;
       await fetchProposals();
+      if (createdProp) {
+        setCreatedProposal(createdProp);
+      } else {
+        setShowWizard(false);
+      }
     } catch (err) {
       console.error(err);
       alert("Failed to submit proposal.");
@@ -398,9 +417,101 @@ function ProposalsPageContent() {
     setSelected(null);
   }
 
-  function downloadPDF(id: number) {
-    const uid = user?.id ? `?user_id=${user.id}` : "";
-    window.open(`${API_BASE_URL}/proposals/${id}/pdf${uid}`, "_blank");
+  async function downloadPDF(id: number) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/proposals/${id}/pdf`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `quotation-Q${String(id).padStart(4, "0")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      alert("Failed to download PDF.");
+    }
+  }
+
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
+
+  async function previewDraftPDF() {
+    setPreviewLoading(true);
+    const autoTitle = quoteTitle.trim() ||
+      `Commercial Proposal for ${recipientName()} – ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+    try {
+      const res = await fetch(`${API_BASE_URL}/proposals/preview-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: autoTitle,
+          client_id: recipientType === "client" ? selectedClientId : null,
+          lead_id: recipientType === "lead" ? selectedLeadId : null,
+          recipient_type: recipientType,
+          content: notes || null,
+          status: sendStatus,
+          valid_until: validUntil || null,
+          total_value: cartTotal,
+          line_items: cart,
+          currency,
+          deal_id: selectedDealId || null,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      setPreview({
+        id: 0,
+        name: autoTitle,
+        url: URL.createObjectURL(new Blob([blob], { type: "application/pdf" })),
+      });
+    } catch {
+      alert("Failed to load quotation PDF preview.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function downloadDraftPDF() {
+    setDownloadLoading(true);
+    const autoTitle = quoteTitle.trim() ||
+      `Commercial Proposal for ${recipientName()} – ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+    try {
+      const res = await fetch(`${API_BASE_URL}/proposals/preview-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: autoTitle,
+          client_id: recipientType === "client" ? selectedClientId : null,
+          lead_id: recipientType === "lead" ? selectedLeadId : null,
+          recipient_type: recipientType,
+          content: notes || null,
+          status: sendStatus,
+          valid_until: validUntil || null,
+          total_value: cartTotal,
+          line_items: cart,
+          currency,
+          deal_id: selectedDealId || null,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      const safeName = (recipientName() || "quotation").replace(/[^a-zA-Z0-9_-]/g, "_");
+      a.download = `quotation-${safeName}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      alert("Failed to download quotation PDF.");
+    } finally {
+      setDownloadLoading(false);
+    }
   }
 
   function previewPDF(id: number) {
@@ -427,10 +538,30 @@ function ProposalsPageContent() {
         return p.status === filterStatus;
       });
 
-  const catalogCategories = ["All", ...Array.from(new Set(catalog.map(i => i.category || "General")))];
-  const filteredCatalog = catalog.filter(item => {
-    const matchCat = catalogCategory === "All" || item.category === catalogCategory;
-    const matchQ   = !catalogSearch || item.name.toLowerCase().includes(catalogSearch.toLowerCase());
+  const visibleCatalog = useMemo(() => {
+    return catalog.filter(item => {
+      if (item.catalog_source === "inventory" && !inventoryEnabled) return false;
+      return true;
+    });
+  }, [catalog, inventoryEnabled]);
+
+  const catalogCategories = useMemo(() => {
+    const opts = ["Product Catalog"];
+    if (inventoryEnabled) {
+      opts.push("Inventory Catalog");
+    }
+    return opts;
+  }, [inventoryEnabled]);
+
+  const filteredCatalog = visibleCatalog.filter(item => {
+    const matchCat = catalogCategory === "Inventory Catalog" && inventoryEnabled
+      ? item.catalog_source === "inventory"
+      : (item.catalog_source || "products") === "products";
+    const q = catalogSearch.toLowerCase();
+    const matchQ   = !catalogSearch
+      || item.name.toLowerCase().includes(q)
+      || (item.code && item.code.toLowerCase().includes(q))
+      || (item.description && item.description.toLowerCase().includes(q));
     return matchCat && matchQ;
   });
 
@@ -466,7 +597,7 @@ function ProposalsPageContent() {
                 {proposals.length}
               </span>
               <span className="text-[10px] px-1.5 py-0.2 rounded font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/40">
-                INR (₹) Engine
+                {workspaceCur === "USD" ? "USD ($) Engine" : "INR (₹) Engine"}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 dark:text-zinc-500 leading-none mt-0.5 truncate">
@@ -533,7 +664,7 @@ function ProposalsPageContent() {
         </div>
         <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-lg px-2.5 py-1.5 flex items-center gap-2 shadow-2xs col-span-2 sm:col-span-1">
           <div className="w-6 h-6 rounded-md bg-violet-50 dark:bg-violet-950/40 border border-violet-200/50 dark:border-violet-800/40 flex items-center justify-center text-violet-600 dark:text-violet-400 shrink-0">
-            <IndianRupee className="w-3 h-3" />
+            {workspaceCur === "USD" ? <DollarSign className="w-3 h-3" /> : <IndianRupee className="w-3 h-3" />}
           </div>
           <div className="min-w-0">
             <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Won Revenue</div>
@@ -671,7 +802,7 @@ function ProposalsPageContent() {
                     </div>
 
                     <div className="text-right font-black text-xs text-slate-900 dark:text-white whitespace-nowrap">
-                      {fmtInr(inrVal)}
+                      {fmtCur(inrVal, workspaceCur)}
                     </div>
 
                     <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
@@ -781,7 +912,7 @@ function ProposalsPageContent() {
                   {/* Amount & Row Actions */}
                   <div className="flex items-center justify-between mt-1 pt-2 border-t border-slate-100 dark:border-zinc-800">
                     <div className="text-sm font-black text-slate-900 dark:text-white">
-                      {fmtInr(inrVal)}
+                      {fmtCur(inrVal, workspaceCur)}
                     </div>
                     <div className="flex items-center gap-1">
                       {p.public_uuid && (
@@ -892,14 +1023,14 @@ function ProposalsPageContent() {
                         <tr className="bg-slate-50 dark:bg-slate-900 text-left">
                           <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs">Product / Service</th>
                           <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right"><LocalizedText text={"Qty"} /></th>
-                          <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right">Unit (₹)</th>
+                          <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right">Unit ({curSym})</th>
                           <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right">Total</th>
                         </tr>
                       </thead>
                       <tbody>
                         {selected.line_items.map((li, i) => {
-                          const liInr = li.currency === "INR" ? li.unit_price : toInr(li.unit_price);
-                          const totalInr = liInr * li.quantity;
+                          const unitPrice = li.unit_price || 0;
+                          const lineTotal = unitPrice * li.quantity;
 
                           return (
                             <tr key={i} className="border-t border-slate-100 dark:border-slate-800">
@@ -911,10 +1042,10 @@ function ProposalsPageContent() {
                                 {li.quantity} {li.unit || "pcs"}
                               </td>
                               <td className="px-3 py-2.5 text-right text-slate-600 dark:text-slate-300 font-mono text-xs">
-                                <div>{fmtInr(liInr)}</div>
+                                <div>{fmtCur(unitPrice, workspaceCur)}</div>
                               </td>
                               <td className="px-3 py-2.5 text-right font-bold text-slate-900 dark:text-white font-mono">
-                                <div>{fmtInr(totalInr)}</div>
+                                <div>{fmtCur(lineTotal, workspaceCur)}</div>
                               </td>
                             </tr>
                           );
@@ -924,7 +1055,7 @@ function ProposalsPageContent() {
                             Grand Total:
                           </td>
                           <td className="px-3 py-2.5 text-right font-black text-blue-600 text-base font-mono">
-                            <div>{fmtInr(selected.currency === "INR" ? (selected.total_value || 0) : toInr(selected.total_value || 0))}</div>
+                            <div>{fmtCur(selected.total_value || 0, workspaceCur)}</div>
                           </td>
                         </tr>
                       </tbody>
@@ -947,7 +1078,7 @@ function ProposalsPageContent() {
                   { label: "Assigned Sales Rep", value: selected.salesperson_name || selected.creator_name || "Unassigned" },
                   { label: "Deals Pipeline",    value: `Stage: ${selected.deal_stage || "Negotiation"}` },
                   { label: "Valid Until",       value: selected.valid_until || "—" },
-                  { label: "Exchange Rate",     value: "INR (₹)" },
+                  { label: "Currency",          value: workspaceCur === "USD" ? "USD ($)" : "INR (₹)" },
                   { label: "Created Date",      value: new Date(selected.created_at).toLocaleDateString("en-US") },
                   { label: "Created By",        value: selected.creator_name || "Sales Admin" },
                 ].map(m => (
@@ -1022,7 +1153,7 @@ function ProposalsPageContent() {
       {/* PDF PREVIEW MODAL                                                   */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {preview && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
           <div className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-zinc-800">
               <h3 className="font-bold text-slate-900 dark:text-white text-sm">{preview.name} (PDF Preview)</h3>
@@ -1047,7 +1178,7 @@ function ProposalsPageContent() {
             <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161616]">
               <div>
                 <h2 className="text-base font-bold text-slate-900 dark:text-white">Create Commercial Proposal</h2>
-                <p className="text-xs text-slate-500">Currency: ₹ INR</p>
+                <p className="text-xs text-slate-500">Currency: {curSym} {workspaceCur}</p>
               </div>
               <button onClick={() => setShowWizard(false)} className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 cursor-pointer">
                 <X className="w-5 h-5" />
@@ -1055,10 +1186,11 @@ function ProposalsPageContent() {
             </div>
 
             {/* Stepper */}
+            {!createdProposal && (
             <div className="flex border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111]">
               {[
                 { id: "recipient", num: "1", title: "Select Client", shortTitle: "Client" },
-                { id: "cart",      num: "2", title: "Products & Pricing (₹)", shortTitle: "Pricing" },
+                { id: "cart",      num: "2", title: `Products & Pricing (${curSym})`, shortTitle: "Pricing" },
                 { id: "details",   num: "3", title: "Terms & Send", shortTitle: "Terms" },
               ].map(s => {
                 const isActive = step === s.id;
@@ -1078,9 +1210,68 @@ function ProposalsPageContent() {
                 );
               })}
             </div>
+            )}
+
+            {createdProposal && (
+              <div className="p-8 text-center space-y-5 overflow-y-auto">
+                <div className="w-14 h-14 rounded-2xl bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
+                  <CheckCircle className="w-7 h-7" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                    Quotation #Q-{String(createdProposal.id).padStart(4, "0")} Ready
+                  </p>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                    {createdProposal.title}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {createdProposal.status === "Sent"
+                      ? "Your proposal has been created and sent to the client."
+                      : "Your proposal has been saved as a draft."}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => previewPDF(createdProposal.id)}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md transition-colors"
+                  >
+                    <Eye className="w-4 h-4" /> View Quotation PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadPDF(createdProposal.id)}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md transition-colors"
+                  >
+                    <Download className="w-4 h-4" /> Download PDF
+                  </button>
+                  {createdProposal.public_uuid && (
+                    <a
+                      href={`/p/${createdProposal.public_uuid}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold transition-colors"
+                    >
+                      <Link2 className="w-4 h-4" /> Open Public View
+                    </a>
+                  )}
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShowWizard(false); setCreatedProposal(null); }}
+                    className="px-5 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* ── STEP 1: RECIPIENT ────────────────────────────────────── */}
-            {step === "recipient" && (
+            {!createdProposal && step === "recipient" && (
               <div className="p-6 flex-1 overflow-y-auto">
                 <div className="flex gap-2 mb-4">
                   <button onClick={() => { setRecipientType("client"); setSelectedLeadId(null); }}
@@ -1166,7 +1357,7 @@ function ProposalsPageContent() {
             )}
 
             {/* ── STEP 2: CART & DUAL CURRENCY AUTO CONVERSION ─────────── */}
-            {step === "cart" && (
+            {!createdProposal && step === "cart" && (
               <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
                 {/* Left: Custom Product Form & Catalog */}
                 <div className="flex-1 overflow-y-auto p-5 border-r border-slate-200 dark:border-slate-800 space-y-5">
@@ -1285,28 +1476,35 @@ function ProposalsPageContent() {
                       </select>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
                       {filteredCatalog.map(item => {
-                        const inCart = cart.find(c => c.product_id === item.id);
+                        const inCart = cart.find(c => c.product_id === item.id && c.product_name === item.name);
                         const price = item.unit_price > 0 ? item.unit_price : 100;
 
                         return (
-                          <button key={item.id} onClick={() => addToCart(item)}
-                            className={`text-left p-2.5 rounded-xl border transition-all text-xs flex items-center justify-between gap-2 ${
+                          <button key={`${item.catalog_source || "products"}-${item.id}-${item.code}`} onClick={() => addToCart(item)}
+                            className={`text-left p-2.5 rounded-xl border transition-all text-xs flex items-start justify-between gap-2 ${
                               inCart ? "border-blue-400 bg-blue-50/70 dark:bg-blue-900/20" : "border-slate-200 dark:border-slate-800 hover:border-blue-300"
                             }`}>
                             <div className="min-w-0 flex-1">
                               <p className="font-bold text-slate-900 dark:text-white truncate">{item.name}</p>
-                              <p className="text-[10px] text-slate-400 truncate">{item.category} · {item.unit || "pcs"}</p>
+                              <p className="text-[10px] text-slate-400 truncate">
+                                {item.catalog_source === "inventory" ? "Inventory" : "Product"} · {item.category} · {item.unit || "service"}{item.code ? ` · ${item.code}` : ""}
+                              </p>
+                              {item.description && (
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5 leading-snug">
+                                  {item.description}
+                                </p>
+                              )}
                             </div>
-                            <div className="text-right shrink-0">
-                              <div className="font-black text-blue-600 font-mono">{fmtInr(price)}</div>
+                            <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                              <div className="font-black text-blue-600 font-mono">{fmtCur(price, currency)}</div>
+                              {inCart && (
+                                <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
+                                  ×{inCart.quantity}
+                                </span>
+                              )}
                             </div>
-                            {inCart && (
-                              <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
-                                ×{inCart.quantity}
-                              </span>
-                            )}
                           </button>
                         );
                       })}
@@ -1332,8 +1530,8 @@ function ProposalsPageContent() {
                         <p className="text-[11px] text-slate-400 mt-1">Add items from the catalog or create a custom service above.</p>
                       </div>
                     ) : cart.map((li, idx) => {
-                      const liInr = li.currency === "INR" ? li.unit_price : toInr(li.unit_price);
-                      const subtotalInr = liInr * li.quantity;
+                      const liPrice = li.unit_price || 0;
+                      const subtotalCur = liPrice * li.quantity;
 
                       return (
                         <div key={idx} className="bg-white dark:bg-[#111] rounded-xl p-3 border border-slate-200 dark:border-slate-800 text-xs">
@@ -1357,18 +1555,18 @@ function ProposalsPageContent() {
                               <span className="text-[10px] text-slate-400">{li.unit}</span>
                             </div>
                             <div className="text-right">
-                              <div className="font-black text-blue-600 font-mono">{fmtInr(subtotalInr)}</div>
+                              <div className="font-black text-blue-600 font-mono">{fmtCur(subtotalCur, currency)}</div>
                             </div>
                           </div>
 
                           {/* Live unit price input */}
                           <div className="pt-1.5 border-t border-slate-100 dark:border-zinc-800">
                             <div>
-                              <span className="text-[9px] font-bold text-blue-600 block">Unit (₹ INR)</span>
+                              <span className="text-[9px] font-bold text-blue-600 block">Unit ({currency === "USD" ? "$ USD" : "₹ INR"})</span>
                               <input
                                 type="number"
                                 step="0.01"
-                                value={liInr}
+                                value={liPrice}
                                 onChange={e => updateCartPriceInr(idx, parseFloat(e.target.value) || 0)}
                                 className="w-full px-1.5 py-0.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-[11px] font-mono text-slate-900 dark:text-white"
                               />
@@ -1383,7 +1581,7 @@ function ProposalsPageContent() {
                   <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111]">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-xs text-slate-500 font-semibold">Total:</span>
-                      <span className="text-base font-black text-blue-600 font-mono">{dualTotal.inrText}</span>
+                      <span className="text-base font-black text-blue-600 font-mono">{fmtCur(cartTotal, currency)}</span>
                     </div>
 
                     <div className="flex gap-2">
@@ -1401,7 +1599,7 @@ function ProposalsPageContent() {
             )}
 
             {/* ── STEP 3: DETAILS & SEND ───────────────────────────────── */}
-            {step === "details" && (
+            {!createdProposal && step === "details" && (
               <div className="flex-1 overflow-y-auto p-6 max-w-xl mx-auto w-full space-y-4">
                 {/* Summary banner */}
                 <div className="bg-blue-50 dark:bg-blue-950/30 rounded-2xl p-4 border border-blue-200 dark:border-blue-900/50">
@@ -1411,7 +1609,7 @@ function ProposalsPageContent() {
                   </div>
                   <div className="flex items-center gap-3 mt-2">
                     <div className="text-xl font-black text-blue-700 dark:text-blue-400 font-mono">
-                      {dualTotal.inrText}
+                      {fmtCur(cartTotal, currency)}
                     </div>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">{cart.length} line item{cart.length !== 1 ? "s" : ""} included.</p>
@@ -1521,12 +1719,32 @@ function ProposalsPageContent() {
                   </div>
                 </div>
 
-                <div className="flex gap-3 pt-3">
+                <div className="flex flex-wrap gap-3 pt-3">
                   <button onClick={() => setStep("cart")}
-                    className="px-6 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300">
+                    className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300">
                     <LocalizedText text={"Back"} /> </button>
+                  <button
+                    type="button"
+                    onClick={previewDraftPDF}
+                    disabled={previewLoading || downloadLoading || saving}
+                    title="Preview Quotation PDF"
+                    aria-label="Preview Quotation PDF"
+                    className="p-2.5 rounded-xl border border-purple-200 dark:border-purple-800/60 bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 disabled:opacity-50 transition-all flex items-center justify-center"
+                  >
+                    {previewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={downloadDraftPDF}
+                    disabled={downloadLoading || previewLoading || saving}
+                    title="Download Quotation PDF"
+                    aria-label="Download Quotation PDF"
+                    className="p-2.5 rounded-xl border border-blue-200 dark:border-blue-800/60 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 disabled:opacity-50 transition-all flex items-center justify-center"
+                  >
+                    {downloadLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  </button>
                   <button onClick={submitQuote} disabled={saving}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 disabled:opacity-50 transition-all shadow-md active:scale-95">
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 disabled:opacity-50 transition-all shadow-md active:scale-95">
                     {saving ? (
                       <><Loader2 className="w-4 h-4 animate-spin" /> Creating Proposal…</>
                     ) : (

@@ -79,7 +79,9 @@ _FEATURES: List[Feature] = [
        path_prefixes=("/email-campaigns",), path_regexes=(r"^/smart-research$",)),
     # Sales operations
     _f("inventory", "Inventory & orders", "Sales operations", "Inventory, RFQs, purchase and sales orders.",
-       path_prefixes=("/inventory", "/rfq", "/purchase-orders", "/sales-orders")),
+       path_prefixes=("/inventory", "/rfq", "/purchase-orders", "/sales-orders", "/warehouses",
+                      "/stock-movements", "/stock-adjustments", "/stock-transfers", "/stock-counts",
+                      "/goods-receipts", "/supplier-payments", "/suppliers")),
     _f("products", "Products catalog", "Sales operations", path_prefixes=("/products",)),
     _f("billing", "Quotes & billing", "Sales operations", "Quotes and the billing workspace.", path_prefixes=("/quotes",)),
     _f("invoices", "Invoices", "Sales operations", "Create, track and export invoices.", default_on=False, path_prefixes=("/invoices",)),
