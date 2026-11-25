@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, Star, User, ArrowLeft, Plus, MessageSquare,
@@ -83,11 +83,24 @@ export default function ClientHeader({
   const rawCustomFields = client?.custom_fields || client?.customFields || {};
   const [fieldsList, setFieldsList] = useState<{ key: string; value: string }[]>(() => {
     if (typeof rawCustomFields === 'object' && rawCustomFields !== null && !Array.isArray(rawCustomFields)) {
-      return Object.entries(rawCustomFields).filter(([k]) => k !== 'sheet_data').map(([k, v]) => ({ key: k, value: String(v) }));
+      return Object.entries(rawCustomFields).filter(([k]) => k !== 'sheet_data' && k !== 'is_sample').map(([k, v]) => ({ key: k, value: String(v) }));
     }
     return [];
   });
   const [savingFields, setSavingFields] = useState(false);
+
+  useEffect(() => {
+    const raw = client?.custom_fields || client?.customFields || {};
+    if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
+      setFieldsList(
+        Object.entries(raw)
+          .filter(([k]) => k !== 'sheet_data' && k !== 'is_sample')
+          .map(([k, v]) => ({ key: k, value: String(v) }))
+      );
+    } else {
+      setFieldsList([]);
+    }
+  }, [client?.id, client?.customFields, client?.custom_fields, showFieldsModal]);
 
   const saveCustomFields = async () => {
     setSavingFields(true);
@@ -99,7 +112,7 @@ export default function ClientHeader({
       const res = await fetch(`${API_BASE_URL}/clients/${client.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...client, customFields: obj, custom_fields: obj })
+        body: JSON.stringify({ customFields: obj, custom_fields: obj })
       });
       if (res.ok) {
         setShowFieldsModal(false);

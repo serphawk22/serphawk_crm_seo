@@ -32,11 +32,28 @@ export default function CalendarAvailabilityModal({
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
+  const getAuthHeaders = useCallback((extra: Record<string, string> = {}) => {
+    const token = typeof window !== "undefined" ? (localStorage.getItem("token") || localStorage.getItem("crm_token") || localStorage.getItem("access_token")) : null;
+    const userStr = typeof window !== "undefined" ? (localStorage.getItem("crm_user") || localStorage.getItem("user")) : null;
+    let uid = "";
+    if (userStr) {
+      try {
+        const u = JSON.parse(userStr);
+        if (u?.id) uid = String(u.id);
+      } catch {}
+    }
+    return {
+      ...extra,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(uid ? { "X-User-ID": uid } : {}),
+    };
+  }, []);
+
   const fetchBlockedSlots = useCallback(async () => {
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
       const res = await fetch(`${API_BASE_URL}/calendar/blocked-slots`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
+        headers: getAuthHeaders(),
       });
       if (res.ok) {
         const data = await res.json();
@@ -45,13 +62,13 @@ export default function CalendarAvailabilityModal({
     } catch {
       // silent
     }
-  }, []);
+  }, [getAuthHeaders]);
 
   const fetchAvailability = useCallback(async () => {
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
       const res = await fetch(`${API_BASE_URL}/calendar/availability`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
+        headers: getAuthHeaders(),
       });
       if (res.ok) {
         const data = await res.json();
@@ -69,7 +86,7 @@ export default function CalendarAvailabilityModal({
     } catch {
       // silent
     }
-  }, []);
+  }, [getAuthHeaders]);
 
   useEffect(() => {
     if (isOpen) {
@@ -83,13 +100,10 @@ export default function CalendarAvailabilityModal({
     setSavingBlock(true);
     setStatusMsg(null);
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
       const res = await fetch(`${API_BASE_URL}/calendar/availability`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        credentials: "include",
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           working_days: availabilityHours.work_days,
           start_time: availabilityHours.start_time,
@@ -116,13 +130,10 @@ export default function CalendarAvailabilityModal({
     setSavingBlock(true);
     setStatusMsg(null);
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
       const res = await fetch(`${API_BASE_URL}/calendar/blocked-slots`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        credentials: "include",
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           date: blockForm.date,
           start_time: blockForm.start_time || null,
@@ -149,10 +160,10 @@ export default function CalendarAvailabilityModal({
 
   const handleDeleteBlockedSlot = async (slotId: string) => {
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
       const res = await fetch(`${API_BASE_URL}/calendar/blocked-slots/${slotId}`, {
         method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
+        headers: getAuthHeaders(),
       });
       if (res.ok) {
         await fetchBlockedSlots();

@@ -7,7 +7,7 @@ export function proxy(request: NextRequest) {
     const url = request.nextUrl.clone(); url.hostname = base; url.protocol = "https:";
     return NextResponse.redirect(url);
   }
-  const local = process.env.NODE_ENV !== "production" && (host === "localhost" || /^[a-z0-9-]+\.localhost$/.test(host));
+  const local = process.env.NODE_ENV !== "production" && (host === "localhost" || host === "127.0.0.1" || /^[a-z0-9-]+\.localhost$/.test(host));
   if (!local && host !== base && !new RegExp("^[a-z0-9-]+\\." + base.replace(/\./g, "\\.") + "$").test(host)) {
     return new NextResponse("Company unavailable", { status: 404 });
   }

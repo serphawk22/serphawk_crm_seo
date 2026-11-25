@@ -90,7 +90,7 @@ _FEATURES: List[Feature] = [
     _f("cases", "Cases", "Support", "Track and manage support cases.", default_on=False, path_prefixes=("/cases",)),
     _f("support_sh", "Support @SH", "Support", "Open the external support ticketing portal.", default_on=False, path_prefixes=("/support/helpdesk",)),
     # System
-    _f("import_data", "Import data", "System", path_prefixes=("/import", "/api/import")),
+    _f("import_data", "Import data", "System", locked=True, path_prefixes=("/import", "/api/import")),
     _f("api_intelligence", "API Intelligence", "System", path_prefixes=("/api-intelligence",)),
     _f("demo_accounts", "Demo account data", "System"),
     # Add-ons ported from client deployments (business_suite): off unless a preset or an admin enables them
@@ -113,7 +113,7 @@ _FEATURES: List[Feature] = [
        default_on=False, path_prefixes=("/lead-capture",)),
     _f("lead_webhook", "Website lead webhook", "Business suite",
        "A website form posts leads straight into the CRM with the company's intake key; they are assigned automatically.",
-       default_on=False, path_regexes=(r"^/(api/)?leads/webhook$",)),
+       default_on=True, path_regexes=(r"^/(api/)?leads/webhook$",)),
     _f("followup_board", "Follow-up board", "Business suite",
        "The SCM BPO follow-up screens: overdue / pending / upcoming buckets, reschedule, drafted emails, overdue notices.",
        default_on=True, path_prefixes=("/follow-ups",)),

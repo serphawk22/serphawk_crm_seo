@@ -91,6 +91,7 @@ export interface CallQuestion {
 
 export interface AICall {
   id: number;
+  lead_id?: number | null;
   pitch_id: number | null;
   entity_type: EntityType | null;
   entity_id: number | null;

@@ -11,6 +11,9 @@ async function proxy(request: NextRequest) {
     const decoded = decodeURIComponent(path);
     if (decoded.startsWith("/internal/") && decoded !== "/internal/company-brand") return new Response("Not found", { status: 404 });
     return await companyFetch(request, path + request.nextUrl.search, body);
-  } catch { return Response.json({ detail: "Service temporarily unavailable" }, { status: 503 }); }
+  } catch (err) {
+    console.error("[Backend Proxy Error]:", err);
+    return Response.json({ detail: "Service temporarily unavailable" }, { status: 503 });
+  }
 }
 export { proxy as GET, proxy as POST, proxy as PUT, proxy as PATCH, proxy as DELETE, proxy as HEAD };

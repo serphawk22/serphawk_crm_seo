@@ -399,9 +399,9 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
     setEntitiesLoaded(true);
     const safe = (u: string) => fetch(`${API_BASE_URL}${u}`).then(r => r.json()).catch(() => ({}));
     const [l, c, k, e] = await Promise.all([
-      safe("/leads"),
-      safe("/clients?per_page=1000"),
-      safe("/contacts"),
+      safe("/leads?limit=100"),
+      safe("/clients?per_page=100"),
+      safe("/contacts?limit=100"),
       safe("/employees/workload"),
     ]);
     setLeads(Array.isArray(l.leads) ? l.leads : []);
@@ -489,6 +489,11 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
       if (foundClient && foundClient.assignedEmployeeId) {
         autoOwnerId = foundClient.assignedEmployeeId;
       }
+    } else if (type === "contact") {
+      const foundContact = contacts.find(c => c.id === id);
+      if (foundContact && foundContact.owner_id) {
+        autoOwnerId = foundContact.owner_id;
+      }
     }
 
     setForm(prev => ({
@@ -521,9 +526,18 @@ function RemindersBoard({ revision = 0 }: { revision?: number }) {
         name: emp?.name || (found.assignedEmployeeId ? `Sales Rep #${found.assignedEmployeeId}` : "Unassigned"),
         role: emp?.role || "Client Manager",
       };
+    } else if (type === "contact") {
+      const found = contacts.find(c => c.id === id);
+      if (!found) return null;
+      const emp = employees.find(e => e.id === found.owner_id);
+      return {
+        id: found.owner_id,
+        name: emp?.name || found.owner_name || (found.owner_id ? `Assigned Rep #${found.owner_id}` : "Unassigned"),
+        role: emp?.role || "Contact Owner",
+      };
     }
     return null;
-  }, [form.linked, leads, clients, employees]);
+  }, [form.linked, leads, clients, contacts, employees]);
 
   // ── Open Create / Edit ──
   const openCreate = (initialDate?: string) => {

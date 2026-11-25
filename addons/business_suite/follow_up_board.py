@@ -414,7 +414,7 @@ def create_followup(body: FollowUpBody, v: inbox.Viewer = Depends(get_viewer), s
         raise HTTPException(status_code=400, detail="Pick a date and time for the follow-up.")
     minutes = max(0, int(body.reminder_minutes if body.reminder_minutes is not None else DEFAULT_REMINDER_MINUTES))
     tenant_id = info.get("tenant_id") or (v.tenant_id if v.tenant_id is not None else v.user.tenant_id)
-    assignee = fu_api._check_assignee(session, v, body.owner_id) or info.get("owner_id") or v.user.id
+    assignee = fu_api._check_assignee(session, v, body.owner_id) or (contact.owner_id if contact and contact.owner_id else None) or info.get("owner_id") or v.user.id
     f = FollowUp(
         tenant_id=tenant_id, title=body.title.strip(), notes=(body.notes or "").strip() or None,
         channel=_stored(_choice(body.channel, CHANNELS, "Email")), priority=_stored(_choice(body.priority, PRIORITIES, "Medium")),
@@ -422,7 +422,8 @@ def create_followup(body: FollowUpBody, v: inbox.Viewer = Depends(get_viewer), s
         lead_id=body.lead_id if not body.client_id else None, client_id=body.client_id, contact_id=body.contact_id,
         contact_name=_contact_name(contact) if contact else info.get("contact_name"),
         contact_email=(contact.email if contact else None) or info.get("contact_email"),
-        company_name=info.get("label"), assigned_to=assignee, created_by=v.user.id, source="manual",
+        company_name=info.get("label") or (contact.business_name if contact else None) or (_contact_name(contact) if contact else None) or "Contact",
+        assigned_to=assignee, created_by=v.user.id, source="manual",
     )
     session.add(f)
     core.sync_call_followup(session, f)

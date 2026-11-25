@@ -7,7 +7,7 @@ import DuplicateLeadModal, { DuplicateLeadInfo, DuplicateDiff } from "@/componen
 import { API_BASE_URL } from "@/config";
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, Filter, MoreVertical, Building2, Globe, Mail, Phone, PhoneCall, MapPin, Sparkles, Upload, Download, X, Loader2, ChevronDown, ArrowUpRight, CheckCircle2, Clock, Zap, Edit2, Trash2, Tag, CalendarClock, UserCheck, Calendar, ArrowRightLeft, History, User, Briefcase, UserPlus, FileScan } from "lucide-react";
+import { Search, Plus, Filter, MoreVertical, Building2, Globe, Mail, Phone, PhoneCall, MapPin, Sparkles, Upload, Download, X, Loader2, ChevronDown, ArrowUpRight, CheckCircle2, Clock, Zap, Edit2, Trash2, Tag, CalendarClock, UserCheck, Calendar, ArrowRightLeft, History, User, Briefcase, UserPlus, FileScan, Layers, Settings } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ViewSwitcher, ViewType } from "@/components/ViewSwitcher";
@@ -53,6 +53,7 @@ interface Lead {
   status: string;
   is_converted: boolean;
   converted_student_id?: number | null;
+  space_id?: number | null;
   notes?: string | null;
   created_at: string;
   owner_id?: number | null;
@@ -83,6 +84,26 @@ function validatePhoneInput(raw: string): string | null {
     return "Please enter a valid phone number with country code (e.g. +919876543210).";
   }
   return null;
+}
+
+export interface LeadStageItem {
+  id: string;
+  name: string;
+  color: string;
+  order: number;
+  is_won?: boolean;
+  is_lost?: boolean;
+}
+
+export interface LeadSpaceItem {
+  id: number;
+  tenant_id?: number | null;
+  name: string;
+  description?: string | null;
+  is_default: boolean;
+  sort_order: number;
+  stages: LeadStageItem[];
+  leads_count?: number;
 }
 
 interface ActivityLogEntry {
@@ -217,12 +238,27 @@ export default function LeadsPage() {
     }
   }, [role, router]);
 
+  const [spaces, setSpaces] = useState<LeadSpaceItem[]>([]);
+  const [selectedSpace, setSelectedSpace] = useState<LeadSpaceItem | null>(null);
+  const [selectedSpaceId, setSelectedSpaceId] = useState<number | null>(null);
+  const selectedSpaceIdRef = React.useRef<number | null>(null);
+  const [spaceDropdownOpen, setSpaceDropdownOpen] = useState(false);
+
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loadError, setLoadError] = useState("");
   const [schedule, setSchedule] = useState<{ lead: Lead; stage: ScheduleStage } | null>(null);
   const STATUSES = useMemo(() => {
+    if (selectedSpace?.stages && selectedSpace.stages.length > 0) {
+      const spaceStageNames = selectedSpace.stages.map(s => s.name);
+      const present = leads.map(l => l.status).filter(Boolean);
+      const combined = [...spaceStageNames];
+      for (const st of present) {
+        if (!combined.includes(st)) combined.push(st);
+      }
+      return combined;
+    }
     return leadStages(tenantSettings.lead_statuses, institute, DEFAULT_STATUSES, leads.map(l => l.status));
-  }, [tenantSettings.lead_statuses, institute, leads]);
+  }, [selectedSpace, tenantSettings.lead_statuses, institute, leads]);
   const [courses, setCourses] = useState<{ id: number; title: string; category?: string }[]>([]);
   useEffect(() => { if (institute) fetch(`${API_BASE_URL}/courses`).then(r => r.ok ? r.json() : Promise.reject()).then(d => setCourses(d.courses || [])).catch(() => setLoadError("Could not load courses")); }, [institute]);
   const [loading, setLoading] = useState(true);
@@ -344,7 +380,7 @@ export default function LeadsPage() {
         const d = await res.json();
         setSampleStats(d);
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   const handleDeleteSampleData = async () => {
@@ -459,7 +495,32 @@ export default function LeadsPage() {
   };
 
   useEffect(() => {
-    fetchLeads();
+    const initLeadSpaces = async () => {
+      try {
+        const token = localStorage.getItem('token') || localStorage.getItem('crm_token');
+        const res = await fetch(`${API_BASE_URL}/lead-spaces`, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        if (res.ok) {
+          const data: LeadSpaceItem[] = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setSpaces(data);
+            const querySpaceId = searchParams?.get("space_id");
+            const matched = querySpaceId ? data.find(s => String(s.id) === querySpaceId) : null;
+            const targetSpace = matched || data.find(s => s.is_default) || data[0];
+            setSelectedSpace(targetSpace);
+            setSelectedSpaceId(targetSpace.id);
+            selectedSpaceIdRef.current = targetSpace.id;
+            fetchLeads(false, targetSpace.id);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load lead spaces", err);
+      }
+      fetchLeads(false, null);
+    };
+    initLeadSpaces();
     fetchActivities();
     fetchEmployees();
     fetchSampleStatus();
@@ -504,13 +565,17 @@ export default function LeadsPage() {
     }
   };
 
-  const fetchLeads = async (forceFull = false) => {
+  const fetchLeads = async (forceFull = false, spaceIdOverride?: number | null) => {
     if (leads.length === 0) setLoading(true);
     setLoadError("");
     try {
+      const activeSpaceId = spaceIdOverride !== undefined ? spaceIdOverride : selectedSpaceIdRef.current;
       const url = new URL(`${API_BASE_URL}/leads`, window.location.origin);
       if ((role === 'SalesManager' || role === 'Employee') && user?.id) {
         url.searchParams.append('owner_id', String(user.id));
+      }
+      if (activeSpaceId) {
+        url.searchParams.append('space_id', String(activeSpaceId));
       }
       if (!forceFull) {
         url.searchParams.append('limit', '20');
@@ -538,6 +603,9 @@ export default function LeadsPage() {
         const remUrl = new URL(`${API_BASE_URL}/leads`, window.location.origin);
         if ((role === 'SalesManager' || role === 'Employee') && user?.id) {
           remUrl.searchParams.append('owner_id', String(user.id));
+        }
+        if (activeSpaceId) {
+          remUrl.searchParams.append('space_id', String(activeSpaceId));
         }
         remUrl.searchParams.append('offset', '20');
         fetch(remUrl.toString(), { headers })
@@ -651,7 +719,8 @@ export default function LeadsPage() {
 
   const openCreate = () => {
     setEditLead(null);
-    setForm({ ...emptyForm });
+    const initialStatus = selectedSpace?.stages?.[0]?.name || "New";
+    setForm({ ...emptyForm, status: initialStatus });
     setCustomFields([]);
     setFormError(null);
     setAutofillUrl("");
@@ -754,12 +823,13 @@ export default function LeadsPage() {
       return acc;
     }, {} as Record<string, string>);
     const instituteFields = { course_interest_id: form.course_interest_id ? Number(form.course_interest_id) : null, gpa: form.gpa ? Number(form.gpa) : null };
+    const leadSpacePayload = { space_id: selectedSpaceId || (selectedSpace ? selectedSpace.id : null) };
     try {
       if (editLead) {
         const stage = scheduleStage(form.status, institute);
         const response = await fetch(`${API_BASE_URL}/leads/${editLead.id}`, {
           method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...form, ...instituteFields, custom_fields: cfObj, status: stage ? editLead.status : form.status }),
+          body: JSON.stringify({ ...form, ...instituteFields, ...leadSpacePayload, custom_fields: cfObj, status: stage ? editLead.status : form.status }),
         });
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
@@ -807,7 +877,7 @@ export default function LeadsPage() {
         if (!isAdmin) {
           // Salesperson creates lead: automatically assign to themselves
           const stage = scheduleStage(form.status, institute);
-          const payload = { ...form, ...instituteFields, custom_fields: cfObj, status: stage ? 'New' : form.status, owner_id: user?.id || null };
+          const payload = { ...form, ...instituteFields, ...leadSpacePayload, custom_fields: cfObj, status: stage ? 'New' : form.status, owner_id: user?.id || null };
           const response = await fetch(`${API_BASE_URL}/leads`, {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -825,7 +895,7 @@ export default function LeadsPage() {
           triggerAutoCallModal(created);
         } else {
           // New lead: show sales assign modal for admins
-          setPendingLeadForm({ ...form, ...instituteFields, custom_fields: cfObj });
+          setPendingLeadForm({ ...form, ...instituteFields, ...leadSpacePayload, custom_fields: cfObj });
           setShowModal(false);
           setShowSalesAssign(true);
         }
@@ -956,11 +1026,95 @@ export default function LeadsPage() {
               <Building2 className="w-5 h-5 text-white" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t("leads.title")}</h1>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-zinc-300 border border-slate-200/80 dark:border-white/5">
                   {serverTotalCount !== null ? serverTotalCount : leads.length} <LocalizedText text={"total"} />
                 </span>
+
+                {/* Lead Space Selector Dropdown */}
+                {spaces.length > 0 && (
+                  <div className="relative inline-block">
+                    <button
+                      type="button"
+                      onClick={() => setSpaceDropdownOpen(!spaceDropdownOpen)}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 shadow-2xs transition-all cursor-pointer"
+                    >
+                      <Layers className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                      <span className="truncate max-w-[130px] sm:max-w-[200px]">
+                        {selectedSpace?.name || "Select Space"}
+                      </span>
+                      {selectedSpace?.is_default && (
+                        <span className="text-[9px] font-black px-1 py-0.2 rounded bg-amber-200/70 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 uppercase">
+                          Default
+                        </span>
+                      )}
+                      <ChevronDown className={`w-3.5 h-3.5 text-indigo-500 transition-transform ${spaceDropdownOpen ? "rotate-180" : ""}`} />
+                    </button>
+
+                    {spaceDropdownOpen && (
+                      <div className="absolute left-0 mt-1.5 w-72 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl shadow-xl z-50 p-1.5 animate-in fade-in slide-in-from-top-1">
+                        <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          Select Lead Space (Pipeline)
+                        </div>
+                        <div className="max-h-60 overflow-y-auto space-y-0.5">
+                          {spaces.map((sp) => {
+                            const isCur = selectedSpace?.id === sp.id;
+                            return (
+                              <button
+                                key={sp.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedSpace(sp);
+                                  setSelectedSpaceId(sp.id);
+                                  selectedSpaceIdRef.current = sp.id;
+                                  setSpaceDropdownOpen(false);
+                                  fetchLeads(false, sp.id);
+                                }}
+                                className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-left transition-colors cursor-pointer ${isCur
+                                    ? "bg-indigo-600 text-white"
+                                    : "text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800"
+                                  }`}
+                              >
+                                <div className="flex items-center gap-2 truncate">
+                                  <span
+                                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: sp.stages?.[0]?.color || "#6366F1" }}
+                                  />
+                                  <span className="truncate">{sp.name}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {sp.is_default && (
+                                    <span className={`text-[9px] font-bold px-1 rounded ${isCur ? "bg-white/20 text-white" : "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300"}`}>
+                                      Default
+                                    </span>
+                                  )}
+                                  <span className={`text-[10px] font-medium ${isCur ? "text-indigo-100" : "text-slate-400"}`}>
+                                    {sp.leads_count ?? 0}
+                                  </span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {isAdmin && (
+                          <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-white/5">
+                            <Link
+                              href="/settings?tab=lead-spaces"
+                              onClick={() => setSpaceDropdownOpen(false)}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg transition-colors"
+                            >
+                              <Settings className="w-3.5 h-3.5" />
+                              <span>Manage Spaces &amp; Stages in Settings</span>
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {loadingMore && (
                   <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 px-2 py-0.5 rounded-full animate-pulse border border-blue-200/60 dark:border-blue-900/40">
                     <Loader2 className="w-2.5 h-2.5 animate-spin" />
@@ -976,16 +1130,18 @@ export default function LeadsPage() {
             <button
               onClick={async () => {
                 try {
-                  const token = localStorage.getItem('token');
-                  const res = await fetch(`${API_BASE_URL}/leads/export-csv`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                  const token = localStorage.getItem('token') || localStorage.getItem('crm_token');
+                  const exportUrl = `${API_BASE_URL}/leads/export-csv${selectedSpace ? `?space_id=${selectedSpace.id}` : ''}`;
+                  const res = await fetch(exportUrl, {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
                   });
                   if (!res.ok) throw new Error("Export failed");
                   const blob = await res.blob();
                   const url = window.URL.createObjectURL(blob);
                   const a = document.createElement('a');
                   a.href = url;
-                  a.download = 'serphawk_leads.csv';
+                  const safeName = selectedSpace ? selectedSpace.name.toLowerCase().replace(/[^a-z0-9]+/g, '_') : 'leads';
+                  a.download = `serphawk_${safeName}.csv`;
                   document.body.appendChild(a);
                   a.click();
                   window.URL.revokeObjectURL(url);
@@ -995,21 +1151,25 @@ export default function LeadsPage() {
                   alert("Failed to export leads.");
                 }
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-white/5 transition-colors shadow-xs"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-white/5 transition-colors shadow-xs cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5" /> <LocalizedText text={"Export CSV"} /></button>
+              <Download className="w-3.5 h-3.5" /> <LocalizedText text={"Export CSV"} />
+            </button>
             {isAdmin && (
               <button
                 onClick={handleAutoAssignLeads}
                 disabled={autoAssigning}
                 title="Automatically distribute unassigned leads by round-robin with conversion rate tie-breaker"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-violet-600 hover:bg-violet-700 text-white shadow-xs transition-all active:scale-95 disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-violet-600 hover:bg-violet-700 text-white shadow-xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
               >
                 {autoAssigning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-amber-300" />}
                 Auto-Assign Leads
               </button>
             )}
-            <Link href="/import" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-white/5 transition-colors shadow-xs">
+            <Link
+              href={`/import?target=leads${selectedSpace ? `&space_id=${selectedSpace.id}` : ''}`}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-white/5 transition-colors shadow-xs"
+            >
               <Upload className="w-3.5 h-3.5" /> {t("leads.import")}
             </Link>
             <button
@@ -1261,7 +1421,16 @@ export default function LeadsPage() {
                   >
                     <div className="p-3 font-bold text-slate-800 dark:text-white flex items-center justify-between border-b border-slate-200 dark:border-[#222222]">
                       <div className="flex items-center gap-1.5 truncate">
-                        <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_STYLE[status]?.split(' ')[1] || 'bg-blue-500'}`} />
+                        {(() => {
+                          const stageObj = selectedSpace?.stages?.find(st => st.name === status);
+                          const stageColor = stageObj?.color;
+                          return (
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: stageColor || "#3B82F6" }}
+                            />
+                          );
+                        })()}
                         <span className="text-xs truncate">{status}</span>
                       </div>
                       <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-[#222222] text-[10px] text-slate-600 dark:text-[#a3a3a3] font-black">{colLeads.length}</span>
@@ -1298,6 +1467,18 @@ export default function LeadsPage() {
                               value={lead.is_converted ? "Converted" : lead.status}
                               onChange={e => handleStatusChange(lead.id, e.target.value)}
                               aria-label={`Status for ${lead.company_name}`}
+                              style={(() => {
+                                const curStatus = lead.is_converted ? "Converted" : lead.status;
+                                const stageObj = selectedSpace?.stages?.find(st => st.name === curStatus);
+                                if (stageObj?.color) {
+                                  return {
+                                    borderColor: `${stageObj.color}66`,
+                                    backgroundColor: `${stageObj.color}15`,
+                                    color: stageObj.color,
+                                  };
+                                }
+                                return undefined;
+                              })()}
                               className={`w-full text-[10px] font-bold px-1.5 py-1 rounded border cursor-pointer focus:outline-none ${STATUS_STYLE[lead.is_converted ? "Converted" : lead.status] || STATUS_STYLE.New}`}
                             >
                               {STATUSES.map(st => (
@@ -1762,10 +1943,10 @@ export default function LeadsPage() {
                                   onClick={e => handleManualAnalyze(lead.id, e)}
                                   title={lead.ai_status === 'done' ? "360° AI Ready — Click to Re-analyze" : "Run 360° AI Analysis"}
                                   className={`p-1.5 rounded-lg border transition-colors shadow-xs ${lead.ai_status === 'done'
-                                      ? "border-purple-300 bg-purple-50 text-purple-600 dark:border-purple-700/60 dark:bg-purple-950/40 dark:text-purple-300"
-                                      : analyzingLeadId === lead.id
-                                        ? "border-indigo-300 bg-indigo-50 text-indigo-600 dark:border-indigo-700 dark:bg-indigo-950/40"
-                                        : "border-slate-200/80 dark:border-white/10 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-300 dark:hover:bg-purple-900/30 text-slate-400"
+                                    ? "border-purple-300 bg-purple-50 text-purple-600 dark:border-purple-700/60 dark:bg-purple-950/40 dark:text-purple-300"
+                                    : analyzingLeadId === lead.id
+                                      ? "border-indigo-300 bg-indigo-50 text-indigo-600 dark:border-indigo-700 dark:bg-indigo-950/40"
+                                      : "border-slate-200/80 dark:border-white/10 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-300 dark:hover:bg-purple-900/30 text-slate-400"
                                     }`}
                                 >
                                   {analyzingLeadId === lead.id ? (
@@ -2008,6 +2189,35 @@ export default function LeadsPage() {
                   </div>
                 </div>
 
+                {spaces.length > 1 && (
+                  <div className="p-3 bg-indigo-50/60 dark:bg-indigo-950/30 rounded-xl border border-indigo-200/60 dark:border-indigo-900/40">
+                    <label className="text-xs font-semibold text-indigo-950 dark:text-indigo-200 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                      <span>Pipeline Space</span>
+                    </label>
+                    <select
+                      value={selectedSpaceId || ""}
+                      onChange={e => {
+                        const sid = Number(e.target.value);
+                        const sp = spaces.find(s => s.id === sid);
+                        if (sp) {
+                          setSelectedSpace(sp);
+                          setSelectedSpaceId(sp.id);
+                          selectedSpaceIdRef.current = sp.id;
+                          if (sp.stages && sp.stages.length > 0) {
+                            setForm(f => ({ ...f, status: sp.stages[0].name }));
+                          }
+                        }
+                      }}
+                      className="w-full px-3 py-2 rounded-lg bg-white dark:bg-zinc-800 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer"
+                    >
+                      {spaces.map(s => (
+                        <option key={s.id} value={s.id}>{s.name} {s.is_default ? "(Default Space)" : ""}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   {!institute && <div>
                     <div className="flex items-center justify-between mb-1.5">
@@ -2143,8 +2353,8 @@ export default function LeadsPage() {
                               type="button"
                               onClick={() => setForm(f => ({ ...f, contact_designation: preset }))}
                               className={`text-[10px] px-2 py-0.5 rounded-lg border transition-all cursor-pointer ${form.contact_designation === preset
-                                  ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
-                                  : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-400 border-slate-200 dark:border-zinc-700 hover:border-indigo-400'
+                                ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                                : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-400 border-slate-200 dark:border-zinc-700 hover:border-indigo-400'
                                 }`}
                             >
                               {preset}

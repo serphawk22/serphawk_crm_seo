@@ -129,6 +129,24 @@ async def upload_client_logo(tenant_id: int, file: UploadFile = File(...), sessi
     return {"logo_url": url}
 
 
+@router.get("/tenant/lead-intake-key")
+def get_lead_intake_key(session: Session = Depends(get_session)):
+    """Retrieve the existing lead intake key and webhook endpoint for this company, generating one if not yet set."""
+    import secrets
+    tid = _admin_tenant(session)
+    key = tenant_settings.get_setting(tid, "lead_intake_api_key")
+    if not key:
+        key = secrets.token_urlsafe(24)
+        tenant_settings.update_settings(session, tid, {"lead_intake_api_key": key})
+    return {
+        "api_key": key,
+        "header": "X-API-Key",
+        "endpoint": "/leads/webhook",
+        "full_endpoint": "/leads/webhook",
+        "google_ads_key": key,
+    }
+
+
 @router.post("/tenant/lead-intake-key")
 def new_lead_intake_key(session: Session = Depends(get_session)):
     """Generate (or replace) the key a website form must send to create leads in this company."""
@@ -136,7 +154,7 @@ def new_lead_intake_key(session: Session = Depends(get_session)):
     tid = _admin_tenant(session)
     key = secrets.token_urlsafe(24)
     tenant_settings.update_settings(session, tid, {"lead_intake_api_key": key})
-    return {"api_key": key, "header": "X-API-Key", "endpoint": "/leads/webhook"}
+    return {"api_key": key, "header": "X-API-Key", "endpoint": "/leads/webhook", "google_ads_key": key}
 
 
 # ── Lead status labels ───────────────────────────────────────────────────────

@@ -164,6 +164,7 @@ export default function ClientsPage() {
 
   useEffect(() => {
     if (searchParams && searchParams.get('action') === 'add') {
+      setClientCustomFields([]);
       setIsModalOpen(true);
     }
   }, [searchParams]);
@@ -705,7 +706,7 @@ export default function ClientsPage() {
             <button onClick={() => setIsOCRModalOpen(true)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-white/10 text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-white/5 transition">
               <FileScan className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t("clients.ocr_scan")}</span>
             </button>
-            <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-xs transition">
+            <button onClick={() => { setClientCustomFields([]); setIsModalOpen(true); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-xs transition">
               <Plus className="w-3.5 h-3.5" /> <span>{t("clients.add_client")}</span>
             </button>
           </div>
@@ -1490,7 +1491,7 @@ export default function ClientsPage() {
             >
               <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-white dark:bg-zinc-900/50">
                 <h2 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-zinc-100 tracking-tight">{language === 'es' ? 'Agregar Nuevo Cliente' : 'Add New Client'}</h2>
-                <button onClick={() => setIsModalOpen(false)} className="w-9 h-9 sm:w-10 sm:h-10 bg-white dark:bg-zinc-900 shadow-sm rounded-full flex items-center justify-center text-slate-400 hover:text-slate-800 dark:text-zinc-100 transition-colors">&times;</button>
+                <button onClick={() => { setClientCustomFields([]); setIsModalOpen(false); }} className="w-9 h-9 sm:w-10 sm:h-10 bg-white dark:bg-zinc-900 shadow-sm rounded-full flex items-center justify-center text-slate-400 hover:text-slate-800 dark:text-zinc-100 transition-colors">&times;</button>
               </div>
               <div className="overflow-y-auto p-4 sm:p-8 custom-scrollbar">
                 <form onSubmit={handleAddClient} className="space-y-4 sm:space-y-6">
@@ -1591,7 +1592,7 @@ export default function ClientsPage() {
                     )}
                   </div>
                   <div className="pt-4 sm:pt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5 sm:gap-3 border-t border-slate-100 dark:border-zinc-800">
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="w-full sm:w-auto px-6 py-2.5 sm:py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:bg-zinc-950 transition-colors shadow-sm">{language === 'es' ? 'Cancelar' : 'Cancel'}</button>
+                    <button type="button" onClick={() => { setClientCustomFields([]); setIsModalOpen(false); }} className="w-full sm:w-auto px-6 py-2.5 sm:py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:bg-zinc-950 transition-colors shadow-sm">{language === 'es' ? 'Cancelar' : 'Cancel'}</button>
                     <button type="submit" className="w-full sm:w-auto px-8 py-2.5 sm:py-3 bg-gradient-to-r from-zinc-600 to-slate-600 text-white rounded-xl font-bold hover:shadow-[0_8px_30px_rgba(79,70,229,0.3)] shadow-[0_4px_15px_rgba(79,70,229,0.2)] hover:-translate-y-0.5 transition-all">{language === 'es' ? 'Crear Cliente' : 'Create Client'}</button>
                   </div>
                 </form>

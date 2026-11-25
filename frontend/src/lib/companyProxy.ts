@@ -21,7 +21,7 @@ export async function companyFetch(request: NextRequest, target: string, body?: 
   const ip = process.env.VERCEL ? request.headers.get("x-real-ip") || "unknown" : "local";
   const payload = body || Buffer.alloc(0);
   const headers = new Headers();
-  for (const key of ["authorization", "content-type", "accept", "range"]) {
+  for (const key of ["authorization", "content-type", "accept", "range", "x-user-id", "cookie"]) {
     if (key === "authorization" && target.startsWith("/internal/")) continue;
     const value = request.headers.get(key); if (value) headers.set(key, value);
   }
@@ -36,8 +36,9 @@ export async function companyFetch(request: NextRequest, target: string, body?: 
   }
   const response = await fetch(destination, { method: request.method, headers,
     body: ["GET", "HEAD"].includes(request.method) ? undefined : new Uint8Array(payload), cache: "no-store", redirect: "manual" });
-  const output = new Headers({ "Cache-Control": "no-store" });
-  for (const key of ["content-type", "content-disposition", "content-range", "accept-ranges", "retry-after"]) {
+  const backendCacheControl = response.headers.get("cache-control");
+  const output = new Headers({ "Cache-Control": backendCacheControl || "private, no-cache" });
+  for (const key of ["content-type", "content-disposition", "content-range", "accept-ranges", "retry-after", "set-cookie"]) {
     const value = response.headers.get(key); if (value) output.set(key, value);
   }
   return new Response(response.body, { status: response.status, headers: output });

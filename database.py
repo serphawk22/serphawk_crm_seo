@@ -1442,9 +1442,32 @@ class Account(SQLModel, table=True):
     contacts: List["Contact"] = Relationship(back_populates="account")
     leads: List["Lead"] = Relationship(back_populates="account")
 
+DEFAULT_SPACE_STAGES = [
+    {"id": "new", "name": "New", "color": "#3B82F6", "order": 0, "is_won": False, "is_lost": False},
+    {"id": "contacted", "name": "Contacted", "color": "#0EA5E9", "order": 1, "is_won": False, "is_lost": False},
+    {"id": "qualified", "name": "Qualified", "color": "#F59E0B", "order": 2, "is_won": False, "is_lost": False},
+    {"id": "proposal", "name": "Proposal Sent", "color": "#F97316", "order": 3, "is_won": False, "is_lost": False},
+    {"id": "negotiation", "name": "Negotiation", "color": "#6366F1", "order": 4, "is_won": False, "is_lost": False},
+    {"id": "won", "name": "Won", "color": "#10B981", "order": 5, "is_won": True, "is_lost": False},
+    {"id": "lost", "name": "Lost", "color": "#EF4444", "order": 6, "is_won": False, "is_lost": True},
+]
+
+class LeadSpace(SQLModel, table=True):
+    __tablename__ = "lead_spaces"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    name: str = Field(max_length=200, index=True)
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    is_default: bool = Field(default=False)
+    sort_order: int = Field(default=0)
+    stages: Optional[List[dict]] = Field(default_factory=lambda: list(DEFAULT_SPACE_STAGES), sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
 class Lead(SQLModel, table=True):
     created_by: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
     __tablename__ = "leads"
+    space_id: Optional[int] = Field(default=None, foreign_key="lead_spaces.id", index=True)
     follow_up_needed: bool = Field(default=False, sa_column_kwargs={"server_default": text("FALSE")})
     next_follow_up_at: Optional[datetime] = Field(default=None, index=True)
     follow_up_reason: Optional[str] = Field(default=None, sa_column=Column(Text))
@@ -1557,6 +1580,7 @@ class Contact(SQLModel, table=True):
     
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
     tags: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
+    custom_fields: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
     owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
     parent_contact_id: Optional[int] = Field(default=None, foreign_key="contacts.id")
     created_at: datetime = Field(default_factory=_utcnow)
@@ -2041,6 +2065,9 @@ def create_db_and_tables():
         "ALTER TABLE students ADD COLUMN course_id INTEGER REFERENCES courses(id)",
         "CREATE INDEX IF NOT EXISTS ix_instructors_course_id ON instructors (course_id)",
         "CREATE INDEX IF NOT EXISTS ix_students_course_id ON students (course_id)",
+        "ALTER TABLE contacts ADD COLUMN custom_fields JSON DEFAULT '{}'",
+        "ALTER TABLE leads ADD COLUMN space_id INTEGER REFERENCES lead_spaces(id)",
+        "CREATE INDEX IF NOT EXISTS ix_leads_space_id ON leads (space_id)",
     ]
     
     with engine.connect() as conn:

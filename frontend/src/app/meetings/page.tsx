@@ -2,7 +2,7 @@
 import LocalizedText from "@/components/LocalizedText";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, Plus, X, Clock, Users, MapPin, CheckCircle2, Filter, Search, Loader2, Video, Phone, Coffee, BarChart2, Trash2, Edit2, Upload, FileText, LayoutGrid, List, ExternalLink } from "lucide-react";
+import { Calendar, Plus, X, Clock, Users, MapPin, CheckCircle2, Filter, Search, Loader2, Video, Phone, Coffee, BarChart2, Trash2, Edit2, Upload, FileText, LayoutGrid, List, ExternalLink, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useLanguage } from "@/context/LanguageContext";
 import TimezonePicker from "@/components/TimezonePicker";
@@ -39,7 +39,9 @@ export default function MeetingsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
-  const [viewMode, setViewMode] = useState<"cards" | "list">("cards");
+  const [viewMode, setViewMode] = useState<"cards" | "list" | "calendar">("cards");
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [calendarSubView, setCalendarSubView] = useState<"month" | "day">("month");
   const [showModal, setShowModal] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editMeeting, setEditMeeting] = useState<Meeting | null>(null);
@@ -67,15 +69,15 @@ export default function MeetingsPage() {
   useEffect(load, []);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/clients?per_page=1000`)
+    fetch(`${API_BASE_URL}/clients?per_page=100`)
       .then(r => r.json())
       .then(d => setClients(Array.isArray(d.clients) ? d.clients : []))
       .catch(() => {});
-    fetch(`${API_BASE_URL}/leads`)
+    fetch(`${API_BASE_URL}/leads?limit=100`)
       .then(r => r.json())
       .then(d => setLeads(Array.isArray(d.leads) ? d.leads : []))
       .catch(() => {});
-    fetch(`${API_BASE_URL}/contacts`)
+    fetch(`${API_BASE_URL}/contacts?limit=100`)
       .then(r => r.json())
       .then(d => setContacts(Array.isArray(d.contacts) ? d.contacts : []))
       .catch(() => {});
@@ -128,11 +130,17 @@ export default function MeetingsPage() {
     }
   };
 
-  const openCreate = () => {
+  const openCreate = (defaultDateStr?: string, defaultTimeStr?: string) => {
     setEditMeeting(null);
+    let sched = "";
+    if (defaultDateStr) {
+      sched = `${defaultDateStr}T${defaultTimeStr || "09:00"}`;
+    }
     setForm({
       title: "", description: "", location: "", meeting_link: "", timezone: userTz,
-      meeting_type: "Meeting", status: "Scheduled", scheduled_at: "", duration_minutes: "60",
+      meeting_type: "Meeting", status: "Scheduled",
+      scheduled_at: sched,
+      duration_minutes: "60",
       attendees: "", notes: "", linked: "",
     });
     setShowModal(true);
@@ -240,7 +248,7 @@ export default function MeetingsPage() {
           <button onClick={() => setShowImport(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 text-sm font-bold hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all">
             <Upload className="w-4 h-4" /> {t("meetings.import")}
           </button>
-          <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-sm font-bold hover:opacity-90 transition-all shadow-md">
+          <button onClick={() => openCreate()} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-sm font-bold hover:opacity-90 transition-all shadow-md">
             <Plus className="w-4 h-4" /> {t("meetings.schedule_meeting")}
           </button>
         </div>
@@ -289,6 +297,13 @@ export default function MeetingsPage() {
             title="List View"
           >
             <List className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setViewMode("calendar")}
+            className={`p-1.5 rounded-lg transition-all ${viewMode === "calendar" ? "bg-white dark:bg-zinc-700 text-violet-600 dark:text-violet-400 shadow-sm" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"}`}
+            title="Calendar View"
+          >
+            <Calendar className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -419,6 +434,472 @@ export default function MeetingsPage() {
               </table>
             </div>
           )}
+        </div>
+      ) : viewMode === "calendar" ? (
+        <div className="bg-white dark:bg-[#111111]/90 border border-slate-200/90 dark:border-white/10 rounded-2xl p-4 sm:p-6 shadow-sm">
+          {/* Calendar Header with Sub-View Switcher */}
+          {(() => {
+            const todayNow = new Date();
+            const isViewingToday = calendarDate.toDateString() === todayNow.toDateString();
+            const tomorrowNow = new Date();
+            tomorrowNow.setDate(tomorrowNow.getDate() + 1);
+            const isViewingTomorrow = calendarDate.toDateString() === tomorrowNow.toDateString();
+            const yesterdayNow = new Date();
+            yesterdayNow.setDate(yesterdayNow.getDate() - 1);
+            const isViewingYesterday = calendarDate.toDateString() === yesterdayNow.toDateString();
+
+            const targetDateStr = `${calendarDate.getFullYear()}-${String(calendarDate.getMonth() + 1).padStart(2, "0")}-${String(calendarDate.getDate()).padStart(2, "0")}`;
+            const dayMeetings = filtered.filter(m => m.scheduled_at && m.scheduled_at.startsWith(targetDateStr));
+
+            const handlePrev = () => {
+              if (calendarSubView === "day") {
+                const next = new Date(calendarDate);
+                next.setDate(next.getDate() - 1);
+                setCalendarDate(next);
+              } else {
+                setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1));
+              }
+            };
+
+            const handleNext = () => {
+              if (calendarSubView === "day") {
+                const next = new Date(calendarDate);
+                next.setDate(next.getDate() + 1);
+                setCalendarDate(next);
+              } else {
+                setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1));
+              }
+            };
+
+            const handleTodayClick = () => {
+              setCalendarDate(new Date());
+              setCalendarSubView("day");
+            };
+
+            return (
+              <>
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100 dark:border-white/10">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-violet-500/10 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400 flex items-center justify-center font-bold shrink-0">
+                      {calendarSubView === "day" ? <Clock className="w-5 h-5" /> : <CalendarDays className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                          {calendarSubView === "day"
+                            ? calendarDate.toLocaleDateString("default", { weekday: "long", month: "short", day: "numeric", year: "numeric" })
+                            : calendarDate.toLocaleString("default", { month: "long", year: "numeric" })}
+                        </h2>
+                        {calendarSubView === "day" && (
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              isViewingToday
+                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                                : isViewingTomorrow
+                                ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
+                                : isViewingYesterday
+                                ? "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20"
+                                : "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20"
+                            }`}
+                          >
+                            {isViewingToday
+                              ? "Today"
+                              : isViewingTomorrow
+                              ? "Tomorrow"
+                              : isViewingYesterday
+                              ? "Yesterday"
+                              : `${calendarDate.toLocaleDateString("default", { month: "short", day: "numeric" })}`}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
+                        {calendarSubView === "day"
+                          ? `${dayMeetings.length} ${dayMeetings.length === 1 ? "meeting" : "meetings"} scheduled on this date`
+                          : `${filtered.length} total meetings scheduled this month`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Calendar Navigation & Mode Switcher */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* View Switcher: Month / Day Intervals */}
+                    <div className="flex items-center p-0.5 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-white/10 text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setCalendarSubView("month")}
+                        className={`px-3 py-1.5 rounded-lg transition ${
+                          calendarSubView === "month"
+                            ? "bg-white dark:bg-zinc-700 text-violet-600 dark:text-violet-400 shadow-xs"
+                            : "text-slate-500 hover:text-slate-800 dark:text-zinc-400"
+                        }`}
+                      >
+                        Month
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCalendarSubView("day")}
+                        className={`px-3 py-1.5 rounded-lg transition ${
+                          calendarSubView === "day"
+                            ? "bg-white dark:bg-zinc-700 text-violet-600 dark:text-violet-400 shadow-xs"
+                            : "text-slate-500 hover:text-slate-800 dark:text-zinc-400"
+                        }`}
+                      >
+                        Day Intervals
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handlePrev}
+                        className="p-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 transition"
+                        title={calendarSubView === "day" ? "Previous Day" : "Previous Month"}
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleTodayClick}
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition ${
+                          isViewingToday && calendarSubView === "day"
+                            ? "bg-violet-600 text-white border-violet-600 shadow-xs"
+                            : "border-slate-200 dark:border-white/10 bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-700"
+                        }`}
+                      >
+                        Today
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleNext}
+                        className="p-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 transition"
+                        title={calendarSubView === "day" ? "Next Day (Tomorrow / Forward)" : "Next Month"}
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => openCreate(targetDateStr)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold shadow-sm transition"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Schedule</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* DAY TIME INTERVALS SCHEDULE VIEW */}
+                {calendarSubView === "day" ? (
+                  <div className="space-y-4">
+                    {/* Day Summary Numbers Strip */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Meetings Today</p>
+                          <p className="text-xl font-black text-slate-900 dark:text-white tabular-nums mt-0.5">{dayMeetings.length}</p>
+                        </div>
+                        <Calendar className="w-5 h-5 text-violet-500 opacity-60" />
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-900/40 flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Scheduled</p>
+                          <p className="text-xl font-black text-blue-700 dark:text-blue-300 tabular-nums mt-0.5">
+                            {dayMeetings.filter(m => m.status === "Scheduled").length}
+                          </p>
+                        </div>
+                        <Clock className="w-5 h-5 text-blue-500 opacity-60" />
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-900/40 flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Completed</p>
+                          <p className="text-xl font-black text-emerald-700 dark:text-emerald-300 tabular-nums mt-0.5">
+                            {dayMeetings.filter(m => m.status === "Completed").length}
+                          </p>
+                        </div>
+                        <CheckCircle2 className="w-5 h-5 text-emerald-500 opacity-60" />
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200/60 dark:border-purple-900/40 flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider">Booked Duration</p>
+                          <p className="text-xl font-black text-purple-700 dark:text-purple-300 tabular-nums mt-0.5">
+                            {(() => {
+                              const mins = dayMeetings.reduce((acc, m) => acc + (m.duration_minutes || 60), 0);
+                              if (mins === 0) return "0m";
+                              if (mins < 60) return `${mins}m`;
+                              return `${Math.floor(mins / 60)}h ${mins % 60 ? `${mins % 60}m` : ""}`;
+                            })()}
+                          </p>
+                        </div>
+                        <BarChart2 className="w-5 h-5 text-purple-500 opacity-60" />
+                      </div>
+                    </div>
+
+                    {/* Hourly Time Intervals Timeline (05:00 AM to 11:00 PM) */}
+                    <div className="border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-zinc-800/80 bg-white dark:bg-zinc-950">
+                      {Array.from({ length: 19 }, (_, i) => i + 5).map((hour) => {
+                        const hourStr = String(hour).padStart(2, "0");
+                        const timeLabel = new Date(2000, 0, 1, hour, 0).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
+
+                        const slotMeetings = dayMeetings.filter(m => {
+                          if (!m.scheduled_at) return false;
+                          const mHour = new Date(m.scheduled_at).getHours();
+                          return mHour === hour;
+                        });
+
+                        return (
+                          <div
+                            key={hour}
+                            className={`group flex items-start min-h-[64px] transition-colors ${
+                              slotMeetings.length > 0
+                                ? "bg-violet-50/20 dark:bg-violet-950/10"
+                                : "hover:bg-slate-50/60 dark:hover:bg-zinc-900/40"
+                            }`}
+                          >
+                            {/* Time Interval Label */}
+                            <div className="w-24 sm:w-28 p-3 text-right shrink-0 border-r border-slate-100 dark:border-zinc-800 select-none">
+                              <span className="text-xs font-bold text-slate-500 dark:text-zinc-400 block tabular-nums">
+                                {timeLabel}
+                              </span>
+                            </div>
+
+                            {/* Meeting slot content */}
+                            <div className="flex-1 p-2.5 sm:px-4">
+                              {slotMeetings.length > 0 ? (
+                                <div className="space-y-2">
+                                  {slotMeetings.map(m => {
+                                    const Icon = TYPE_ICONS[m.meeting_type] || TYPE_ICONS.default;
+                                    const statusCls = STATUS_COLORS[m.status] || "bg-violet-50 text-violet-700 border-violet-200";
+                                    const timeStr = m.scheduled_at
+                                      ? new Date(m.scheduled_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                                      : "";
+
+                                    return (
+                                      <div
+                                        key={m.id}
+                                        className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-xs hover:border-violet-400 dark:hover:border-violet-600 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                                      >
+                                        <div className="flex items-start gap-3 min-w-0">
+                                          <div className="w-9 h-9 rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0">
+                                            <Icon className="w-4 h-4" />
+                                          </div>
+                                          <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                              <p className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                                                {m.title}
+                                              </p>
+                                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusCls}`}>
+                                                {m.status}
+                                              </span>
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-zinc-400 mt-1">
+                                              <span className="font-semibold text-slate-700 dark:text-zinc-300">
+                                                {timeStr} ({m.duration_minutes || 60}m)
+                                              </span>
+                                              {(m.client_name || m.lead_name || m.contact_name) && (
+                                                <span className="flex items-center gap-1">
+                                                  <Users className="w-3.5 h-3.5 text-slate-400" />
+                                                  <span>{m.client_name || m.lead_name || m.contact_name}</span>
+                                                </span>
+                                              )}
+                                              {m.meeting_link && (
+                                                <a
+                                                  href={m.meeting_link.startsWith("http") ? m.meeting_link : `https://${m.meeting_link}`}
+                                                  target="_blank"
+                                                  rel="noreferrer"
+                                                  className="inline-flex items-center gap-1 text-violet-600 dark:text-violet-400 hover:underline font-semibold"
+                                                >
+                                                  <Video className="w-3.5 h-3.5" />
+                                                  <span>Join Meeting</span>
+                                                </a>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                                          <button
+                                            type="button"
+                                            onClick={() => openEdit(m)}
+                                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-600 dark:text-zinc-300 transition"
+                                            title="Edit meeting"
+                                          >
+                                            <Edit2 className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDelete(m.id)}
+                                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-500 dark:bg-rose-950/40 dark:text-rose-400 transition"
+                                            title="Delete meeting"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => openCreate(targetDateStr, `${hourStr}:00`)}
+                                  className="w-full py-2 px-3 rounded-lg border border-dashed border-transparent hover:border-slate-300 dark:hover:border-zinc-700 text-left text-xs text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50/50 dark:hover:bg-violet-950/20 transition flex items-center justify-between opacity-0 group-hover:opacity-100"
+                                >
+                                  <span>+ Schedule meeting at {timeLabel}</span>
+                                  <span className="text-[10px] font-semibold text-slate-400">Available</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  /* MONTH CALENDAR VIEW */
+                  <>
+                    {/* Days of week header */}
+                    <div className="grid grid-cols-7 gap-px mb-2 text-center text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">
+                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, idx) => (
+                        <div key={day} className={`py-2 ${idx === 0 || idx === 6 ? "text-slate-400 dark:text-zinc-500" : ""}`}>
+                          {day}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Calendar Month Grid */}
+                    {(() => {
+                      const year = calendarDate.getFullYear();
+                      const month = calendarDate.getMonth();
+                      const firstDayIndex = new Date(year, month, 1).getDay();
+                      const daysInMonth = new Date(year, month + 1, 0).getDate();
+                      const prevMonthDays = new Date(year, month, 0).getDate();
+                      const today = new Date();
+                      const isCurrentYearMonth = today.getFullYear() === year && today.getMonth() === month;
+
+                      const totalCells = Math.ceil((firstDayIndex + daysInMonth) / 7) * 7;
+                      const cells = [];
+
+                      for (let i = 0; i < totalCells; i++) {
+                        if (i < firstDayIndex) {
+                          const dayNum = prevMonthDays - firstDayIndex + i + 1;
+                          const prevM = month === 0 ? 12 : month;
+                          const prevY = month === 0 ? year - 1 : year;
+                          const cellDateStr = `${prevY}-${String(prevM).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
+                          cells.push({ day: dayNum, isCurrentMonth: false, isToday: false, dateStr: cellDateStr });
+                        } else if (i < firstDayIndex + daysInMonth) {
+                          const dayNum = i - firstDayIndex + 1;
+                          const cellDateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
+                          cells.push({
+                            day: dayNum,
+                            isCurrentMonth: true,
+                            isToday: isCurrentYearMonth && today.getDate() === dayNum,
+                            dateStr: cellDateStr,
+                          });
+                        } else {
+                          const dayNum = i - (firstDayIndex + daysInMonth) + 1;
+                          const nextM = month === 11 ? 1 : month + 2;
+                          const nextY = month === 11 ? year + 1 : year;
+                          const cellDateStr = `${nextY}-${String(nextM).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
+                          cells.push({ day: dayNum, isCurrentMonth: false, isToday: false, dateStr: cellDateStr });
+                        }
+                      }
+
+                      const meetingsByDay: Record<string, Meeting[]> = {};
+                      filtered.forEach(m => {
+                        if (m.scheduled_at) {
+                          const dStr = m.scheduled_at.slice(0, 10);
+                          if (!meetingsByDay[dStr]) meetingsByDay[dStr] = [];
+                          meetingsByDay[dStr].push(m);
+                        }
+                      });
+
+                      return (
+                        <div className="grid grid-cols-7 border border-slate-200 dark:border-white/10 rounded-xl overflow-hidden bg-slate-200 dark:border-zinc-800 dark:bg-zinc-800 gap-[1px]">
+                          {cells.map((cell, idx) => {
+                            const dayMeetings = meetingsByDay[cell.dateStr] || [];
+                            return (
+                              <div
+                                key={idx}
+                                onClick={() => {
+                                  if (cell.isCurrentMonth) {
+                                    const [y, m, d] = cell.dateStr.split("-").map(Number);
+                                    setCalendarDate(new Date(y, m - 1, d));
+                                    setCalendarSubView("day");
+                                  }
+                                }}
+                                className={`group min-h-[110px] sm:min-h-[125px] p-2 flex flex-col justify-between transition-colors cursor-pointer ${
+                                  cell.isCurrentMonth
+                                    ? "bg-white dark:bg-zinc-950/90 hover:bg-slate-50/80 dark:hover:bg-zinc-900/50"
+                                    : "bg-slate-50/60 dark:bg-zinc-900/40 text-slate-400 dark:text-zinc-600"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span
+                                    className={`text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center ${
+                                      cell.isToday
+                                        ? "bg-violet-600 text-white shadow-xs"
+                                        : cell.isCurrentMonth
+                                        ? "text-slate-800 dark:text-zinc-200"
+                                        : "text-slate-400 dark:text-zinc-600"
+                                    }`}
+                                  >
+                                    {cell.day}
+                                  </span>
+                                  {cell.isCurrentMonth && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openCreate(cell.dateStr);
+                                      }}
+                                      className="w-5 h-5 rounded hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                                      title={`Schedule meeting on ${cell.dateStr}`}
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+
+                                <div className="mt-1 space-y-1 flex-1 overflow-y-auto max-h-[80px]">
+                                  {dayMeetings.map((m) => {
+                                    const timeStr = m.scheduled_at ? new Date(m.scheduled_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+                                    const statusCls = STATUS_COLORS[m.status] || "bg-violet-50 text-violet-700 border-violet-200";
+                                    return (
+                                      <div
+                                        key={m.id}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openEdit(m);
+                                        }}
+                                        className={`cursor-pointer px-1.5 py-1 rounded-md text-[11px] font-medium border transition hover:scale-[1.02] shadow-2xs ${statusCls}`}
+                                        title={`${m.title} (${m.meeting_type}) - ${m.status}`}
+                                      >
+                                        <div className="flex items-center justify-between gap-1">
+                                          <span className="font-bold truncate">{m.title}</span>
+                                          {timeStr && <span className="text-[9px] opacity-80 shrink-0">{timeStr}</span>}
+                                        </div>
+                                        {(m.client_name || m.lead_name || m.contact_name) && (
+                                          <p className="text-[10px] opacity-75 truncate">{m.client_name || m.lead_name || m.contact_name}</p>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+              </>
+            );
+          })()}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
