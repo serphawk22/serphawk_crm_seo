@@ -391,6 +391,34 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
         );
       })()}
 
+      {/* ── Custom Fields (Lead-specific saved fields) ─────────── */}
+      {(() => {
+        const cf = lead?.custom_fields || lead?.customFields || {};
+        const entries = typeof cf === 'object' && cf !== null && !Array.isArray(cf)
+          ? Object.entries(cf).filter(([k, v]) => k !== 'sheet_data' && k !== 'is_sample' && v !== null && v !== undefined && String(v).trim() !== '')
+          : [];
+        if (entries.length === 0) return null;
+        return (
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, padding: '16px 20px', backdropFilter: 'blur(16px)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+              <div style={{ background: '#6366f1', borderRadius: 8, padding: '4px 7px', display: 'flex' }}>
+                <Tag size={13} color="#fff" />
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Custom Fields</span>
+              <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>{entries.length} field{entries.length !== 1 ? 's' : ''}</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+              {entries.map(([key, val]) => (
+                <div key={key} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 14px' }}>
+                  <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase' as const, color: '#6366f1', margin: '0 0 4px 0' }}>{key}</p>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', margin: 0, wordBreak: 'break-word' }}>{String(val)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Sheet Data (Imported Fields) ────────────────────────── */}
       {lead?.customFields?.sheet_data && Object.keys(lead.customFields.sheet_data).length > 0 && (
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, padding: '16px 20px', backdropFilter: 'blur(16px)' }}>

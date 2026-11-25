@@ -36,7 +36,7 @@ from sqlmodel import Session, select
 
 import database
 from database import (
-    AICall, ActivityLog, CallLog, ClientNote, ClientProfile, ConversationLog, ConversationReply, FollowUp, InboxMessage,
+    AICall, ActivityLog, CallLog, ClientNote, ClientProfile, Contact, ConversationLog, ConversationReply, FollowUp, InboxMessage,
     Lead, LeadNote, Remark, SentEmail, Tenant, User,
 )
 from modules import company_mailer, email_ai, followup_ai
@@ -76,6 +76,7 @@ def _scope(stmt, v: inbox.Viewer):
         FollowUp.assigned_to == uid, FollowUp.created_by == uid,
         FollowUp.lead_id.in_(select(Lead.id).where(Lead.owner_id == uid)),
         FollowUp.client_id.in_(select(ClientProfile.id).where(ClientProfile.assignedEmployeeId == uid)),
+        FollowUp.contact_id.in_(select(Contact.id).where(Contact.owner_id == uid)),
     ))
 
 

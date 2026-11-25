@@ -17,7 +17,7 @@ const PAGE_MODULES: ReadonlyArray<readonly [string, string]> = [
   ["/billing", "billing"], ["/invoices", "invoices"], ["/quotes", "billing"], ["/proposals", "proposals"],
   ["/admin/marketplace", "marketplace"],
   ["/support/cases", "cases"], ["/support/solutions", "support"], ["/support/helpdesk", "support_sh"],
-  ["/import", "import_data"], ["/admin/api-intelligence", "api_intelligence"],
+  ["/admin/api-intelligence", "api_intelligence"],
   // business suite
   ["/command-center", "command_center"], ["/dashboard-b2c", "dashboard_b2c"], ["/revenue", "finance_suite"], ["/business-costs", "finance_suite"],
   ["/lead-sources", "lead_sources"], ["/lead-source-analytics", "lead_source_analytics"], ["/ownership", "ownership"],

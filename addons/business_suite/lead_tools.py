@@ -154,30 +154,69 @@ async def ingest_website_lead(request: Request, session: Session = Depends(get_s
     ip = ratelimit.client_ip(request)
     ratelimit.hit(f"lead-webhook:{ip}", 120, 60, "Too many submissions. Please slow down.")
     raw = await _read_body(request)
-    key = str(raw.get("api_key") or request.headers.get("X-API-Key") or "")
+    key = str(raw.get("api_key") or raw.get("google_key") or request.headers.get("X-API-Key") or request.query_params.get("api_key") or "")
     tenant_id = _tenant_for_key(session, key) if key else None
     if tenant_id is None:
         ratelimit.hit(f"lead-webhook-bad-key:{ip}", 10, 300, "Too many invalid keys. Try again later.")
         raise HTTPException(status_code=401, detail="Invalid or missing API key for lead intake")
     if not features.is_enabled(tenant_id, "lead_webhook"):
-        raise HTTPException(status_code=403, detail="The website lead webhook is not enabled for this account.")
+        raise HTTPException(status_code=403, detail="The lead intake webhook is not enabled for this account.")
     current_tenant_id.set(tenant_id)
 
+    # Detect channel & source: Google Ads, Meta Ads, or Website
+    detected_source = str(raw.get("source") or "").strip()
     full_name = str(raw.get("name") or raw.get("full_name") or f"{raw.get('first_name', '')} {raw.get('last_name', '')}".strip())
-    company = str(raw.get("company_name") or raw.get("company") or raw.get("business_name") or full_name or "Website Lead")[:255]
+    company = str(raw.get("company_name") or raw.get("company") or raw.get("business_name") or "")[:255]
     email = (raw.get("email") or raw.get("email_address") or None)
     phone = (raw.get("phone") or raw.get("mobile") or raw.get("phone_number") or raw.get("contact_number") or None)
-    form_name = str(raw.get("form_name") or raw.get("form_id") or raw.get("form_title") or "Website Inquiry Form")[:200]
+    custom = {str(k)[:100]: str(v)[:2000] for k, v in raw.items() if k not in _RESERVED and v}
+
+    # Native Google Ads Lead Form webhook support (Google sends user_column_data list)
+    if "user_column_data" in raw and isinstance(raw["user_column_data"], list):
+        if not detected_source:
+            detected_source = "Google Ads"
+        for col in raw["user_column_data"]:
+            cid = str(col.get("column_id", "")).upper()
+            val = str(col.get("string_value", "")).strip()
+            if not val:
+                continue
+            if cid in ("FULL_NAME", "NAME"):
+                full_name = val
+            elif cid == "FIRST_NAME":
+                if not full_name:
+                    full_name = val
+            elif cid == "LAST_NAME":
+                full_name = f"{full_name} {val}".strip()
+            elif cid in ("EMAIL", "WORK_EMAIL"):
+                email = val
+            elif cid in ("PHONE_NUMBER", "PHONE", "WORK_PHONE"):
+                phone = val
+            elif cid in ("COMPANY_NAME", "COMPANY"):
+                company = val
+            else:
+                custom[cid.lower()] = val
+
+    # Meta Ads (Facebook/Instagram) support
+    if any(k in raw for k in ("leadgen_id", "ad_id", "form_id", "adset_id", "campaign_id")) and "user_column_data" not in raw:
+        if not detected_source:
+            detected_source = "Meta Ads"
+
+    if not detected_source:
+        detected_source = "Website"
+
+    if not company:
+        company = full_name or f"{detected_source} Lead"
+
+    form_name = str(raw.get("form_name") or raw.get("form_id") or raw.get("form_title") or f"{detected_source} Form")[:200]
     page_url = str(raw.get("page_url") or raw.get("url") or raw.get("referer") or request.headers.get("referer") or
                    tenant_settings.get_setting(tenant_id, "website_url", "") or "")[:500]
     service = str(raw.get("service") or raw.get("services_interested") or raw.get("service_requested") or raw.get("subject") or "")[:200]
     message = str(raw.get("message") or raw.get("notes") or raw.get("inquiry") or raw.get("comments") or raw.get("description") or "")[:5000]
-    host = urlparse(page_url).netloc or "the website"
-    custom = {str(k)[:100]: str(v)[:2000] for k, v in raw.items() if k not in _RESERVED and v}
+    host = urlparse(page_url).netloc or detected_source
 
-    lines = [f"Inbound website lead from {host}", f"Form filled: {form_name}"]
+    lines = [f"Inbound lead from {detected_source} ({host})", f"Form / Ad name: {form_name}"]
     if page_url:
-        lines.append(f"Submitted URL: {page_url}")
+        lines.append(f"Submitted URL / Campaign: {page_url}")
     if service:
         lines.append(f"Service interest: {service}")
     if message:
@@ -187,9 +226,9 @@ async def ingest_website_lead(request: Request, session: Session = Depends(get_s
         lines += [f"  - {k.replace('_', ' ').capitalize()}: {v}" for k, v in custom.items()]
 
     lead = Lead(
-        tenant_id=tenant_id, company_name=company, email=email, phone=phone, website=page_url or None, source="Website",
+        tenant_id=tenant_id, company_name=company, email=email, phone=phone, website=page_url or None, source=detected_source,
         status="New", industry=service or None, notes="\n".join(lines),
-        ai_analysis_results={"website_form": {"website": host, "form_name": form_name, "page_url": page_url,
+        ai_analysis_results={"intake_form": {"source": detected_source, "website": host, "form_name": form_name, "page_url": page_url,
                                               "submitted_at": datetime.now(timezone.utc).isoformat(), "contact_name": full_name,
                                               "email": email or "", "phone": phone or "", "service_requested": service,
                                               "message": message, "custom_fields": custom}},
@@ -204,14 +243,14 @@ async def ingest_website_lead(request: Request, session: Session = Depends(get_s
     last = " ".join(full_name.split()[1:]) or None
     session.add(Contact(tenant_id=tenant_id, lead_id=lead.id, first_name=first, last_name=last, full_name=full_name or company,
                         email=email, mobile_number=phone, notes=f"Submitted from {host} ({form_name})"))
-    session.add(ClientNote(tenant_id=tenant_id, lead_id=lead.id, author_name="Website form",
-                           content=f"Website form submission: {form_name}\n\nMessage:\n\"{message or 'No message.'}\"\n\nAssigned to: {who}"))
-    session.add(ActivityLog(tenant_id=tenant_id, lead_id=lead.id, action="Website form submitted", method="Website",
-                            content=f"A prospect submitted '{form_name}' on {host}. Assigned to {who}."))
+    session.add(ClientNote(tenant_id=tenant_id, lead_id=lead.id, author_name=f"{detected_source} form",
+                           content=f"{detected_source} submission: {form_name}\n\nMessage:\n\"{message or 'No message.'}\"\n\nAssigned to: {who}"))
+    session.add(ActivityLog(tenant_id=tenant_id, lead_id=lead.id, action=f"{detected_source} lead submitted", method=detected_source,
+                            content=f"A prospect submitted '{form_name}' via {detected_source}. Assigned to {who}."))
     session.commit()
     try:
-        _notify_admins(session, tenant_id, title=f"New website lead: {company}",
-                       message=f"Form: {form_name} | Assigned: {who}", notif_type="info", link=f"/leads/{lead.id}")
+        _notify_admins(session, tenant_id, title=f"New {detected_source} lead: {company}",
+                       message=f"Form / Campaign: {form_name} | Assigned: {who}", notif_type="info", link=f"/leads/{lead.id}")
     except Exception:
         pass
     try:
@@ -220,6 +259,6 @@ async def ingest_website_lead(request: Request, session: Session = Depends(get_s
                                      website=lead.website or "")
     except Exception as e:
         print(f"[lead-webhook] research not started: {type(e).__name__}")
-    return {"success": True, "lead_id": lead.id, "company_name": lead.company_name, "source": "Website", "form_name": form_name,
+    return {"success": True, "lead_id": lead.id, "company_name": lead.company_name, "source": detected_source, "form_name": form_name,
             "page_url": page_url, "assigned_salesperson": {"id": rep.id if rep else None, "name": who, "email": rep.email if rep else None},
             "message": f"Lead #{lead.id} created and assigned to {who}."}

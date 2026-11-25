@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X, Check, Loader2, Phone, Mail, Globe, MapPin, Building2,
   DollarSign, Tag, Linkedin, Twitter, Instagram, Facebook
@@ -44,6 +44,33 @@ export default function EditLeadDetailsModal({
   };
   const [customFields, setCustomFields] = useState<{ key: string; value: string }[]>(initialCustomFields);
 
+  useEffect(() => {
+    if (isOpen && lead) {
+      setPhone(lead?.phone || "");
+      setEmail(lead?.email || "");
+      setIndustry(lead?.industry || "");
+      setCity(lead?.city || "");
+      setCountry(lead?.country || "");
+      setAddress(lead?.address || "");
+      setWebsite(lead?.website || "");
+      setDealValue(lead?.deal_value != null ? String(lead.deal_value) : "");
+      setLinkedinUrl(lead?.linkedin_url || "");
+      setTwitterUrl(lead?.twitter_url || "");
+      setInstagramUrl(lead?.instagram_url || "");
+      setFacebookUrl(lead?.facebook_url || "");
+      const cf = lead?.custom_fields || lead?.customFields || {};
+      if (typeof cf === "object" && cf !== null && !Array.isArray(cf)) {
+        setCustomFields(
+          Object.entries(cf)
+            .filter(([k]) => k !== "sheet_data" && k !== "is_sample")
+            .map(([k, v]) => ({ key: k, value: String(v) }))
+        );
+      } else {
+        setCustomFields([]);
+      }
+    }
+  }, [isOpen, lead?.id, lead?.custom_fields, lead?.customFields]);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -55,6 +82,11 @@ export default function EditLeadDetailsModal({
     setError("");
 
     try {
+      const cfObj = customFields.reduce((acc, curr) => {
+        if (curr.key.trim()) acc[curr.key.trim()] = curr.value.trim();
+        return acc;
+      }, {} as Record<string, string>);
+
       const payload: Record<string, any> = {
         company_name: lead.company_name,
         phone: phone.trim() || null,
@@ -70,10 +102,8 @@ export default function EditLeadDetailsModal({
         instagram_url: instagramUrl.trim() || null,
         facebook_url: facebookUrl.trim() || null,
         status: lead.status || "New",
-        custom_fields: customFields.reduce((acc, curr) => {
-          if (curr.key.trim()) acc[curr.key.trim()] = curr.value.trim();
-          return acc;
-        }, {} as Record<string, string>),
+        custom_fields: cfObj,
+        customFields: cfObj,
       };
 
       const res = await fetch(`${API_BASE_URL}/leads/${lead.id}`, {
