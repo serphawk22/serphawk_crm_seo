@@ -708,12 +708,13 @@ def update_lead_stage(lead_id: int, body: LeadStatusRequest, session: Session = 
     actor = _require_roles(session, _LEAD_SCHEDULE_ROLES)
     lead = session.get(Lead, lead_id)
     _require_lead_schedule_access(lead, actor)
-    if body.status not in LEAD_STAGES:
-        raise HTTPException(status_code=422, detail=f"Status must be one of: {', '.join(LEAD_STAGES)}")
-    if body.status == "Converted" and not (lead.is_converted or lead.converted_student_id):
-        raise HTTPException(status_code=422, detail="Enroll the lead as a student to mark it Converted")
-    lead.status = body.status
-    if body.status == "Lost":
+    new_status = (body.status or "").strip()
+    if not new_status:
+        raise HTTPException(status_code=422, detail="Status cannot be empty")
+    lead.status = new_status
+    if new_status.lower() == "converted" and not lead.is_converted:
+        lead.is_converted = True
+    if new_status == "Lost":
         now = _utcnow()
         for fu in session.exec(select(LeadFollowUp).where(LeadFollowUp.lead_id == lead_id, LeadFollowUp.status == "Pending")).all():
             fu.status = "Cancelled"

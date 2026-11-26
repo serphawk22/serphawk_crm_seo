@@ -18,6 +18,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import SalesAssignModal from "@/components/SalesAssignModal";
 import AddFollowUpModal, { FollowUpTarget } from "@/components/AddFollowUpModal";
 import InstituteLeadScheduleModal from "@/components/InstituteLeadScheduleModal";
+import LeadMeetingScheduleModal from "@/components/LeadMeetingScheduleModal";
 import ContactSynopsisModal from "@/components/ContactSynopsisModal";
 import LeadBatchEnrollmentAction from "@/components/LeadBatchEnrollmentAction";
 import LeadCallModal, { type LeadCallTarget } from "@/components/voice-agent/LeadCallModal";
@@ -247,6 +248,7 @@ export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loadError, setLoadError] = useState("");
   const [schedule, setSchedule] = useState<{ lead: Lead; stage: ScheduleStage } | null>(null);
+  const [meetingScheduleLead, setMeetingScheduleLead] = useState<Lead | null>(null);
   const STATUSES = useMemo(() => {
     if (selectedSpace?.stages && selectedSpace.stages.length > 0) {
       const spaceStageNames = selectedSpace.stages.map(s => s.name);
@@ -631,19 +633,11 @@ export default function LeadsPage() {
 
   const handleStatusChange = async (leadId: number, newStatus: string) => {
     const lead = leads.find(l => l.id === leadId);
-    if (newStatus === "Contacted" && lead) {
-      setContactSynopsisTarget({ id: leadId, name: lead.company_name });
-      return;
-    }
-    if (institute && (newStatus === "Student" || newStatus === "Converted") && lead && !lead.is_converted) {
-      setEnrollLead(lead);
-      return;
-    }
-    const scheduledStage = scheduleStage(newStatus, institute);
-    if (scheduledStage && lead) {
-      setSchedule({ lead, stage: scheduledStage });
-      return;
-    }
+    if (!lead) return;
+
+    // Optimistic UI update
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: newStatus } : l));
+
     try {
       const res = await fetch(`${API_BASE_URL}/leads/${leadId}/status`, {
         method: "PATCH",
@@ -658,6 +652,34 @@ export default function LeadsPage() {
     } catch (e) {
       console.error("Failed to update lead status", e);
       setLoadError(e instanceof Error ? e.message : 'Could not update lead status');
+      await fetchLeads();
+      return;
+    }
+
+    if (newStatus === "Contacted") {
+      setContactSynopsisTarget({ id: leadId, name: lead.company_name });
+      return;
+    }
+    if (institute && (newStatus === "Student" || newStatus === "Converted") && !lead.is_converted) {
+      setEnrollLead(lead);
+      return;
+    }
+
+    // Inspect if target stage has Calendar Scheduling configured
+    const targetStageDef = (selectedSpace?.stages as any[])?.find(
+      s => s.name?.toLowerCase() === newStatus.toLowerCase()
+    );
+    const action = targetStageDef?.calendar_action;
+    const lower = newStatus.toLowerCase();
+
+    if (action === "meeting" || (!action && (lower.includes("meeting") || lower.includes("demo")))) {
+      setMeetingScheduleLead(lead);
+      return;
+    }
+    if (action === "followup" || (!action && (lower.includes("follow") || lower.includes("webinar") || lower.includes("walk-in")))) {
+      const scheduledStage = scheduleStage(newStatus, institute) || "Follow-up";
+      setSchedule({ lead, stage: scheduledStage });
+      return;
     }
   };
 
@@ -2584,6 +2606,13 @@ export default function LeadsPage() {
       {/* Add Follow-up Modal */}
       {loadError && <div role="alert" className="fixed bottom-4 left-4 right-4 z-40 rounded-xl bg-red-50 p-4 text-red-800 shadow-lg">{loadError} <button onClick={() => { fetchLeads(); }} className="ml-3 underline"><LocalizedText text={"Retry"} /></button></div>}
       {schedule && <InstituteLeadScheduleModal lead={schedule.lead} stage={schedule.stage} onClose={() => setSchedule(null)} onSuccess={() => { fetchLeads(); }} />}
+      {meetingScheduleLead && (
+        <LeadMeetingScheduleModal
+          lead={meetingScheduleLead}
+          onClose={() => setMeetingScheduleLead(null)}
+          onSuccess={() => { fetchLeads(); }}
+        />
+      )}
       <AddFollowUpModal
         open={!!followUpTarget}
         onClose={() => setFollowUpTarget(null)}

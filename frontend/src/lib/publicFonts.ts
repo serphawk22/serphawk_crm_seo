@@ -6,6 +6,7 @@ export const serif = Playfair_Display({
   weight: ["400", "500", "600", "700"],
   style: ["normal", "italic"],
   display: "swap",
+  preload: false,
 });
 
 // Reading serif for long-form article body copy
@@ -14,5 +15,6 @@ export const bodySerif = Lora({
   weight: ["400", "500", "600"],
   style: ["normal", "italic"],
   display: "swap",
+  preload: false,
 });
 

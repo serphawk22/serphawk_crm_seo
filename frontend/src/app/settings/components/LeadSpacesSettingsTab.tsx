@@ -4,7 +4,7 @@ import { API_BASE_URL } from "@/config";
 import {
   Layers, Plus, Trash2, Edit3, Check, X, ChevronDown, ChevronUp,
   Star, Palette, AlertCircle, ArrowUp, ArrowDown, Loader2, Workflow,
-  CheckCircle2, Sparkles, Building2
+  CheckCircle2, Sparkles, Building2, Calendar, Clock
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 
@@ -15,6 +15,7 @@ export interface LeadStage {
   order: number;
   is_won?: boolean;
   is_lost?: boolean;
+  calendar_action?: "meeting" | "followup" | "none" | null;
 }
 
 export interface LeadSpace {
@@ -45,13 +46,13 @@ const PRESET_COLORS = [
 ];
 
 const DEFAULT_NEW_STAGES: LeadStage[] = [
-  { id: "new", name: "New", color: "#3B82F6", order: 0, is_won: false, is_lost: false },
-  { id: "contacted", name: "Contacted", color: "#0EA5E9", order: 1, is_won: false, is_lost: false },
-  { id: "qualified", name: "Qualified", color: "#F59E0B", order: 2, is_won: false, is_lost: false },
-  { id: "proposal", name: "Proposal Sent", color: "#F97316", order: 3, is_won: false, is_lost: false },
-  { id: "negotiation", name: "Negotiation", color: "#6366F1", order: 4, is_won: false, is_lost: false },
-  { id: "won", name: "Won", color: "#10B981", order: 5, is_won: true, is_lost: false },
-  { id: "lost", name: "Lost", color: "#EF4444", order: 6, is_won: false, is_lost: true },
+  { id: "new", name: "New", color: "#3B82F6", order: 0, is_won: false, is_lost: false, calendar_action: "none" },
+  { id: "contacted", name: "Contacted", color: "#0EA5E9", order: 1, is_won: false, is_lost: false, calendar_action: "none" },
+  { id: "qualified", name: "Qualified", color: "#F59E0B", order: 2, is_won: false, is_lost: false, calendar_action: "meeting" },
+  { id: "proposal", name: "Proposal Sent", color: "#F97316", order: 3, is_won: false, is_lost: false, calendar_action: "none" },
+  { id: "negotiation", name: "Negotiation", color: "#6366F1", order: 4, is_won: false, is_lost: false, calendar_action: "followup" },
+  { id: "won", name: "Won", color: "#10B981", order: 5, is_won: true, is_lost: false, calendar_action: "none" },
+  { id: "lost", name: "Lost", color: "#EF4444", order: 6, is_won: false, is_lost: true, calendar_action: "none" },
 ];
 
 function getAuthHeaders(): Record<string, string> {
@@ -268,6 +269,7 @@ export default function LeadSpacesSettingsTab() {
         order: newOrder,
         is_won: false,
         is_lost: false,
+        calendar_action: "none",
       });
       return { ...prev, [spaceId]: current };
     });
@@ -468,6 +470,16 @@ export default function LeadSpacesSettingsTab() {
                               Lost
                             </span>
                           )}
+                          {st.calendar_action === "meeting" && (
+                            <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-600 dark:text-indigo-400">
+                              📅 Meeting
+                            </span>
+                          )}
+                          {st.calendar_action === "followup" && (
+                            <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                              ⏰ Follow-up
+                            </span>
+                          )}
                         </div>
                         {i < currentStages.length - 1 && (
                           <span className="text-slate-300 dark:text-zinc-600 font-bold">→</span>
@@ -567,6 +579,21 @@ export default function LeadSpacesSettingsTab() {
                                 title={c.name}
                               />
                             ))}
+                          </div>
+
+                          {/* Calendar Action Selector */}
+                          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-[11px] shrink-0">
+                            <Calendar className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                            <select
+                              value={stage.calendar_action || "none"}
+                              onChange={(e) => handleStageChange(space.id, idx, "calendar_action", e.target.value)}
+                              className="bg-transparent text-slate-800 dark:text-zinc-200 outline-none font-medium cursor-pointer"
+                              title="Schedule on Calendar when moved to this stage"
+                            >
+                              <option value="none">No Calendar Action</option>
+                              <option value="meeting">📅 Schedule Meeting</option>
+                              <option value="followup">⏰ Schedule Follow-up</option>
+                            </select>
                           </div>
 
                           {/* Stage Type Toggle (Won / Lost / Regular) */}
