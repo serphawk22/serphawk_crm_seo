@@ -20,7 +20,7 @@ import shutil
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Body, Header
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select, func, or_
 
@@ -48,20 +48,42 @@ def _current_auth_user(session: Session) -> Optional[User]:
     return session.get(User, uid)
 
 
-def _require_admin_or_superadmin(session: Session) -> User:
-    """Ensures caller has SuperAdmin or Admin privileges to write/edit/delete blogs."""
+SECURITY_KEY = "SERP123"
+
+
+def _require_admin_or_superadmin(session: Session, sec_key: Optional[str] = None) -> User:
+    """Ensures caller has SuperAdmin or Admin privileges or valid security key (SERP123)."""
+    if sec_key and sec_key.strip() == SECURITY_KEY:
+        user = _current_auth_user(session)
+        if not user:
+            user = session.exec(select(User).where(User.role.in_(["SuperAdmin", "Admin"]))).first()
+            if not user:
+                user = session.exec(select(User)).first()
+            if not user:
+                # Emergency author user
+                user = User(
+                    name="SerpHawk Author",
+                    email="author@serphawk.com",
+                    role="SuperAdmin",
+                    tenant_id=1
+                )
+                session.add(user)
+                session.commit()
+                session.refresh(user)
+        return user
+
     user = _current_auth_user(session)
     if not user:
         raise HTTPException(
             status_code=401,
-            detail="Authentication required. Please sign in with SuperAdmin or Admin credentials to publish blogs."
+            detail="Security key (SERP123) or SuperAdmin credentials required to publish articles."
         )
     role_norm = (user.role or "").strip().lower()
     is_super = role_norm in ("superadmin", "admin") or (user.email or "").lower() == "admin@serphawk.com"
     if not is_super:
         raise HTTPException(
             status_code=403,
-            detail="Insufficient permissions. Only SuperAdmin and Admin accounts can manage blogs."
+            detail="Insufficient permissions. Please enter security key (SERP123) or sign in as Admin."
         )
     return user
 
@@ -91,6 +113,7 @@ class BlogCreateRequest(BaseModel):
     author_avatar: Optional[str] = None
     is_published: bool = True
     read_time_minutes: Optional[int] = None
+    security_key: Optional[str] = None
 
 
 class BlogUpdateRequest(BaseModel):
@@ -106,6 +129,7 @@ class BlogUpdateRequest(BaseModel):
     author_avatar: Optional[str] = None
     is_published: Optional[bool] = None
     read_time_minutes: Optional[int] = None
+    security_key: Optional[str] = None
 
 
 def _blog_dict(b: BlogPost) -> dict:
@@ -214,9 +238,13 @@ def get_blog(slug_or_id: str, session: Session = Depends(_get_session)):
 # ─────────────────────────────────────────────────────────────────────────────
 @router.post("")
 @router.post("/")
-def create_blog(body: BlogCreateRequest, session: Session = Depends(_get_session)):
-    """Create a new blog article. Restricted to SuperAdmin and Admin."""
-    user = _require_admin_or_superadmin(session)
+def create_blog(
+    body: BlogCreateRequest,
+    x_security_key: Optional[str] = Header(None),
+    session: Session = Depends(_get_session)
+):
+    """Create a new blog article. Restricted to SuperAdmin/Admin or Security Key SERP123."""
+    user = _require_admin_or_superadmin(session, x_security_key or body.security_key)
 
     # Resolve slug
     base_slug = _slugify(body.slug or body.title)
@@ -230,8 +258,8 @@ def create_blog(body: BlogCreateRequest, session: Session = Depends(_get_session
     words = len(body.content.split())
     read_time = body.read_time_minutes or max(1, round(words / 200))
 
-    author_name = body.author_name or user.name or "SerpHawk Team"
-    author_role = body.author_role or user.role or "Super Admin"
+    author_name = body.author_name or (user.name if user else "SerpHawk Team")
+    author_role = body.author_role or (user.role if user else "Super Admin")
 
     blog = BlogPost(
         title=body.title.strip(),
@@ -241,7 +269,7 @@ def create_blog(body: BlogCreateRequest, session: Session = Depends(_get_session
         cover_image=body.cover_image or "https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=1200&q=80",
         category=body.category or "CRM Guide",
         tags=body.tags or "crm, sales, automation",
-        author_id=user.id,
+        author_id=user.id if user else None,
         author_name=author_name,
         author_role=author_role,
         author_avatar=body.author_avatar,
@@ -257,9 +285,14 @@ def create_blog(body: BlogCreateRequest, session: Session = Depends(_get_session
 
 
 @router.put("/{blog_id}")
-def update_blog(blog_id: int, body: BlogUpdateRequest, session: Session = Depends(_get_session)):
-    """Update an existing blog article. Restricted to SuperAdmin and Admin."""
-    _require_admin_or_superadmin(session)
+def update_blog(
+    blog_id: int,
+    body: BlogUpdateRequest,
+    x_security_key: Optional[str] = Header(None),
+    session: Session = Depends(_get_session)
+):
+    """Update an existing blog article. Restricted to SuperAdmin/Admin or Security Key SERP123."""
+    _require_admin_or_superadmin(session, x_security_key or body.security_key)
     blog = session.get(BlogPost, blog_id)
     if not blog:
         raise HTTPException(status_code=404, detail="Blog post not found")
@@ -302,9 +335,13 @@ def update_blog(blog_id: int, body: BlogUpdateRequest, session: Session = Depend
 
 
 @router.delete("/{blog_id}")
-def delete_blog(blog_id: int, session: Session = Depends(_get_session)):
-    """Delete a blog article. Restricted to SuperAdmin and Admin."""
-    _require_admin_or_superadmin(session)
+def delete_blog(
+    blog_id: int,
+    x_security_key: Optional[str] = Header(None),
+    session: Session = Depends(_get_session)
+):
+    """Delete a blog article. Restricted to SuperAdmin/Admin or Security Key SERP123."""
+    _require_admin_or_superadmin(session, x_security_key)
     blog = session.get(BlogPost, blog_id)
     if not blog:
         raise HTTPException(status_code=404, detail="Blog post not found")
@@ -316,8 +353,11 @@ def delete_blog(blog_id: int, session: Session = Depends(_get_session)):
 @router.post("/upload-image")
 def upload_blog_image(
     file: UploadFile = File(...),
+    x_security_key: Optional[str] = Header(None),
     session: Session = Depends(_get_session)
 ):
+    """Upload an image to embed in blog articles. Restricted to SuperAdmin/Admin or Security Key SERP123."""
+    _require_admin_or_superadmin(session, x_security_key)
     """Upload an image to embed in blog articles. Restricted to SuperAdmin and Admin."""
     _require_admin_or_superadmin(session)
     ext = os.path.splitext(file.filename or "")[1].lower()

@@ -16,6 +16,13 @@ import {
   MessagesSquare,
   Clock,
   BadgeCheck,
+  Lock,
+  Shield,
+  Upload,
+  Image as ImageIcon,
+  Sparkles,
+  Tag,
+  AlertTriangle
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { serif } from "@/lib/publicFonts";
@@ -57,22 +64,166 @@ export default function ShopStorefrontPage() {
   const [createdProposal, setCreatedProposal] = useState<{ id: number; url: string; total: number; company: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(`${API_BASE_URL}/shop/catalog`);
-        if (res.ok) {
-          const data = await res.json();
-          setCatalog(data.items || []);
-        }
-      } catch (e) {
-        console.error("Failed to load store catalog", e);
-      } finally {
-        setLoading(false);
+  // Security Key & Item Creation state (SERP123)
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [securityKeyInput, setSecurityKeyInput] = useState("");
+  const [securityError, setSecurityError] = useState<string | null>(null);
+  const [isSecurityUnlocked, setIsSecurityUnlocked] = useState(false);
+
+  const [showPostModal, setShowPostModal] = useState(false);
+  const [postingItem, setPostingItem] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemCode, setNewItemCode] = useState("");
+  const [newItemCategory, setNewItemCategory] = useState("");
+  const [isCreatingNewCategory, setIsCreatingNewCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newItemPrice, setNewItemPrice] = useState<number | "">("");
+  const [newItemUnit, setNewItemUnit] = useState("pcs");
+  const [newItemBadge, setNewItemBadge] = useState("In Stock");
+  const [newItemPhotoUrl, setNewItemPhotoUrl] = useState("");
+  const [newItemDescription, setNewItemDescription] = useState("");
+  const [postSuccess, setPostSuccess] = useState<string | null>(null);
+
+  const loadCatalog = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/shop/catalog`);
+      if (res.ok) {
+        const data = await res.json();
+        setCatalog(data.items || []);
       }
-    })();
+    } catch (e) {
+      console.error("Failed to load store catalog", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCatalog();
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("serphawk_security_unlocked");
+      if (saved === "SERP123") {
+        setIsSecurityUnlocked(true);
+      }
+    }
   }, []);
+
+  const handleOpenPostModal = () => {
+    const unlocked = typeof window !== "undefined" && localStorage.getItem("serphawk_security_unlocked") === "SERP123";
+    if (unlocked || isSecurityUnlocked) {
+      setShowPostModal(true);
+    } else {
+      setSecurityKeyInput("");
+      setSecurityError(null);
+      setShowSecurityModal(true);
+    }
+  };
+
+  const handleVerifySecurityKey = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (securityKeyInput.trim() === "SERP123") {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("serphawk_security_unlocked", "SERP123");
+      }
+      setIsSecurityUnlocked(true);
+      setShowSecurityModal(false);
+      setShowPostModal(true);
+    } else {
+      setSecurityError("Invalid security key. Key required: SERP123");
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setPostError("Image must be under 10 MB");
+      return;
+    }
+    setUploadingImage(true);
+    setPostError(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${API_BASE_URL}/upload-image`, { method: "POST", body: fd });
+      const data = await res.json();
+      if (res.ok && data.file_url) {
+        setNewItemPhotoUrl(data.file_url);
+      } else {
+        setPostError(data.detail || "Failed to upload image");
+      }
+    } catch {
+      setPostError("Network error while uploading image.");
+    } finally {
+      setUploadingImage(false);
+      if (e.target) e.target.value = "";
+    }
+  };
+
+  const handleCreateShopItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newItemName.trim()) {
+      setPostError("Item name is required.");
+      return;
+    }
+    if (newItemPrice === "" || Number(newItemPrice) < 0) {
+      setPostError("Please enter a valid price.");
+      return;
+    }
+
+    const finalCategory = isCreatingNewCategory && newCategoryName.trim()
+      ? newCategoryName.trim()
+      : newItemCategory.trim() || (categories.find(c => c !== "All") || "General Services");
+
+    setPostingItem(true);
+    setPostError(null);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/shop/items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          security_key: "SERP123",
+          name: newItemName.trim(),
+          code: newItemCode.trim(),
+          category: finalCategory,
+          unit_price: Number(newItemPrice),
+          unit: newItemUnit.trim() || "pcs",
+          description: newItemDescription.trim(),
+          photo_url: newItemPhotoUrl.trim(),
+          badge: newItemBadge.trim()
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to post item to shop.");
+      }
+
+      await loadCatalog();
+      setShowPostModal(false);
+      setPostSuccess("Item successfully posted to storefront!");
+      setTimeout(() => setPostSuccess(null), 3500);
+
+      // Reset form
+      setNewItemName("");
+      setNewItemCode("");
+      setNewItemCategory("");
+      setIsCreatingNewCategory(false);
+      setNewCategoryName("");
+      setNewItemPrice("");
+      setNewItemPhotoUrl("");
+      setNewItemDescription("");
+    } catch (err: any) {
+      setPostError(err.message || "Failed to post item to shop.");
+    } finally {
+      setPostingItem(false);
+    }
+  };
 
   // Close drawer with Escape
   useEffect(() => {
@@ -162,6 +313,20 @@ export default function ShopStorefrontPage() {
     </button>
   );
 
+  const HeaderActions = (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={handleOpenPostModal}
+        className={`h-9 px-3.5 rounded-full inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer border ${T.border} ${T.surface} hover:border-[#9A7B4F] hover:text-[#9A7B4F] transition`}
+      >
+        <Plus className="w-3.5 h-3.5 text-[#9A7B4F]" />
+        <span className="hidden sm:inline">Post Item</span>
+      </button>
+      {CartButton}
+    </div>
+  );
+
   const steps = [
     { n: "I", t: "Select", d: "Choose the services and packages that fit your ambitions." },
     { n: "II", t: "Compose", d: "Adjust quantities and share a few details about your goals." },
@@ -171,7 +336,15 @@ export default function ShopStorefrontPage() {
   return (
     <div className={`${T.page} min-h-screen flex flex-col antialiased selection:bg-[#9A7B4F]/25`} style={{ ["--sh-serif" as any]: serif.style.fontFamily }}>
       <PublicStyles />
-      <PublicHeader active="store" right={CartButton} />
+      <PublicHeader active="store" right={HeaderActions} />
+
+      {/* ── TOAST NOTIFICATION ── */}
+      {postSuccess && (
+        <div className="fixed top-20 right-6 z-[200] px-5 py-3 rounded-2xl bg-emerald-600 text-white text-xs font-bold shadow-2xl flex items-center gap-2 animate-bounce">
+          <Check className="w-4 h-4" />
+          <span>{postSuccess}</span>
+        </div>
+      )}
 
       {/* ── HERO ── */}
       <section className="max-w-7xl w-full mx-auto px-4 sm:px-8 pt-14 sm:pt-20 pb-16 grid lg:grid-cols-12 gap-12 lg:gap-16 items-center">
@@ -187,6 +360,14 @@ export default function ShopStorefrontPage() {
             <a href="#collection" className={`h-12 px-7 rounded-full inline-flex items-center gap-2 text-sm tracking-wide ${T.inkBtn}`}>
               Browse the collection <ArrowRight className="w-4 h-4" />
             </a>
+            <button
+              type="button"
+              onClick={handleOpenPostModal}
+              className={`h-12 px-6 rounded-full inline-flex items-center gap-2 text-sm tracking-wide border ${T.border} ${T.surface} hover:border-[#9A7B4F] hover:text-[#9A7B4F] cursor-pointer transition`}
+            >
+              <Plus className="w-4 h-4 text-[#9A7B4F]" />
+              Post Item to Shop
+            </button>
             <a href="#how" className={`h-12 px-7 rounded-full inline-flex items-center text-sm tracking-wide ${T.ghostBtn}`}>
               How it works
             </a>
@@ -243,7 +424,16 @@ export default function ShopStorefrontPage() {
             <p className={`${T.eyebrow} ${T.gold}`}>The Collection</p>
             <h2 className={`${serif.className} mt-3 text-4xl sm:text-5xl font-medium`}>Everything we offer</h2>
           </div>
-          <div className="flex items-center gap-6 overflow-x-auto sh-noscroll">
+          <div className="flex items-center gap-4 overflow-x-auto sh-noscroll">
+            <button
+              type="button"
+              onClick={handleOpenPostModal}
+              className={`shrink-0 h-8 px-3.5 rounded-full inline-flex items-center gap-1.5 text-xs font-semibold tracking-wide border border-dashed ${T.border} ${T.surface} hover:border-[#9A7B4F] hover:text-[#9A7B4F] cursor-pointer transition shadow-sm`}
+            >
+              <Plus className="w-3.5 h-3.5 text-[#9A7B4F]" />
+              <span>+ Post Item</span>
+            </button>
+            <div className="h-4 w-px bg-slate-300 dark:bg-zinc-800 shrink-0"></div>
             {categories.map((cat) => (
               <button
                 key={cat}
@@ -522,6 +712,372 @@ export default function ShopStorefrontPage() {
                   Continue browsing
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SECURITY KEY MODAL (SERP123) ── */}
+      {showSecurityModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-[#1C1917]/60 dark:bg-black/80 backdrop-blur-sm sh-fade">
+          <div className={`w-full max-w-md p-1.5 border ${T.border} ${T.page} shadow-2xl sh-scale-in`}>
+            <div className={`border ${T.border} ${T.surface} p-7 sm:p-8 space-y-5`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border ${T.border} ${T.goldBg} text-white dark:text-[#0E0D0B]`}>
+                    <Lock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className={`${T.eyebrow} ${T.gold}`}>Storefront Administration</p>
+                    <h3 className={`${serif.className} text-2xl font-medium`}>Security Key Required</h3>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSecurityModal(false)}
+                  className={`p-1.5 rounded-full hover:bg-slate-200 dark:hover:bg-zinc-800 ${T.muted}`}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <p className={`text-xs leading-relaxed ${T.muted}`}>
+                Please enter the system security key to post new inventory items or services directly to the public shop catalog.
+              </p>
+
+              {securityError && (
+                <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-400 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{securityError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleVerifySecurityKey} className="space-y-4">
+                <div>
+                  <label className={`block text-[11px] font-bold uppercase tracking-wider mb-1.5 ${T.faint}`}>
+                    Enter Security Key
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      autoFocus
+                      required
+                      value={securityKeyInput}
+                      onChange={(e) => setSecurityKeyInput(e.target.value)}
+                      placeholder="Security key..."
+                      className={`w-full px-4 py-2.5 rounded-xl border ${T.border} ${T.page} text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#9A7B4F]`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSecurityKeyInput("SERP123")}
+                      className={`absolute right-2 top-2 px-2 py-0.5 rounded text-[11px] font-bold ${T.goldBg} text-white dark:text-[#0E0D0B] hover:opacity-90`}
+                    >
+                      Use SERP123
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowSecurityModal(false)}
+                    className={`flex-1 h-11 rounded-full text-xs font-semibold border ${T.border} ${T.surface} hover:opacity-80 transition`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className={`flex-1 h-11 rounded-full text-xs font-semibold tracking-wide ${T.inkBtn} flex items-center justify-center gap-1.5`}
+                  >
+                    <Shield className="w-3.5 h-3.5" />
+                    <span>Unlock & Post</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── POST NEW ITEM MODAL ── */}
+      {showPostModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-[#1C1917]/60 dark:bg-black/80 backdrop-blur-sm sh-fade">
+          <div className={`w-full max-w-xl max-h-[90vh] overflow-y-auto p-1.5 border ${T.border} ${T.page} shadow-2xl sh-scale-in`}>
+            <div className={`border ${T.border} ${T.surface} p-7 sm:p-8 space-y-5`}>
+              <div className="flex items-center justify-between pb-4 border-b border-inherit">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border ${T.border} ${T.goldBg} text-white dark:text-[#0E0D0B]`}>
+                    <Plus className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className={`${T.eyebrow} ${T.gold}`}>Public Storefront</p>
+                    <h3 className={`${serif.className} text-2xl font-medium`}>Post New Item to Shop</h3>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPostModal(false)}
+                  className={`p-1.5 rounded-full hover:bg-slate-200 dark:hover:bg-zinc-800 ${T.muted}`}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {postError && (
+                <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-400 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{postError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleCreateShopItem} className="space-y-4">
+                {/* Image Section: File Upload or Direct Image URL */}
+                <div className={`p-4 rounded-2xl border ${T.border} ${T.page} space-y-3`}>
+                  <div className="flex items-center justify-between">
+                    <label className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${T.ink}`}>
+                      <ImageIcon className="w-3.5 h-3.5 text-[#9A7B4F]" />
+                      <span>Item Photo / Image</span>
+                    </label>
+                    <span className={`text-[10px] ${T.faint}`}>File upload or direct URL</span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      id="shopImageUpload"
+                      onChange={handleImageUpload}
+                    />
+                    <label
+                      htmlFor="shopImageUpload"
+                      className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed ${T.border} text-xs font-semibold cursor-pointer hover:border-[#9A7B4F] transition`}
+                    >
+                      <Upload className="w-4 h-4 text-[#9A7B4F]" />
+                      <span>{uploadingImage ? "Uploading..." : newItemPhotoUrl ? "Change Photo File" : "Upload Photo File"}</span>
+                    </label>
+
+                    {newItemPhotoUrl && (
+                      <div className="relative w-14 h-14 rounded-xl overflow-hidden border border-inherit shrink-0">
+                        <img
+                          src={newItemPhotoUrl.startsWith("/static") ? `${API_BASE_URL}${newItemPhotoUrl}` : newItemPhotoUrl}
+                          alt="preview"
+                          className="w-full h-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setNewItemPhotoUrl("")}
+                          className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <input
+                      type="url"
+                      placeholder="Or paste direct image URL (https://example.com/photo.jpg)..."
+                      value={newItemPhotoUrl}
+                      onChange={(e) => setNewItemPhotoUrl(e.target.value)}
+                      className={`w-full px-3.5 py-2 rounded-xl border ${T.border} ${T.surface} text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#9A7B4F]`}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={`block text-[11px] font-bold uppercase tracking-wider mb-1 ${T.faint}`}>
+                      Item Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Executive SEO Package"
+                      value={newItemName}
+                      onChange={(e) => setNewItemName(e.target.value)}
+                      className={`w-full px-3.5 py-2.5 rounded-xl border ${T.border} ${T.page} text-sm focus:outline-none focus:ring-2 focus:ring-[#9A7B4F]`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`block text-[11px] font-bold uppercase tracking-wider mb-1 ${T.faint}`}>
+                      SKU / Code (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. SEO-001"
+                      value={newItemCode}
+                      onChange={(e) => setNewItemCode(e.target.value)}
+                      className={`w-full px-3.5 py-2.5 rounded-xl border ${T.border} ${T.page} text-sm focus:outline-none focus:ring-2 focus:ring-[#9A7B4F]`}
+                    />
+                  </div>
+                </div>
+
+                {/* Inventory Type (Dropdown of existing or create new) */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className={`text-[11px] font-bold uppercase tracking-wider ${T.faint}`}>
+                      Inventory Type / Category <span className="text-red-500">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCreatingNewCategory(!isCreatingNewCategory);
+                        if (!isCreatingNewCategory) setNewCategoryName("");
+                      }}
+                      className="text-[11px] font-bold text-[#9A7B4F] hover:underline"
+                    >
+                      {isCreatingNewCategory ? "Select Existing" : "+ Create New Type"}
+                    </button>
+                  </div>
+
+                  {!isCreatingNewCategory ? (
+                    <select
+                      value={newItemCategory}
+                      onChange={(e) => {
+                        if (e.target.value === "__NEW__") {
+                          setIsCreatingNewCategory(true);
+                          setNewCategoryName("");
+                        } else {
+                          setNewItemCategory(e.target.value);
+                        }
+                      }}
+                      className={`w-full px-3.5 py-2.5 rounded-xl border ${T.border} ${T.page} text-sm focus:outline-none focus:ring-2 focus:ring-[#9A7B4F]`}
+                    >
+                      <option value="">Select Inventory Type</option>
+                      {categories.filter(c => c !== "All").map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                      <option value="Electronics">Electronics</option>
+                      <option value="Raw Materials">Raw Materials</option>
+                      <option value="Packaging">Packaging</option>
+                      <option value="Tools">Tools</option>
+                      <option value="Software">Software</option>
+                      <option value="SEO & Growth">SEO & Growth</option>
+                      <option value="__NEW__" className="font-bold text-[#9A7B4F]">+ Create New Type...</option>
+                    </select>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        autoFocus
+                        type="text"
+                        placeholder="Enter new inventory type name..."
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                        className={`w-full px-3.5 py-2 rounded-xl border border-[#9A7B4F] ${T.page} text-sm focus:outline-none focus:ring-2 focus:ring-[#9A7B4F]`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (newCategoryName.trim()) {
+                            setNewItemCategory(newCategoryName.trim());
+                          }
+                          setIsCreatingNewCategory(false);
+                        }}
+                        className={`px-3 py-2 rounded-xl text-xs font-bold ${T.inkBtn}`}
+                      >
+                        Set
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className={`block text-[11px] font-bold uppercase tracking-wider mb-1 ${T.faint}`}>
+                      Price (USD $) <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      placeholder="e.g. 299"
+                      value={newItemPrice}
+                      onChange={(e) => setNewItemPrice(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                      className={`w-full px-3.5 py-2 rounded-xl border ${T.border} ${T.page} text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#9A7B4F]`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`block text-[11px] font-bold uppercase tracking-wider mb-1 ${T.faint}`}>
+                      Unit
+                    </label>
+                    <select
+                      value={newItemUnit}
+                      onChange={(e) => setNewItemUnit(e.target.value)}
+                      className={`w-full px-3.5 py-2 rounded-xl border ${T.border} ${T.page} text-sm focus:outline-none focus:ring-2 focus:ring-[#9A7B4F]`}
+                    >
+                      <option value="pcs">pcs</option>
+                      <option value="pack">pack</option>
+                      <option value="month">month</option>
+                      <option value="license">license</option>
+                      <option value="service">service</option>
+                      <option value="audit">audit</option>
+                      <option value="hour">hour</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={`block text-[11px] font-bold uppercase tracking-wider mb-1 ${T.faint}`}>
+                      Badge
+                    </label>
+                    <select
+                      value={newItemBadge}
+                      onChange={(e) => setNewItemBadge(e.target.value)}
+                      className={`w-full px-3.5 py-2 rounded-xl border ${T.border} ${T.page} text-sm focus:outline-none focus:ring-2 focus:ring-[#9A7B4F]`}
+                    >
+                      <option value="In Stock">In Stock</option>
+                      <option value="Featured">Featured</option>
+                      <option value="Popular">Popular</option>
+                      <option value="Best Seller">Best Seller</option>
+                      <option value="New Arrival">New Arrival</option>
+                      <option value="Guaranteed">Guaranteed</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className={`block text-[11px] font-bold uppercase tracking-wider mb-1 ${T.faint}`}>
+                    Description
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Brief description of the item or package..."
+                    value={newItemDescription}
+                    onChange={(e) => setNewItemDescription(e.target.value)}
+                    className={`w-full px-3.5 py-2 rounded-xl border ${T.border} ${T.page} text-xs focus:outline-none focus:ring-2 focus:ring-[#9A7B4F] resize-none`}
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-3 border-t border-inherit">
+                  <button
+                    type="button"
+                    onClick={() => setShowPostModal(false)}
+                    className={`flex-1 h-11 rounded-full text-xs font-semibold border ${T.border} ${T.surface} hover:opacity-80 transition`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={postingItem}
+                    className={`flex-1 h-11 rounded-full text-xs font-semibold tracking-wide ${T.inkBtn} flex items-center justify-center gap-2 disabled:opacity-50`}
+                  >
+                    {postingItem ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Publishing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Publish to Storefront</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
