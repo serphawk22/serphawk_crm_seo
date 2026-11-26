@@ -1235,6 +1235,39 @@ export default function ContactsPage() {
 
         {/* Right: Sort Dropdown & Advanced Filter Toggle */}
         <div className="flex items-center gap-2">
+          {/* Tag Dropdown Filter with contact counts */}
+          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-2.5 py-1">
+            <Tag className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+            <select
+              value={selectedTags.length === 1 ? selectedTags[0] : ""}
+              onChange={e => {
+                if (!e.target.value) {
+                  setSelectedTags([]);
+                } else {
+                  setSelectedTags([e.target.value]);
+                }
+              }}
+              className="bg-transparent text-xs font-semibold text-slate-700 dark:text-zinc-200 focus:outline-none cursor-pointer max-w-[170px] truncate"
+            >
+              <option value="">🏷️ Tags {availableTags.length > 0 ? `(${availableTags.length})` : ""}</option>
+              {availableTags.map(({ tag, count }) => (
+                <option key={tag} value={tag}>
+                  {tag} ({count.toLocaleString()})
+                </option>
+              ))}
+            </select>
+            {selectedTags.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedTags([])}
+                className="text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 p-0.5 cursor-pointer"
+                title="Clear tag filter"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
           {/* Sort Selector */}
           <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-2.5 py-1">
             <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
@@ -1507,14 +1540,34 @@ export default function ContactsPage() {
               {/* Filter 6: Tags Filter */}
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 block mb-1">
-                  Tag Search &amp; Selection {selectedTags.length > 0 ? `(${selectedTags.length})` : ""}
+                  Tag Dropdown &amp; Search {selectedTags.length > 0 ? `(${selectedTags.length})` : ""}
                 </label>
+                {/* Tag Select Dropdown with counts */}
+                <select
+                  value={selectedTags.length === 1 ? selectedTags[0] : ""}
+                  onChange={e => {
+                    if (!e.target.value) {
+                      setSelectedTags([]);
+                    } else {
+                      setSelectedTags([e.target.value]);
+                    }
+                  }}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs text-slate-800 dark:text-zinc-200 mb-1.5 cursor-pointer font-medium"
+                >
+                  <option value="">-- Select Tag ({availableTags.length} tags) --</option>
+                  {availableTags.map(({ tag, count }) => (
+                    <option key={tag} value={tag}>
+                      {tag} ({count.toLocaleString()} contacts)
+                    </option>
+                  ))}
+                </select>
+
                 <div className="flex gap-1.5">
                   <input
                     type="text"
                     value={tagQuery}
                     onChange={e => setTagQuery(e.target.value)}
-                    placeholder="e.g. VIP, nurture"
+                    placeholder="Or type custom tag search..."
                     className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs text-slate-800 dark:text-zinc-200"
                   />
                   {tagQuery && (

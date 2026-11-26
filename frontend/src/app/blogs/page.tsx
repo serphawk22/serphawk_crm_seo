@@ -58,6 +58,9 @@ export default function BlogsDirectoryPage() {
   // Authoring (only needed to write — reading is fully public)
   const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(false);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+  const [securityKeyInput, setSecurityKeyInput] = useState<string>("");
+  const [securityError, setSecurityError] = useState<string | null>(null);
+  const [showEmailAuth, setShowEmailAuth] = useState<boolean>(false);
   const [authEmail, setAuthEmail] = useState<string>("");
   const [authPassword, setAuthPassword] = useState<string>("");
   const [authBusy, setAuthBusy] = useState<boolean>(false);
@@ -72,7 +75,8 @@ export default function BlogsDirectoryPage() {
       if (u?.role) parsedRole = u.role;
     } catch {}
     const low = parsedRole.toLowerCase();
-    setIsSuperAdmin(low === "superadmin" || low === "admin");
+    const unlocked = localStorage.getItem("serphawk_security_unlocked") === "SERP123";
+    setIsSuperAdmin(unlocked || low === "superadmin" || low === "admin");
     try {
       const saved = localStorage.getItem("serphawk_blog_bookmarks");
       if (saved) setBookmarks(JSON.parse(saved));
@@ -126,8 +130,26 @@ export default function BlogsDirectoryPage() {
   };
 
   const handleCreateClick = () => {
-    if (isSuperAdmin) router.push("/blogs/create");
-    else setShowAuthModal(true);
+    const unlocked = typeof window !== "undefined" && localStorage.getItem("serphawk_security_unlocked") === "SERP123";
+    if (isSuperAdmin || unlocked) {
+      router.push("/blogs/create");
+    } else {
+      setSecurityKeyInput("");
+      setSecurityError(null);
+      setShowAuthModal(true);
+    }
+  };
+
+  const handleSecurityKeySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (securityKeyInput.trim() === "SERP123") {
+      localStorage.setItem("serphawk_security_unlocked", "SERP123");
+      setIsSuperAdmin(true);
+      setShowAuthModal(false);
+      router.push("/blogs/create");
+    } else {
+      setSecurityError("Invalid security key. Key is: SERP123");
+    }
   };
 
   const handleAuthenticate = async (e: React.FormEvent) => {
@@ -154,6 +176,7 @@ export default function BlogsDirectoryPage() {
         localStorage.setItem("user", JSON.stringify(data.user));
         localStorage.setItem("user_role", data.user.role);
       }
+      localStorage.setItem("serphawk_security_unlocked", "SERP123");
       setIsSuperAdmin(true);
       setShowAuthModal(false);
       router.push("/blogs/create");
@@ -523,7 +546,7 @@ export default function BlogsDirectoryPage() {
 
       <PublicFooter />
 
-      {/* ── AUTHOR SIGN-IN (only for writing) ── */}
+      {/* ── SECURITY KEY AUTHORIZATION (Required to Write & Publish) ── */}
       {showAuthModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1C1917]/50 dark:bg-black/70 backdrop-blur-sm sh-fade" onClick={() => setShowAuthModal(false)}>
           <div className={`${T.surface} border ${T.border} w-full max-w-md p-8 sm:p-10 shadow-2xl sh-scale-in`} onClick={(e) => e.stopPropagation()}>
@@ -533,33 +556,80 @@ export default function BlogsDirectoryPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <h3 className={`${serif.className} mt-6 text-3xl font-medium`}>Author sign-in</h3>
+            <h3 className={`${serif.className} mt-6 text-3xl font-medium`}>Security Authorization</h3>
             <p className={`mt-2 text-sm leading-relaxed ${T.muted}`}>
-              Reading is open to everyone. To write and publish, sign in with an Admin or SuperAdmin account.
+              Enter the security key to unlock authoring and write articles for the SerpHawk knowledge hub.
             </p>
-            {authError && (
+
+            {securityError && (
               <div className="mt-5 px-4 py-3 text-xs border border-[#C0574B]/40 bg-[#C0574B]/10 text-[#A2413A] dark:text-[#E8A39A]">
-                {authError}
+                {securityError}
               </div>
             )}
-            <form onSubmit={handleAuthenticate} className="mt-6 space-y-5">
-              <label className="block">
-                <span className={`${T.eyebrow} !text-[10px] ${T.muted}`}>Email</span>
-                <input type="email" required value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="admin@serphawk.com" className={T.input} />
-              </label>
-              <label className="block">
-                <span className={`${T.eyebrow} !text-[10px] ${T.muted}`}>Password</span>
-                <input type="password" required value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="••••••••" className={T.input} />
-              </label>
-              <button
-                type="submit"
-                disabled={authBusy}
-                className={`w-full h-11 mt-2 rounded-full inline-flex items-center justify-center gap-2 text-xs tracking-wide disabled:opacity-50 cursor-pointer ${T.inkBtn}`}
-              >
-                {authBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <PenLine className="w-4 h-4" />}
-                Continue to the writing desk
-              </button>
-            </form>
+
+            {!showEmailAuth ? (
+              <form onSubmit={handleSecurityKeySubmit} className="mt-6 space-y-5">
+                <label className="block">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={`${T.eyebrow} !text-[10px] ${T.muted}`}>Security Key</span>
+                    <span className="text-[10px] font-mono text-[#9A7B4F] bg-[#9A7B4F]/10 px-2 py-0.5 rounded">Key: SERP123</span>
+                  </div>
+                  <input
+                    type="password"
+                    autoFocus
+                    required
+                    value={securityKeyInput}
+                    onChange={(e) => setSecurityKeyInput(e.target.value)}
+                    placeholder="Enter security key..."
+                    className={T.input}
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className={`w-full h-11 mt-2 rounded-full inline-flex items-center justify-center gap-2 text-xs tracking-wide cursor-pointer ${T.inkBtn}`}
+                >
+                  <PenLine className="w-4 h-4" />
+                  Unlock &amp; Write Article
+                </button>
+                <div className="text-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowEmailAuth(true)}
+                    className="text-xs text-[#9A7B4F] hover:underline"
+                  >
+                    Or sign in with Admin Account credentials
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleAuthenticate} className="mt-6 space-y-5">
+                <label className="block">
+                  <span className={`${T.eyebrow} !text-[10px] ${T.muted}`}>Email</span>
+                  <input type="email" required value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="admin@serphawk.com" className={T.input} />
+                </label>
+                <label className="block">
+                  <span className={`${T.eyebrow} !text-[10px] ${T.muted}`}>Password</span>
+                  <input type="password" required value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="••••••••" className={T.input} />
+                </label>
+                <button
+                  type="submit"
+                  disabled={authBusy}
+                  className={`w-full h-11 mt-2 rounded-full inline-flex items-center justify-center gap-2 text-xs tracking-wide disabled:opacity-50 cursor-pointer ${T.inkBtn}`}
+                >
+                  {authBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <PenLine className="w-4 h-4" />}
+                  Continue to the writing desk
+                </button>
+                <div className="text-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowEmailAuth(false)}
+                    className="text-xs text-[#9A7B4F] hover:underline"
+                  >
+                    ← Back to Security Key verification
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

@@ -15,7 +15,7 @@ import {
   ArrowUpDown, Filter, Sparkles, Building2, Layers, CalendarDays, BarChart3,
   BriefcaseBusiness, FileSpreadsheet, ShieldCheck, Eye, X, Video, Presentation,
   CalendarClock, MessageCircle, Send, Copy, Check, Bot, Lightbulb, Compass, ArrowRight,
-  SlidersHorizontal, FileCode, BarChart2, CheckCheck
+  SlidersHorizontal, FileCode, BarChart2, CheckCheck, Tag
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import ReactMarkdown from "react-markdown";
@@ -32,6 +32,7 @@ import {
 const classicTabs = [
   ["overview", "Overview"],
   ["sales", "Sales Report"],
+  ["contacts", "Contacts Intelligence"],
   ["calls", "Calls"],
   ["meetings", "Meetings"],
   ["daily", "Daily Report"],
@@ -172,6 +173,7 @@ function BusinessReportsPage() {
   const [leadSourceSalesperson, setLeadSourceSalesperson] = useState<string>("all");
   const [leadSourceSubTab, setLeadSourceSubTab] = useState<"overview" | "by_salesperson" | "per_lead">("overview");
   const [leadSourceSearch, setLeadSourceSearch] = useState<string>("");
+  const [contactsTagSearch, setContactsTagSearch] = useState<string>("");
 
   const applyClassicPreset = (preset: "today" | "yesterday" | "7d" | "this_month" | "last_month" | "ytd") => {
     const now = new Date();
@@ -458,6 +460,32 @@ function BusinessReportsPage() {
     } else if (classicTab === "sales") {
       headers = ["Deal", "Stage", "Value", "Owner"];
       rows = (classicData.sales?.deals || []).map((deal: any) => [format(deal.title), format(deal.stage), format(deal.value), format(deal.assigned_to)]);
+    } else if (classicTab === "contacts") {
+      headers = ["Contact Metric / Dimension", "Count / Value", "Coverage %"];
+      const cr = classicData.contacts || {};
+      const tot = cr.total || 0;
+      rows = [
+        ["Total Database Contacts", format(cr.total), "100%"],
+        ["Parent / Root Contacts", format(cr.root), `${tot ? Math.round((cr.root / tot) * 100) : 0}%`],
+        ["Child / Sub Contacts", format(cr.sub), `${tot ? Math.round((cr.sub / tot) * 100) : 0}%`],
+        ["With Verified Email", format(cr.with_email), `${cr.with_email_pct || 0}%`],
+        ["With Phone Number", format(cr.with_phone), `${cr.with_phone_pct || 0}%`],
+        ["With CRM Notes", format(cr.with_notes), `${cr.with_notes_pct || 0}%`],
+        ["With Scheduled Meetings", format(cr.with_meetings), `${cr.with_meetings_pct || 0}%`],
+        ["With Active Follow-ups", format(cr.with_followups), `${cr.with_followups_pct || 0}%`],
+        ["Assigned to Sales Reps", format(cr.assigned), `${tot ? Math.round((cr.assigned / tot) * 100) : 0}%`],
+        ["Unassigned Contacts", format(cr.unassigned), `${tot ? Math.round((cr.unassigned / tot) * 100) : 0}%`],
+        ...((cr.tags_breakdown || []).slice(0, 20).map((t: any) => [
+          `Tag: ${t.tag}`,
+          format(t.count),
+          `${tot ? ((t.count / tot) * 100).toFixed(1) : 0}%`
+        ])),
+        ...((cr.owner_breakdown || []).slice(0, 15).map((o: any) => [
+          `Assigned: ${o.name}`,
+          format(o.count),
+          `${tot ? ((o.count / tot) * 100).toFixed(1) : 0}%`
+        ]))
+      ];
     } else if (classicTab === "calls") {
       headers = ["Date", "Phone", "Agent", "Duration", "Follow-up", "Notes"];
       rows = (classicData.calls || []).map((call: any) => [
@@ -535,6 +563,20 @@ function BusinessReportsPage() {
         title: "Lead Sources Performance",
         headers: ["Lead source", "Leads", "Converted", "Conversion %"],
         rows: (classicData.lead_sources || []).map((ls: any) => [format(ls.source), format(ls.leads), format(ls.converted), `${ls.conversion_percentage}%`])
+      },
+      {
+        title: "Contacts Intelligence & Database Health",
+        headers: ["Contact Dimension", "Total / Count", "Coverage %"],
+        rows: [
+          ["Total Contacts", format(classicData.contacts?.total), "100%"],
+          ["With Verified Email", format(classicData.contacts?.with_email), `${classicData.contacts?.with_email_pct || 0}%`],
+          ["With Phone Number", format(classicData.contacts?.with_phone), `${classicData.contacts?.with_phone_pct || 0}%`],
+          ["With CRM Notes", format(classicData.contacts?.with_notes), `${classicData.contacts?.with_notes_pct || 0}%`],
+          ["With Scheduled Meetings", format(classicData.contacts?.with_meetings), `${classicData.contacts?.with_meetings_pct || 0}%`],
+          ["With Active Follow-ups", format(classicData.contacts?.with_followups), `${classicData.contacts?.with_followups_pct || 0}%`],
+          ["Assigned to Reps", format(classicData.contacts?.assigned), "-"],
+          ["Unassigned", format(classicData.contacts?.unassigned), "-"]
+        ]
       }
     ];
 
@@ -1336,12 +1378,25 @@ function BusinessReportsPage() {
                     </p>
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-                    <h2 className="mb-3 text-base font-black text-slate-900 dark:text-white">Client Onboarding Summary</h2>
+                    <div className="flex items-center justify-between mb-3">
+                      <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                        <Users className="w-4 h-4 text-indigo-500" />
+                        Contacts Intelligence Summary
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => setClassicTab("contacts")}
+                        className="text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Deep Dive</span>
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                     <div className="grid grid-cols-2 gap-3 text-xs">
-                      <p className="text-slate-600 dark:text-zinc-300">Active: <strong className="text-slate-900 dark:text-white">{classicData.onboarding?.active || 0}</strong></p>
-                      <p className="text-slate-600 dark:text-zinc-300">Pending: <strong className="text-slate-900 dark:text-white">{classicData.onboarding?.pending || 0}</strong></p>
-                      <p className="text-slate-600 dark:text-zinc-300">On Hold: <strong className="text-slate-900 dark:text-white">{classicData.onboarding?.hold || 0}</strong></p>
-                      <p className="text-slate-600 dark:text-zinc-300">New in Range: <strong className="text-slate-900 dark:text-white">{classicData.onboarding?.new_in_range || 0}</strong></p>
+                      <p className="text-slate-600 dark:text-zinc-300">Total Contacts: <strong className="text-slate-900 dark:text-white">{(classicData.contacts?.total || 0).toLocaleString()}</strong></p>
+                      <p className="text-slate-600 dark:text-zinc-300">With Email: <strong className="text-slate-900 dark:text-white">{classicData.contacts?.with_email_pct || 0}%</strong></p>
+                      <p className="text-slate-600 dark:text-zinc-300">With Phone: <strong className="text-slate-900 dark:text-white">{classicData.contacts?.with_phone_pct || 0}%</strong></p>
+                      <p className="text-slate-600 dark:text-zinc-300">Unique Tags: <strong className="text-slate-900 dark:text-white">{classicData.contacts?.tags_breakdown?.length || 0}</strong></p>
                     </div>
                   </div>
                 </div>
@@ -1357,6 +1412,324 @@ function BusinessReportsPage() {
                     deal.assigned_to || "–"
                   ])}
                 />
+              )}
+
+              {classicTab === "contacts" && (
+                <div className="space-y-6">
+                  {/* Contacts Summary Top Banner */}
+                  <div className="relative overflow-hidden rounded-2xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50/50 via-white to-blue-50/30 p-5 dark:border-white/10 dark:from-zinc-900 dark:via-zinc-900 dark:to-indigo-950/20">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/20">
+                          <Users className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                              Contacts Intelligence &amp; Database Health
+                            </h2>
+                            <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300">
+                              {(classicData.contacts?.total || 0).toLocaleString()} Records
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
+                            Comprehensive contact distribution across tags, outreach readiness, staff ownership, and scheduled activities.
+                          </p>
+                        </div>
+                      </div>
+                      <Link
+                        href="/contacts"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition"
+                      >
+                        <span>Open Contacts Directory</span>
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+                  </div>
+
+                  {/* 8 Metric KPI Cards Grid */}
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-4">
+                    <ClassicStat
+                      label="Total Contacts"
+                      value={(classicData.contacts?.total || 0).toLocaleString()}
+                      icon={<Users className="w-3.5 h-3.5" />}
+                      tone="bg-blue-600"
+                    />
+                    <ClassicStat
+                      label="Verified Emails"
+                      value={`${(classicData.contacts?.with_email || 0).toLocaleString()} (${classicData.contacts?.with_email_pct || 0}%)`}
+                      icon={<Mail className="w-3.5 h-3.5" />}
+                      tone="bg-indigo-600"
+                    />
+                    <ClassicStat
+                      label="Phone Reachable"
+                      value={`${(classicData.contacts?.with_phone || 0).toLocaleString()} (${classicData.contacts?.with_phone_pct || 0}%)`}
+                      icon={<Phone className="w-3.5 h-3.5" />}
+                      tone="bg-emerald-600"
+                    />
+                    <ClassicStat
+                      label="Assigned to Reps"
+                      value={`${(classicData.contacts?.assigned || 0).toLocaleString()} (${classicData.contacts?.total ? Math.round(((classicData.contacts?.assigned || 0) / classicData.contacts.total) * 100) : 0}%)`}
+                      icon={<UserCheck className="w-3.5 h-3.5" />}
+                      tone="bg-purple-600"
+                    />
+                    <ClassicStat
+                      label="CRM Notes Logged"
+                      value={`${(classicData.contacts?.with_notes || 0).toLocaleString()} (${classicData.contacts?.with_notes_pct || 0}%)`}
+                      icon={<FileText className="w-3.5 h-3.5" />}
+                      tone="bg-amber-600"
+                    />
+                    <ClassicStat
+                      label="Scheduled Meetings"
+                      value={`${(classicData.contacts?.with_meetings || 0).toLocaleString()} (${classicData.contacts?.with_meetings_pct || 0}%)`}
+                      icon={<Calendar className="w-3.5 h-3.5" />}
+                      tone="bg-cyan-600"
+                    />
+                    <ClassicStat
+                      label="Active Follow-ups"
+                      value={`${(classicData.contacts?.with_followups || 0).toLocaleString()} (${classicData.contacts?.with_followups_pct || 0}%)`}
+                      icon={<Clock className="w-3.5 h-3.5" />}
+                      tone="bg-rose-600"
+                    />
+                    <ClassicStat
+                      label="Distinct Tags"
+                      value={(classicData.contacts?.tags_breakdown?.length || 0).toLocaleString()}
+                      icon={<Tag className="w-3.5 h-3.5" />}
+                      tone="bg-teal-600"
+                    />
+                  </div>
+
+                  {/* Visual Charts Grid: Tags Distribution & Engagement Matrix */}
+                  <div className="grid gap-6 lg:grid-cols-2">
+                    {/* Chart 1: Top Contact Tags Breakdown */}
+                    <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs dark:border-white/10 dark:bg-zinc-900">
+                      <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-zinc-800">
+                        <div>
+                          <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <Tag className="w-4 h-4 text-indigo-500" />
+                            Top Contact Tags Distribution
+                          </h3>
+                          <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                            Volume of contacts categorized under primary tags
+                          </p>
+                        </div>
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300">
+                          Top 12 Tags
+                        </span>
+                      </div>
+
+                      <div className="h-72 mt-4 w-full">
+                        {(classicData.contacts?.tags_breakdown || []).length > 0 ? (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart
+                              data={(classicData.contacts?.tags_breakdown || []).slice(0, 12)}
+                              layout="vertical"
+                              margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" opacity={0.6} />
+                              <XAxis type="number" tick={AXIS_TICK} />
+                              <YAxis type="category" dataKey="tag" tick={{ fontSize: 11, fill: '#64748b' }} width={90} />
+                              <Tooltip
+                                contentStyle={TOOLTIP_STYLE}
+                                formatter={(val: any) => [
+                                  `${Number(val).toLocaleString()} contacts (${classicData.contacts?.total ? ((Number(val) / classicData.contacts.total) * 100).toFixed(1) : 0}%)`,
+                                  "Contacts"
+                                ]}
+                              />
+                              <Bar dataKey="count" fill="#6366f1" radius={[0, 6, 6, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-xs text-slate-400">
+                            No tagged contacts found.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Chart 2: Contact Completeness & Engagement Readiness */}
+                    <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs dark:border-white/10 dark:bg-zinc-900 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-zinc-800">
+                          <div>
+                            <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                              <Target className="w-4 h-4 text-emerald-500" />
+                              Contact Reachability &amp; Engagement
+                            </h3>
+                            <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                              Database health metrics and sales readiness coverage
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4 mt-5">
+                          {[
+                            { label: "Verified Email Address", count: classicData.contacts?.with_email || 0, pct: classicData.contacts?.with_email_pct || 0, color: "bg-indigo-600", tone: "text-indigo-600 dark:text-indigo-400" },
+                            { label: "Phone Reachable", count: classicData.contacts?.with_phone || 0, pct: classicData.contacts?.with_phone_pct || 0, color: "bg-emerald-600", tone: "text-emerald-600 dark:text-emerald-400" },
+                            { label: "Assigned to Sales Rep", count: classicData.contacts?.assigned || 0, pct: classicData.contacts?.total ? Math.round(((classicData.contacts.assigned || 0) / classicData.contacts.total) * 100) : 0, color: "bg-purple-600", tone: "text-purple-600 dark:text-purple-400" },
+                            { label: "CRM Notes Logged", count: classicData.contacts?.with_notes || 0, pct: classicData.contacts?.with_notes_pct || 0, color: "bg-amber-500", tone: "text-amber-600 dark:text-amber-400" },
+                            { label: "Meetings Scheduled", count: classicData.contacts?.with_meetings || 0, pct: classicData.contacts?.with_meetings_pct || 0, color: "bg-cyan-600", tone: "text-cyan-600 dark:text-cyan-400" },
+                            { label: "Active Follow-ups", count: classicData.contacts?.with_followups || 0, pct: classicData.contacts?.with_followups_pct || 0, color: "bg-rose-500", tone: "text-rose-600 dark:text-rose-400" },
+                          ].map((item, idx) => (
+                            <div key={idx} className="space-y-1">
+                              <div className="flex items-center justify-between text-xs font-semibold">
+                                <span className="text-slate-700 dark:text-zinc-300">{item.label}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-slate-500 dark:text-zinc-400 text-[11px] font-normal">
+                                    {item.count.toLocaleString()}
+                                  </span>
+                                  <span className={`font-bold ${item.tone}`}>{item.pct}%</span>
+                                </div>
+                              </div>
+                              <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-zinc-800 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${item.color} transition-all duration-500`}
+                                  style={{ width: `${Math.min(item.pct, 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mt-5 pt-3 border-t border-slate-100 dark:border-zinc-800/80 flex items-center justify-between text-[11px] text-slate-500 dark:text-zinc-400">
+                        <span>Root: {(classicData.contacts?.root || 0).toLocaleString()}</span>
+                        <span>Sub / Child: {(classicData.contacts?.sub || 0).toLocaleString()}</span>
+                        <span>Unassigned: {(classicData.contacts?.unassigned || 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Second Row: Staff Assignment Workload & Tag Directory */}
+                  <div className="grid gap-6 lg:grid-cols-2">
+                    {/* Card 3: Staff Assignment Breakdown */}
+                    <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs dark:border-white/10 dark:bg-zinc-900">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-800">
+                        <div>
+                          <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <Briefcase className="w-4 h-4 text-purple-500" />
+                            Sales Team Contact Allocation
+                          </h3>
+                          <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                            Contacts distributed across sales managers and team members
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 overflow-x-auto">
+                        {(classicData.contacts?.owner_breakdown || []).length > 0 ? (
+                          <table className="w-full text-left text-xs">
+                            <thead className="border-b border-slate-100 bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:border-white/5 dark:bg-white/5 dark:text-zinc-400">
+                              <tr>
+                                <th className="px-3 py-2">Salesperson</th>
+                                <th className="px-3 py-2 text-right">Contacts</th>
+                                <th className="px-3 py-2 text-right">Share of Assigned</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                              {(classicData.contacts?.owner_breakdown || []).slice(0, 8).map((ob: any, i: number) => {
+                                const assignedTot = classicData.contacts?.assigned || 1;
+                                const share = Math.round((ob.count / assignedTot) * 100);
+                                return (
+                                  <tr key={ob.user_id || i} className="hover:bg-slate-50/80 dark:hover:bg-white/5 transition-colors">
+                                    <td className="px-3 py-2 font-medium text-slate-900 dark:text-white flex items-center gap-2">
+                                      <span className="w-5 h-5 rounded-full bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 text-[10px] font-black flex items-center justify-center">
+                                        {ob.name?.[0]?.toUpperCase() || "U"}
+                                      </span>
+                                      <span>{ob.name}</span>
+                                    </td>
+                                    <td className="px-3 py-2 text-right font-bold text-slate-700 dark:text-zinc-300">
+                                      {ob.count.toLocaleString()}
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-slate-500 dark:text-zinc-400 font-semibold">
+                                      {share}%
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <div className="py-8 text-center text-xs text-slate-400">
+                            All contacts are currently unassigned.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Card 4: Top Contact Tags Directory */}
+                    <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs dark:border-white/10 dark:bg-zinc-900">
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-zinc-800">
+                        <div>
+                          <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <Tag className="w-4 h-4 text-teal-500" />
+                            Contact Tags Breakdown Directory
+                          </h3>
+                          <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                            All detected customer tags with contact volume
+                          </p>
+                        </div>
+                        {/* Tag search input inside table */}
+                        <div className="relative w-40">
+                          <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="text"
+                            placeholder="Filter tags..."
+                            value={contactsTagSearch}
+                            onChange={e => setContactsTagSearch(e.target.value)}
+                            className="w-full pl-6 pr-2 py-1 text-[11px] rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-3 overflow-y-auto max-h-72">
+                        <table className="w-full text-left text-xs">
+                          <thead className="border-b border-slate-100 bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:border-white/5 dark:bg-white/5 dark:text-zinc-400 sticky top-0">
+                            <tr>
+                              <th className="px-3 py-2">Tag</th>
+                              <th className="px-3 py-2 text-right">Contacts</th>
+                              <th className="px-3 py-2 text-right">% Database</th>
+                              <th className="px-3 py-2 text-center">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                            {(classicData.contacts?.tags_breakdown || [])
+                              .filter((t: any) => !contactsTagSearch || t.tag.toLowerCase().includes(contactsTagSearch.toLowerCase()))
+                              .map((t: any, idx: number) => {
+                                const tot = classicData.contacts?.total || 1;
+                                const pct = ((t.count / tot) * 100).toFixed(1);
+                                return (
+                                  <tr key={t.tag || idx} className="hover:bg-slate-50/80 dark:hover:bg-white/5 transition-colors">
+                                    <td className="px-3 py-2 font-semibold text-slate-800 dark:text-zinc-200 flex items-center gap-1.5">
+                                      <span className="w-4 h-4 rounded-full bg-slate-100 dark:bg-zinc-800 text-[10px] font-bold flex items-center justify-center text-slate-500">
+                                        {idx + 1}
+                                      </span>
+                                      <span className="truncate max-w-[150px]">{t.tag}</span>
+                                    </td>
+                                    <td className="px-3 py-2 text-right font-bold text-slate-900 dark:text-white">
+                                      {t.count.toLocaleString()}
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-slate-500 dark:text-zinc-400 font-medium">
+                                      {pct}%
+                                    </td>
+                                    <td className="px-3 py-2 text-center">
+                                      <Link
+                                        href={`/contacts?tag=${encodeURIComponent(t.tag)}`}
+                                        className="inline-flex items-center gap-0.5 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 hover:underline"
+                                      >
+                                        <span>View</span>
+                                        <ArrowUpRight className="w-2.5 h-2.5" />
+                                      </Link>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               )}
 
               {classicTab === "calls" && (

@@ -1,13 +1,14 @@
 "use client";
 import LocalizedText from "@/components/LocalizedText";
 import { API_BASE_URL } from "@/config";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { ExportActions } from "@/components/ExportActions";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Package, Plus, Search, Trash2, Edit2, X, ChevronDown, ChevronUp,
   Loader2, Tag, Building2, DollarSign, Clock, ShoppingCart, Send,
-  CheckCircle, AlertTriangle, Upload, Star, StarOff, MoreHorizontal
+  CheckCircle, AlertTriangle, Upload, Star, StarOff, MoreHorizontal,
+  Lock, Shield, Key, Globe, Image as ImageIcon, Sparkles
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 
@@ -45,7 +46,8 @@ interface InventoryItem {
 
 const emptyItem = {
   code: "", name: "", description: "", category: "",
-  tags: [] as string[], photo_url: "", unit: "", min_stock: 0, current_stock: 0
+  tags: [] as string[], photo_url: "", unit: "pcs", min_stock: 0, current_stock: 0,
+  unit_price: 0, post_to_shop: false, shop_badge: "In Stock"
 };
 const emptySupplier = {
   supplier_user_id: null as number | null, existing_supplier_id: null as number | null,
@@ -55,8 +57,9 @@ const emptySupplier = {
 };
 
 const CATEGORIES = ["Electronics", "Raw Materials", "Packaging", "Tools", "Office Supplies", "Chemical", "Food & Beverage", "Textile", "Machinery", "Other"];
-const UNITS = ["pcs", "kg", "g", "L", "mL", "m", "cm", "box", "pack", "pair", "roll", "set"];
+const UNITS = ["pcs", "kg", "g", "L", "mL", "m", "cm", "box", "pack", "pair", "roll", "set", "license", "month"];
 const CURRENCIES = ["USD", "EUR", "GBP", "INR", "AED", "SGD"];
+const SHOP_BADGES = ["In Stock", "Featured", "Popular", "Best Seller", "New Arrival", "Limited Edition"];
 
 export default function InventoryPage() {
   const { t } = useLanguage();
@@ -82,6 +85,61 @@ export default function InventoryPage() {
   const [newCredentials, setNewCredentials] = useState<{ supplier_id: number; email: string; password: string; name: string } | null>(null);
   const [sendingCreds, setSendingCreds] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Security Key Protection (SERP123)
+  const [isSecurityUnlocked, setIsSecurityUnlocked] = useState(false);
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [securityKeyInput, setSecurityKeyInput] = useState("");
+  const [securityError, setSecurityError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+
+  // Inventory Type creation state
+  const [isCreatingNewType, setIsCreatingNewType] = useState(false);
+  const [newTypeName, setNewTypeName] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("serphawk_security_unlocked");
+      if (saved === "SERP123") {
+        setIsSecurityUnlocked(true);
+      }
+    }
+  }, []);
+
+  const checkSecurityGate = (action: () => void) => {
+    const unlocked = typeof window !== "undefined" && localStorage.getItem("serphawk_security_unlocked") === "SERP123";
+    if (unlocked || isSecurityUnlocked) {
+      action();
+    } else {
+      setPendingAction(() => action);
+      setSecurityKeyInput("");
+      setSecurityError(null);
+      setShowSecurityModal(true);
+    }
+  };
+
+  const handleUnlockSecurity = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (securityKeyInput.trim() === "SERP123") {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("serphawk_security_unlocked", "SERP123");
+      }
+      setIsSecurityUnlocked(true);
+      setShowSecurityModal(false);
+      showToast("Security Key verified! Access unlocked.", "ok");
+      if (pendingAction) {
+        pendingAction();
+        setPendingAction(null);
+      }
+    } else {
+      setSecurityError("Invalid key. Please enter SERP123 to unlock.");
+    }
+  };
+
+  const allInventoryTypes = useMemo(() => {
+    const dynamic = items.map(i => i.category).filter((c): c is string => Boolean(c && c.trim()));
+    return Array.from(new Set([...CATEGORIES, ...dynamic]));
+  }, [items]);
 
   const dropdownSuppliers = Array.from(new Map([
     ...supplierAccounts.map(account => ({ key: `account-${account.id}`, supplier_user_id: account.id, existing_supplier_id: null as number | null, supplier_name: account.name, supplier_email: account.email, supplier_brand: "", currency: "USD" })),
@@ -147,39 +205,73 @@ export default function InventoryPage() {
   });
 
   const openCreate = () => {
-    setEditItem(null);
-    setItemForm({ ...emptyItem });
-    setTagInput("");
-    setShowItemModal(true);
+    checkSecurityGate(() => {
+      setEditItem(null);
+      setItemForm({ ...emptyItem });
+      setTagInput("");
+      setIsCreatingNewType(false);
+      setNewTypeName("");
+      setShowItemModal(true);
+    });
   };
 
   const openEdit = (item: InventoryItem, e: React.MouseEvent) => {
     e.stopPropagation();
-    setEditItem(item);
-    setItemForm({
-      code: item.code, name: item.name, description: item.description || "",
-      category: item.category || "", tags: item.tags || [], photo_url: item.photo_url || "",
-      unit: item.unit || "", min_stock: item.min_stock, current_stock: item.current_stock
+    checkSecurityGate(() => {
+      setEditItem(item);
+      const priceTag = item.tags?.find(t => t.startsWith("price:"));
+      const badgeTag = item.tags?.find(t => t.startsWith("badge:"));
+      setItemForm({
+        code: item.code,
+        name: item.name,
+        description: item.description || "",
+        category: item.category || "",
+        tags: item.tags || [],
+        photo_url: item.photo_url || "",
+        unit: item.unit || "pcs",
+        min_stock: item.min_stock,
+        current_stock: item.current_stock,
+        unit_price: priceTag ? parseFloat(priceTag.replace("price:", "")) : (item.suppliers?.[0]?.unit_cost || 0),
+        post_to_shop: (item.tags || []).includes("shop:active"),
+        shop_badge: badgeTag ? badgeTag.replace("badge:", "") : "In Stock"
+      });
+      setTagInput("");
+      setIsCreatingNewType(false);
+      setNewTypeName("");
+      setShowItemModal(true);
     });
-    setTagInput("");
-    setShowItemModal(true);
   };
 
   const handleSaveItem = async () => {
     if (!itemForm.name.trim() || !itemForm.code.trim()) return;
     setSaving(true);
     try {
+      const finalCategory = isCreatingNewType && newTypeName.trim() ? newTypeName.trim() : itemForm.category;
+      const payload = {
+        ...itemForm,
+        category: finalCategory,
+        security_key: "SERP123"
+      };
       const url = editItem ? `${API_BASE_URL}/inventory/${editItem.id}` : `${API_BASE_URL}/inventory`;
       const method = editItem ? "PUT" : "POST";
       const res = await fetch(url, {
-        method, headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(itemForm)
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Security-Key": "SERP123"
+        },
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
         setShowItemModal(false);
         fetchItems();
         showToast(editItem ? t("inventory.toast_item_updated") : t("inventory.toast_item_created"));
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.detail || "Failed to save inventory item.", "err");
       }
+    } catch {
+      showToast("Network error saving item", "err");
     } finally { setSaving(false); }
   };
 
@@ -664,6 +756,87 @@ export default function InventoryPage() {
         </div>
       )}
 
+      {/* ─── SECURITY KEY GATE MODAL (SERP123) ─── */}
+      <AnimatePresence>
+        {showSecurityModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[150] flex items-center justify-center p-4"
+            onClick={e => { if (e.target === e.currentTarget) setShowSecurityModal(false); }}>
+            <motion.div initial={{ scale: 0.92, opacity: 0, y: 16 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.92, opacity: 0 }}
+              className="bg-white dark:bg-zinc-900 rounded-3xl border border-slate-200 dark:border-zinc-800 p-7 shadow-2xl w-full max-w-md space-y-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-200 dark:border-indigo-800">
+                    <Lock className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white">Security Key Required</h3>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400">Inventory & Shop Publishing Gate</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowSecurityModal(false)} className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-600 dark:text-zinc-300 leading-relaxed">
+                Enter your security key to add or update inventory items and publish products to the public storefront.
+              </p>
+
+              {securityError && (
+                <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-400 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{securityError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleUnlockSecurity} className="space-y-4">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1.5">
+                    Security Key
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      autoFocus
+                      required
+                      value={securityKeyInput}
+                      onChange={e => setSecurityKeyInput(e.target.value)}
+                      placeholder="Enter security key..."
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSecurityKeyInput("SERP123")}
+                      className="absolute right-2 top-2 px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200"
+                    >
+                      Fill SERP123
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowSecurityModal(false)}
+                    className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 text-xs font-semibold hover:bg-slate-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md flex items-center justify-center gap-1.5"
+                  >
+                    <Shield className="w-3.5 h-3.5" />
+                    <span>Unlock & Continue</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ─── ADD/EDIT ITEM MODAL ─── */}
       <AnimatePresence>
         {showItemModal && (
@@ -687,10 +860,17 @@ export default function InventoryPage() {
                 </button>
               </div>
 
-              <div className="px-6 py-5 space-y-4">
-                {/* Photo Upload */}
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_photo")}</label>
+              <div className="px-6 py-5 space-y-5">
+                {/* Image Section: File Upload or Direct Image URL */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-zinc-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Item Photo / Image</span>
+                    </label>
+                    <span className="text-[11px] text-slate-400">File upload or URL</span>
+                  </div>
+
                   <div className="flex items-center gap-3">
                     <input
                       type="file"
@@ -701,19 +881,37 @@ export default function InventoryPage() {
                     />
                     <label
                       htmlFor="inventoryPhotoUpload"
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 text-sm font-semibold text-slate-600 dark:text-zinc-300 cursor-pointer hover:border-blue-500 hover:text-blue-600 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-slate-300 dark:border-zinc-700 text-xs font-semibold text-slate-600 dark:text-zinc-300 cursor-pointer hover:border-blue-500 hover:text-blue-600 transition-colors"
                     >
-                      <Upload className="w-4 h-4" /> {uploadingPhoto ? t("inventory.uploading") : itemForm.photo_url ? t("inventory.change_photo") : t("inventory.upload_image")}
+                      <Upload className="w-4 h-4" /> {uploadingPhoto ? t("inventory.uploading") : itemForm.photo_url ? t("inventory.change_photo") : "Upload Image File"}
                     </label>
+
                     {itemForm.photo_url && (
-                      <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shrink-0">
-                        <img src={itemForm.photo_url.startsWith("/static") ? `${API_BASE_URL}${itemForm.photo_url}` : itemForm.photo_url} alt="preview" className="w-full h-full object-cover" />
-                        <button type="button" onClick={() => setItemForm(f => ({ ...f, photo_url: "" }))}
-                          className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors">
-                          <X className="w-3 h-3" />
+                      <div className="relative w-14 h-14 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shrink-0">
+                        <img
+                          src={itemForm.photo_url.startsWith("/static") ? `${API_BASE_URL}${itemForm.photo_url}` : itemForm.photo_url}
+                          alt="preview"
+                          className="w-full h-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setItemForm(f => ({ ...f, photo_url: "" }))}
+                          className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black"
+                        >
+                          <X className="w-2.5 h-2.5" />
                         </button>
                       </div>
                     )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="url"
+                      placeholder="Or enter direct image URL (https://example.com/item.png)..."
+                      value={itemForm.photo_url}
+                      onChange={e => setItemForm(f => ({ ...f, photo_url: e.target.value }))}
+                      className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                 </div>
 
@@ -730,15 +928,70 @@ export default function InventoryPage() {
                   </div>
                 </div>
 
+                {/* Inventory Type Section (Existing Dropdown or Create New) */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_category")}</label>
-                    <select value={itemForm.category} onChange={e => setItemForm(f => ({ ...f, category: e.target.value }))}
-                      className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">{t("inventory.select_category")}</option>
-                      {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                    </select>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                        Inventory Type <span className="text-red-500">*</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCreatingNewType(!isCreatingNewType);
+                          if (!isCreatingNewType) setNewTypeName("");
+                        }}
+                        className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        {isCreatingNewType ? "Choose Existing" : "+ New Type"}
+                      </button>
+                    </div>
+
+                    {!isCreatingNewType ? (
+                      <select
+                        value={itemForm.category}
+                        onChange={e => {
+                          if (e.target.value === "__CREATE_NEW__") {
+                            setIsCreatingNewType(true);
+                            setNewTypeName("");
+                          } else {
+                            setItemForm(f => ({ ...f, category: e.target.value }));
+                          }
+                        }}
+                        className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select Inventory Type</option>
+                        {allInventoryTypes.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                        <option value="__CREATE_NEW__" className="font-bold text-blue-600">+ Create New Type...</option>
+                      </select>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          autoFocus
+                          type="text"
+                          placeholder="Type name (e.g. Safety Gear)..."
+                          value={newTypeName}
+                          onChange={e => setNewTypeName(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-300 dark:border-blue-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (newTypeName.trim()) {
+                              setItemForm(f => ({ ...f, category: newTypeName.trim() }));
+                            }
+                            setIsCreatingNewType(false);
+                          }}
+                          className="px-2.5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700"
+                        >
+                          OK
+                        </button>
+                      </div>
+                    )}
                   </div>
+
                   <div>
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_unit")}</label>
                     <select value={itemForm.unit} onChange={e => setItemForm(f => ({ ...f, unit: e.target.value }))}
@@ -760,6 +1013,60 @@ export default function InventoryPage() {
                     <input type="number" value={itemForm.min_stock} onChange={e => setItemForm(f => ({ ...f, min_stock: parseFloat(e.target.value) || 0 }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
+                </div>
+
+                {/* Public Shop Publishing Options */}
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50/70 via-indigo-50/50 to-purple-50/40 dark:from-zinc-900 dark:via-zinc-900 dark:to-zinc-900 border border-blue-200 dark:border-zinc-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-blue-600" />
+                      <span className="text-xs font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wider">
+                        Publish to Public Shop (/shop)
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={itemForm.post_to_shop}
+                        onChange={e => setItemForm(f => ({ ...f, post_to_shop: e.target.checked }))}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+
+                  {itemForm.post_to_shop && (
+                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-blue-100 dark:border-zinc-800">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-wider mb-1 block">
+                          Selling Price (USD $)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="e.g. 199.99"
+                          value={itemForm.unit_price || ""}
+                          onChange={e => setItemForm(f => ({ ...f, unit_price: parseFloat(e.target.value) || 0 }))}
+                          className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-wider mb-1 block">
+                          Storefront Badge
+                        </label>
+                        <select
+                          value={itemForm.shop_badge}
+                          onChange={e => setItemForm(f => ({ ...f, shop_badge: e.target.value }))}
+                          className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          {SHOP_BADGES.map(b => (
+                            <option key={b} value={b}>{b}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Tags */}

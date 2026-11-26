@@ -17,6 +17,7 @@ from database import (
     Contact,
     Proposal,
     InventoryItem,
+    InventorySupplier,
     ActivityLog,
     Notification,
     _utcnow
@@ -101,23 +102,112 @@ def get_store_catalog(session: Session = Depends(get_session)):
     platform_management_write.set(True)
     
     # Check if there are inventory items
-    inv_items = session.exec(select(InventoryItem)).all()
-    if inv_items and len(inv_items) > 0:
-        custom_items = []
+    inv_items = session.exec(select(InventoryItem).order_by(InventoryItem.created_at.desc())).all()
+    custom_items = []
+    if inv_items:
         for it in inv_items:
+            price = 100.0
+            badge = "In Stock" if (it.current_stock or 0) > 0 else "Available"
+            
+            # Check tags for price & badge
+            for t in (it.tags or []):
+                if isinstance(t, str):
+                    if t.startswith("price:"):
+                        try:
+                            price = float(t.split(":", 1)[1])
+                        except Exception:
+                            pass
+                    elif t.startswith("badge:"):
+                        badge = t.split(":", 1)[1]
+            
+            # If no price in tags, check supplier
+            if price == 100.0:
+                sup = session.exec(select(InventorySupplier).where(InventorySupplier.item_id == it.id)).first()
+                if sup and sup.unit_cost:
+                    price = float(sup.unit_cost)
+
             custom_items.append({
                 "id": it.id,
                 "name": it.name,
-                "category": it.category or "Products & Services",
-                "unit_price": 100.0,  # fallback base
-                "unit": it.unit or "package",
-                "description": it.description or "Professional business package.",
+                "category": it.category or "General Inventory",
+                "unit_price": price,
+                "unit": it.unit or "pcs",
+                "description": it.description or "High-quality verified item available in store.",
                 "photo_url": it.photo_url or "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=600&q=80",
-                "badge": "Available"
+                "badge": badge
             })
-        return {"items": custom_items + DEFAULT_STORE_SERVICES}
-    
-    return {"items": DEFAULT_STORE_SERVICES}
+            
+    return {"items": custom_items + DEFAULT_STORE_SERVICES}
+
+
+@router.post("/items")
+def create_shop_item(
+    payload: Dict[str, Any],
+    session: Session = Depends(get_session)
+):
+    """Post an inventory item directly to the storefront, verified by security key SERP123."""
+    sec_key = payload.get("security_key") or ""
+    if sec_key.strip() != "SERP123":
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid security key. Key must be SERP123 to post inventory items on the shop."
+        )
+
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Item name is required.")
+
+    code = (payload.get("code") or f"SKU-{uuid.uuid4().hex[:6].upper()}").strip()
+    category = (payload.get("category") or "General Inventory").strip()
+    description = (payload.get("description") or "").strip()
+    photo_url = payload.get("photo_url") or None
+    unit = (payload.get("unit") or "pcs").strip()
+    unit_price = float(payload.get("unit_price") or 100.0)
+    badge = (payload.get("badge") or "New Arrival").strip()
+    current_stock = float(payload.get("current_stock") or 10.0)
+    min_stock = float(payload.get("min_stock") or 0.0)
+
+    tags = list(payload.get("tags") or [])
+    tags.append("shop:active")
+    tags.append(f"price:{unit_price}")
+    tags.append(f"badge:{badge}")
+
+    tenant_id = current_tenant_id.get()
+    if tenant_id is None or tenant_id < 1:
+        first_t = session.exec(select(Tenant)).first()
+        tenant_id = first_t.id if first_t else 1
+        current_tenant_id.set(tenant_id)
+    platform_management_write.set(True)
+
+    item = InventoryItem(
+        code=code,
+        name=name,
+        category=category,
+        description=description,
+        photo_url=photo_url,
+        unit=unit,
+        current_stock=current_stock,
+        min_stock=min_stock,
+        tags=tags,
+        tenant_id=tenant_id
+    )
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+
+    # Also add default supplier record with unit_price
+    supplier = InventorySupplier(
+        item_id=item.id,
+        supplier_name="SerpHawk Direct",
+        unit_cost=unit_price,
+        currency="USD",
+        is_preferred=True,
+        tenant_id=tenant_id
+    )
+    session.add(supplier)
+    session.commit()
+
+    return {"success": True, "item": item}
 
 
 @router.post("/proposals")

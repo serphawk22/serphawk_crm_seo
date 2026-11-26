@@ -31,6 +31,11 @@ export default function CreateBlogPostPage() {
   const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(false);
   const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
 
+  // Security Key state
+  const [securityKeyInput, setSecurityKeyInput] = useState<string>("");
+  const [securityError, setSecurityError] = useState<string | null>(null);
+  const [showEmailLogin, setShowEmailLogin] = useState<boolean>(false);
+
   // In-page SuperAdmin login if unauthenticated
   const [authEmail, setAuthEmail] = useState<string>("");
   const [authPassword, setAuthPassword] = useState<string>("");
@@ -76,7 +81,8 @@ export default function CreateBlogPostPage() {
 
       setToken(storedToken);
       const low = parsedRole.toLowerCase();
-      if ((low === "superadmin" || low === "admin") && storedToken) {
+      const unlocked = localStorage.getItem("serphawk_security_unlocked") === "SERP123";
+      if (unlocked || ((low === "superadmin" || low === "admin") && storedToken)) {
         setIsSuperAdmin(true);
       } else {
         setIsSuperAdmin(false);
@@ -84,6 +90,17 @@ export default function CreateBlogPostPage() {
       setCheckingAuth(false);
     }
   }, []);
+
+  const handleSecurityKeySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (securityKeyInput.trim() === "SERP123") {
+      localStorage.setItem("serphawk_security_unlocked", "SERP123");
+      setIsSuperAdmin(true);
+      setSecurityError(null);
+    } else {
+      setSecurityError("Invalid security key. Key is: SERP123");
+    }
+  };
 
   // Auto-generate slug when title changes
   useEffect(() => {
@@ -218,14 +235,19 @@ export default function CreateBlogPostPage() {
         tags: tagsArray,
         read_time_minutes: readTime,
         is_published: isPublished,
+        security_key: typeof window !== "undefined" ? (localStorage.getItem("serphawk_security_unlocked") || "SERP123") : "SERP123",
       };
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const secKey = typeof window !== "undefined" ? (localStorage.getItem("serphawk_security_unlocked") || "SERP123") : "SERP123";
+      headers["X-Security-Key"] = secKey;
 
       const res = await fetch(`${API_BASE_URL}/blogs`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
         body: JSON.stringify(payload),
       });
 
@@ -252,7 +274,7 @@ export default function CreateBlogPostPage() {
     );
   }
 
-  // If not authenticated as SuperAdmin / Admin, show the SuperAdmin Login Gate
+  // If not authenticated as SuperAdmin / Admin, show the Security Key / Admin Gate
   if (!isSuperAdmin) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-[#09090b] text-slate-900 dark:text-zinc-100 flex flex-col font-sans">
@@ -264,7 +286,7 @@ export default function CreateBlogPostPage() {
             <ArrowLeft className="w-4 h-4" />
             <span>Back to Blogs</span>
           </Link>
-          <span className="text-xs font-bold text-slate-500">SuperAdmin Authorization Required</span>
+          <span className="text-xs font-bold text-slate-500">Security Key Required</span>
         </header>
 
         <main className="flex-1 flex items-center justify-center p-4">
@@ -273,11 +295,18 @@ export default function CreateBlogPostPage() {
               <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto border border-indigo-200 dark:border-indigo-800">
                 <Lock className="w-7 h-7" />
               </div>
-              <h2 className="text-2xl font-black text-slate-900 dark:text-white">Author Verification</h2>
+              <h2 className="text-2xl font-black text-slate-900 dark:text-white">Security Key Verification</h2>
               <p className="text-xs text-slate-500 dark:text-zinc-400">
-                Enter your SuperAdmin credentials to publish articles and manage public knowledge hub resources.
+                Enter your system security key or admin credentials to write and publish articles.
               </p>
             </div>
+
+            {securityError && (
+              <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-400 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{securityError}</span>
+              </div>
+            )}
 
             {authError && (
               <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-400 flex items-start gap-2">
@@ -286,50 +315,80 @@ export default function CreateBlogPostPage() {
               </div>
             )}
 
-            <form onSubmit={handleAuthenticate} className="space-y-4">
+            {/* Security Key Form */}
+            <form onSubmit={handleSecurityKeySubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-zinc-400 mb-1">
-                  Admin Email
+                  Enter Security Key
                 </label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    autoFocus
+                    required
+                    value={securityKeyInput}
+                    onChange={(e) => setSecurityKeyInput(e.target.value)}
+                    placeholder="Enter key (SERP123)..."
+                    className="w-full px-4 py-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/30 text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSecurityKeyInput("SERP123")}
+                    className="absolute right-2 top-2 px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200"
+                  >
+                    Use SERP123
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md transition flex items-center justify-center gap-2"
+              >
+                <Shield className="w-4 h-4" />
+                <span>Unlock Writing Studio</span>
+              </button>
+            </form>
+
+            <div className="relative flex py-2 items-center">
+              <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
+              <span className="flex-shrink mx-4 text-xs font-medium text-slate-400">or sign in with admin account</span>
+              <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
+            </div>
+
+            <form onSubmit={handleAuthenticate} className="space-y-3">
+              <div>
                 <input
                   type="email"
-                  required
                   value={authEmail}
                   onChange={(e) => setAuthEmail(e.target.value)}
                   placeholder="admin@example.com"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-zinc-400 mb-1">
-                  Password
-                </label>
                 <input
                   type="password"
-                  required
                   value={authPassword}
                   onChange={(e) => setAuthPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Password"
+                  className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
               <button
                 type="submit"
-                disabled={authBusy}
-                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50"
+                disabled={authBusy || !authEmail || !authPassword}
+                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs transition flex items-center justify-center gap-2 disabled:opacity-40"
               >
                 {authBusy ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Verifying Credentials...</span>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Verifying...</span>
                   </>
                 ) : (
-                  <>
-                    <Shield className="w-4 h-4" />
-                    <span>Authenticate & Access Studio</span>
-                  </>
+                  <span>Sign In as Admin</span>
                 )}
               </button>
             </form>

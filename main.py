@@ -30,7 +30,7 @@ import secrets as _secrets
 import json as _json
 import uuid as _uuid
 from modules.llm_engine import analyze_document
-from fastapi import UploadFile, File
+from fastapi import UploadFile, File, Header
 import io as _io
 import csv as _csv
 from typing import Optional as _Opt
@@ -12315,6 +12315,163 @@ def _in_report_range(value: Optional[datetime], start: date, end: date) -> bool:
     return bool(value and start <= value.date() <= end)
 
 
+_CONTACTS_TAGS_CACHE: dict = {}   # tid -> (timestamp, list of tags)
+
+
+def get_contact_tags_summary(session: Session, tid: Optional[int] = None) -> List[dict]:
+    import time as _time
+    now_ts = _time.time()
+    cache_key = tid or 0
+    cached = _CONTACTS_TAGS_CACHE.get(cache_key)
+    if cached and (now_ts - cached[0] < 45.0):
+        return cached[1]
+
+    try:
+        from sqlalchemy import text
+        sql = """
+            SELECT tag, count(*) as cnt 
+            FROM (
+                SELECT json_array_elements_text(CASE WHEN json_typeof(tags) = 'array' THEN tags ELSE '[]'::json END) as tag 
+                FROM contacts 
+                WHERE tags IS NOT NULL
+        """
+        params = {}
+        if tid:
+            sql += " AND tenant_id = :tid"
+            params["tid"] = tid
+        sql += " ) sub WHERE tag IS NOT NULL AND trim(tag) != '' GROUP BY tag ORDER BY cnt DESC, tag ASC LIMIT 150"
+        rows = session.execute(text(sql), params).fetchall()
+        result = [{"tag": str(r[0]), "count": int(r[1])} for r in rows if r[0]]
+        _CONTACTS_TAGS_CACHE[cache_key] = (now_ts, result)
+        return result
+    except Exception:
+        from collections import Counter
+        query = select(Contact.tags)
+        if tid:
+            query = query.where(Contact.tenant_id == tid)
+        query = query.where(Contact.tags != None)
+        all_tags = session.exec(query).all()
+        c = Counter()
+        for tlist in all_tags:
+            if isinstance(tlist, list):
+                for t in tlist:
+                    if t and isinstance(t, str) and t.strip():
+                        c[t.strip()] += 1
+        result = [{"tag": tag, "count": count} for tag, count in c.most_common(150)]
+        _CONTACTS_TAGS_CACHE[cache_key] = (now_ts, result)
+        return result
+
+
+def _compute_contacts_report(session: Session, tid: Optional[int] = None) -> dict:
+    from sqlalchemy import text
+    try:
+        p: dict = {}
+        where_clause = "WHERE tenant_id = :tid" if tid else ""
+        if tid:
+            p["tid"] = tid
+
+        agg_sql = f"""
+            SELECT 
+                count(*) as total,
+                count(CASE WHEN parent_contact_id IS NULL THEN 1 END) as root_cnt,
+                count(CASE WHEN email IS NOT NULL AND trim(email) != '' THEN 1 END) as with_email,
+                count(CASE WHEN (mobile_number IS NOT NULL AND trim(mobile_number) != '') OR (alternate_number IS NOT NULL AND trim(alternate_number) != '') THEN 1 END) as with_phone,
+                count(CASE WHEN notes IS NOT NULL AND trim(notes) != '' THEN 1 END) as with_notes,
+                count(CASE WHEN owner_id IS NOT NULL THEN 1 END) as assigned_cnt
+            FROM contacts
+            {where_clause}
+        """
+        agg_row = session.execute(text(agg_sql), p).fetchone()
+        total_contacts = int(agg_row[0] or 0) if agg_row else 0
+        root_contacts = int(agg_row[1] or 0) if agg_row else 0
+        sub_contacts = total_contacts - root_contacts
+        with_email_cnt = int(agg_row[2] or 0) if agg_row else 0
+        with_phone_cnt = int(agg_row[3] or 0) if agg_row else 0
+        with_notes_cnt = int(agg_row[4] or 0) if agg_row else 0
+        assigned_cnt = int(agg_row[5] or 0) if agg_row else 0
+        unassigned_cnt = total_contacts - assigned_cnt
+
+        m_sql = f"SELECT count(DISTINCT contact_id) FROM meetings WHERE contact_id IS NOT NULL {'AND tenant_id = :tid' if tid else ''}"
+        with_meetings_cnt = int(session.execute(text(m_sql), p).scalar() or 0)
+
+        fu_sql = f"SELECT count(DISTINCT contact_id) FROM follow_ups WHERE contact_id IS NOT NULL {'AND tenant_id = :tid' if tid else ''}"
+        with_followups_cnt = int(session.execute(text(fu_sql), p).scalar() or 0)
+
+        owner_sql = f"""
+            SELECT c.owner_id, u.name, count(*) as cnt 
+            FROM contacts c 
+            LEFT JOIN users u ON u.id = c.owner_id 
+            {'WHERE c.tenant_id = :tid' if tid else ''}
+            {'AND' if tid else 'WHERE'} c.owner_id IS NOT NULL 
+            GROUP BY c.owner_id, u.name 
+            ORDER BY cnt DESC 
+            LIMIT 25
+        """
+        owner_rows = session.execute(text(owner_sql), p).fetchall()
+        owner_breakdown = [
+            {"user_id": r[0], "name": r[1] or f"User #{r[0]}", "count": int(r[2])}
+            for r in owner_rows
+        ]
+
+        dept_sql = f"""
+            SELECT department, count(*) as cnt 
+            FROM contacts 
+            {where_clause}
+            {'AND' if tid else 'WHERE'} department IS NOT NULL AND trim(department) != '' 
+            GROUP BY department ORDER BY cnt DESC LIMIT 15
+        """
+        dept_rows = session.execute(text(dept_sql), p).fetchall()
+        departments = [{"name": str(r[0]), "count": int(r[1])} for r in dept_rows]
+
+        desig_sql = f"""
+            SELECT designation, count(*) as cnt 
+            FROM contacts 
+            {where_clause}
+            {'AND' if tid else 'WHERE'} designation IS NOT NULL AND trim(designation) != '' 
+            GROUP BY designation ORDER BY cnt DESC LIMIT 15
+        """
+        desig_rows = session.execute(text(desig_sql), p).fetchall()
+        designations = [{"name": str(r[0]), "count": int(r[1])} for r in desig_rows]
+
+        tags_summary = get_contact_tags_summary(session, tid)
+
+        return {
+            "total": total_contacts,
+            "root": root_contacts,
+            "sub": sub_contacts,
+            "with_email": with_email_cnt,
+            "with_email_pct": round((with_email_cnt / total_contacts * 100), 1) if total_contacts else 0,
+            "with_phone": with_phone_cnt,
+            "with_phone_pct": round((with_phone_cnt / total_contacts * 100), 1) if total_contacts else 0,
+            "with_notes": with_notes_cnt,
+            "with_notes_pct": round((with_notes_cnt / total_contacts * 100), 1) if total_contacts else 0,
+            "with_meetings": with_meetings_cnt,
+            "with_meetings_pct": round((with_meetings_cnt / total_contacts * 100), 1) if total_contacts else 0,
+            "with_followups": with_followups_cnt,
+            "with_followups_pct": round((with_followups_cnt / total_contacts * 100), 1) if total_contacts else 0,
+            "assigned": assigned_cnt,
+            "unassigned": unassigned_cnt,
+            "tags_breakdown": tags_summary[:35],
+            "owner_breakdown": owner_breakdown,
+            "departments": departments,
+            "designations": designations,
+        }
+    except Exception as e:
+        tags_summary = get_contact_tags_summary(session, tid)
+        return {
+            "total": 0, "root": 0, "sub": 0,
+            "with_email": 0, "with_email_pct": 0,
+            "with_phone": 0, "with_phone_pct": 0,
+            "with_notes": 0, "with_notes_pct": 0,
+            "with_meetings": 0, "with_meetings_pct": 0,
+            "with_followups": 0, "with_followups_pct": 0,
+            "assigned": 0, "unassigned": 0,
+            "tags_breakdown": tags_summary[:35],
+            "owner_breakdown": [], "departments": [], "designations": [],
+            "error": str(e)
+        }
+
+
 @app.get("/reports/summary")
 def reports_summary(
     start_date: Optional[str] = None,
@@ -12545,6 +12702,11 @@ def reports_summary(
 
     onboarded = [client for client in clients if client.userId and users.get(
         client.userId) and _in_report_range(users[client.userId].createdAt, start, end)]
+
+    # Contacts Intelligence for Reports
+    tid = current_tenant_id.get()
+    contacts_report = _compute_contacts_report(session, tid)
+
     return {
         "range": {"start_date": start.isoformat(), "end_date": end.isoformat()},
         "summary": {"leads": len(leads), "clients_onboarded": len(onboarded), "total_clients": len(clients), "deals_created": len(deals), "deals_won": len(won_deals), "pipeline_value": round(sum(deal.value or 0 for deal in deals if deal.stage not in ("Closed Lost",)), 2), "won_value": round(sum(deal.value or 0 for deal in won_deals), 2), "emails": len(emails), "activities": len(activities), "calls": len(calls), "meetings": len(meetings), "tickets": len(tickets), "task_entries": len(task_entries), "cases_resolved": sum(1 for case in cases if case.status in ("Resolved", "Closed")), "conversion_percentage": conversion_percentage, "deal_win_rate": win_rate},
@@ -12559,7 +12721,15 @@ def reports_summary(
         "calls": [{"id": call.id, "date": call.createdAt.isoformat(), "phone_number": call.phone_number, "assigned_to": call.assigned_to or "Unassigned", "duration_seconds": call.duration_seconds, "summary": call.summary, "followup_needed": call.followup_needed, "followup_date": call.followup_date} for call in calls],
         "meetings": [{"id": meeting.id, "scheduled_at": meeting.scheduled_at.isoformat(), "title": meeting.title, "meeting_type": meeting.meeting_type, "status": meeting.status, "host": users.get(meeting.host_id).name if meeting.host_id and users.get(meeting.host_id) else "Unassigned", "duration_minutes": meeting.duration_minutes, "location": meeting.location, "outcome": meeting.outcome} for meeting in meetings],
         "onboarding": {"total_clients": len(clients), "new_in_range": len(onboarded), "active": sum(1 for client in clients if client.status == "Active"), "pending": sum(1 for client in clients if client.status == "Pending"), "hold": sum(1 for client in clients if client.status == "Hold")},
+        "contacts": contacts_report,
     }
+
+
+@app.get("/reports/contacts")
+def reports_contacts(session: Session = Depends(get_session)):
+    _require_roles(session, ["Admin", "SalesManager", "Employee", "Demo"])
+    tid = current_tenant_id.get()
+    return _compute_contacts_report(session, tid)
 
 
 # ────────────────────────────────────────────────────────
@@ -16779,6 +16949,14 @@ def _enrich_contacts(contacts: List[Contact], session: Session) -> List[dict]:
 
 _CONTACTS_STATS_CACHE: dict = {}  # tid -> (timestamp, stats)
 
+
+@app.get("/contacts/tags")
+def get_contact_tags(session: Session = Depends(get_session)):
+    tid = current_tenant_id.get()
+    tags = get_contact_tags_summary(session, tid)
+    return {"tags": tags}
+
+
 @app.get("/contacts")
 def get_contacts(
     search: Optional[str] = Query(None),
@@ -17024,9 +17202,11 @@ def get_contacts(
     import math
     total_pages = math.ceil(total_matching / effective_limit) if (effective_limit and effective_limit > 0 and total_matching > 0) else 1
 
+    available_tags = get_contact_tags_summary(session, tid)
     return {
         "contacts": enriched,
         "stats": stats,
+        "available_tags": available_tags,
         "page": page,
         "limit": effective_limit or len(enriched),
         "total": total_matching,
@@ -21985,6 +22165,10 @@ class InventoryItemCreate(BaseModel):
     unit: Optional[str] = None
     min_stock: Optional[float] = 0
     current_stock: Optional[float] = 0
+    security_key: Optional[str] = None
+    unit_price: Optional[float] = None
+    post_to_shop: Optional[bool] = False
+    shop_badge: Optional[str] = None
 
 
 class InventorySupplierCreate(BaseModel):
@@ -22145,21 +22329,69 @@ def export_catalog_pdf(body: ExportPdfRequest, session: Session = Depends(get_se
 
 
 @app.post("/inventory")
-def create_inventory_item(data: InventoryItemCreate, session: Session = Depends(get_session)):
-    item = InventoryItem(**data.dict())
-    item.tenant_id = current_tenant_id.get()
+def create_inventory_item(
+    data: InventoryItemCreate,
+    x_security_key: Optional[str] = Header(None),
+    session: Session = Depends(get_session)
+):
+    d = data.dict(exclude={"security_key", "unit_price", "post_to_shop", "shop_badge"})
+    tags = list(data.tags or [])
+    if data.post_to_shop:
+        if "shop:active" not in tags:
+            tags.append("shop:active")
+    if data.unit_price is not None:
+        tags = [t for t in tags if not (isinstance(t, str) and t.startswith("price:"))]
+        tags.append(f"price:{data.unit_price}")
+    if data.shop_badge:
+        tags = [t for t in tags if not (isinstance(t, str) and t.startswith("badge:"))]
+        tags.append(f"badge:{data.shop_badge}")
+    d["tags"] = tags
+
+    item = InventoryItem(**d)
+    item.tenant_id = current_tenant_id.get() or 1
     session.add(item)
     session.commit()
     session.refresh(item)
+
+    if data.unit_price is not None:
+        sup = InventorySupplier(
+            item_id=item.id,
+            supplier_name="SerpHawk Direct",
+            unit_cost=data.unit_price,
+            currency="USD",
+            is_preferred=True,
+            tenant_id=item.tenant_id
+        )
+        session.add(sup)
+        session.commit()
+
     return item
 
 
 @app.put("/inventory/{item_id}")
-def update_inventory_item(item_id: int, data: InventoryItemCreate, session: Session = Depends(get_session)):
+def update_inventory_item(
+    item_id: int,
+    data: InventoryItemCreate,
+    x_security_key: Optional[str] = Header(None),
+    session: Session = Depends(get_session)
+):
     item = session.get(InventoryItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    for k, v in data.dict(exclude_unset=True).items():
+    d = data.dict(exclude={"security_key", "unit_price", "post_to_shop", "shop_badge"}, exclude_unset=True)
+    tags = list(data.tags if data.tags is not None else (item.tags or []))
+    if data.post_to_shop:
+        if "shop:active" not in tags:
+            tags.append("shop:active")
+    if data.unit_price is not None:
+        tags = [t for t in tags if not (isinstance(t, str) and t.startswith("price:"))]
+        tags.append(f"price:{data.unit_price}")
+    if data.shop_badge:
+        tags = [t for t in tags if not (isinstance(t, str) and t.startswith("badge:"))]
+        tags.append(f"badge:{data.shop_badge}")
+    d["tags"] = tags
+
+    for k, v in d.items():
         setattr(item, k, v)
     item.updated_at = datetime.now(timezone.utc)
     session.add(item)
@@ -23457,7 +23689,7 @@ def get_salesperson_dashboard(
 # TEAM DIRECTORY CHAT & MESSAGING
 # ─────────────────────────────────────────────────────────────────────────────
 from database import TeamChatMessage
-from fastapi import UploadFile, File
+from fastapi import UploadFile, File, Header
 
 class SendChatMessageRequest(BaseModel):
     recipient_id: Optional[int] = None
