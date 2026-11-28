@@ -383,11 +383,12 @@ def _onboard(session: Session, body: OnboardRequest) -> dict:
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="name is required")
-    if session.exec(select(Tenant).where(Tenant.name == name)).first():
+    if session.exec(select(Tenant).where(func.lower(Tenant.name) == name.lower()).execution_options(skip_tenant=True)).first():
         raise HTTPException(status_code=409, detail="A tenant with this name already exists")
     admin_email = body.admin_email.strip()
     if onboarding.email_in_use(session, admin_email):
         raise HTTPException(status_code=409, detail="A user with this admin email already exists")
+    subdomain_slug = body.subdomain_slug.strip().lower() if body.subdomain_slug and body.subdomain_slug.strip() else None
 
     # Settings: preset defaults < what the company profile implies < what the operator typed
     profile = {"company_name": body.business_name or name, "industry": body.industry, "country": body.country,
@@ -401,7 +402,7 @@ def _onboard(session: Session, body: OnboardRequest) -> dict:
             session, company_name=body.business_name or name, tenant_name=name, admin_name=body.admin_name,
             admin_email=admin_email, password_hash=_hash_password(password), phone=body.phone, preset=body.preset,
             settings=settings, is_trial=body.is_trial, limits=body.limits, business_email=body.email,
-            admin_role=body.account_role, subdomain_slug=body.subdomain_slug)
+            admin_role=body.account_role, subdomain_slug=subdomain_slug)
     except IntegrityError:
         session.rollback()
         raise HTTPException(status_code=409, detail="An account or subdomain was claimed concurrently; choose another name")

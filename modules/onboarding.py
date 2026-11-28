@@ -149,8 +149,9 @@ def create_workspace(
     from modules.company_domains import validate_slug, domain_info
     from database import TenantDomain
     if subdomain_slug:
+        subdomain_slug = subdomain_slug.strip().lower()
         validate_slug(subdomain_slug)
-        if session.exec(select(TenantDomain).where(TenantDomain.slug == subdomain_slug).execution_options(skip_tenant=True)).first():
+        if session.exec(select(TenantDomain).where(func.lower(TenantDomain.slug) == subdomain_slug).execution_options(skip_tenant=True)).first():
             raise ValueError("Subdomain already reserved; choose another name")
     admin_email = admin_email.strip()
     if email_in_use(session, admin_email):
