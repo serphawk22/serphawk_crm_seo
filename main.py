@@ -2262,6 +2262,8 @@ class ClientCreateRequest(BaseModel):
     websiteUrl: Optional[str] = None
     targetKeywords: Optional[list[str]] = None
     assigned_employee_id: Optional[int] = None
+    customFields: Optional[dict] = None
+    custom_fields: Optional[dict] = None
 
 
 class ClientUpdateRequest(BaseModel):
@@ -5173,15 +5175,16 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
                     status_code=403, detail=f"Client limit reached. Maximum allowed: {tenant.limit_clients}")
     check_tenant_limit(session, "clients")
     user = None
-    if body.email:
+    client_email = (body.email or "").strip()
+    if client_email:
         user = session.exec(select(User).where(
-            User.email == body.email).execution_options(skip_tenant=True)).first()
+            func.lower(User.email) == client_email.lower()).execution_options(skip_tenant=True)).first()
         if user and user.tenant_id != tenant_id:
             raise HTTPException(status_code=409, detail="Email is unavailable for this company")
         if not user:
             try:
                 user = User(
-                    email=body.email,
+                    email=client_email,
                     password=_hash_password(body.password or "changeme"),
                     name=body.name or body.companyName or "Client",
                     role="Client",
@@ -5194,7 +5197,7 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
                 # Email already exists (race condition) — roll back and fetch existing user
                 session.rollback()
                 user = session.exec(select(User).where(
-                    User.email == body.email).execution_options(skip_tenant=True)).first()
+                    func.lower(User.email) == client_email.lower()).execution_options(skip_tenant=True)).first()
                 if user and user.tenant_id != tenant_id:
                     raise HTTPException(status_code=409, detail="Email is unavailable for this company")
 

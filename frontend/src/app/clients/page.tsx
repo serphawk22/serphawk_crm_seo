@@ -533,10 +533,17 @@ export default function ClientsPage() {
       } else {
         const data = await res.json().catch(() => ({}));
         setIsModalOpen(true);
-        alert(typeof data.detail === "string" ? data.detail : "Could not create client");
+        const detail = typeof data.detail === "string"
+          ? data.detail
+          : Array.isArray(data.detail)
+            ? data.detail.map((d: any) => d?.msg || String(d)).join("; ")
+            : "";
+        alert(detail || "Could not create client");
       }
     } catch (err) {
       console.error(err);
+      setIsModalOpen(true);
+      alert("Could not create client");
     } finally {
       setAddLoading(false);
     }
